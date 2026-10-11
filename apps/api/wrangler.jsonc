@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "utmmsc-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Non-secret configuration. Secrets (SESSION_SECRET, BREVO_API_KEY) are set with
+  // `wrangler secret put` and never written here.
+  // 非密钥配置。密钥通过 `wrangler secret put` 设置，不写在此处。
+  "vars": {
+    "APP_ORIGIN": "https://samwu429.github.io",
+    "APP_BASE_URL": "https://samwu429.github.io/UTMMSC/",
+    "MAIL_FROM_EMAIL": "wuyihang429@gmail.com",
+    "MAIL_FROM_NAME": "UTMMSC",
+    "WEATHER_LATITUDE": "43.6532",
+    "WEATHER_LONGITUDE": "-79.3832",
+    "WEATHER_TIMEZONE": "America/Toronto"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "utmmsc",
+      "database_id": "REPLACE_AFTER_CREATE",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "utmmsc-files"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHAT_ROOMS", "class_name": "ChatRoom" }
+    ]
+  },
+
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] }
+  ]
+}

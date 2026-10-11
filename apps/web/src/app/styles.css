@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Prevent iOS from zooming when focusing inputs smaller than 16px. */
+/* 避免 iOS 在聚焦小于 16px 的输入框时缩放页面。 */
+input,
+select,
+textarea {
+  font-size: 16px;
+}

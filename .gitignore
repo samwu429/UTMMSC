@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.wrangler/
+*.tsbuildinfo
+
+# Local secrets and environment. Real values live here or in Cloudflare secrets, never in git.
+# 本地密钥与环境变量。真实值只存在于此处或 Cloudflare secrets，不进入 git。
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

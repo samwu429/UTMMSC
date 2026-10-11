@@ -1,0 +1,22 @@
+{
+  "name": "utmmsc",
+  "private": true,
+  "version": "0.1.0",
+  "description": "UTMMSC member network: directory, channels, direct messages, governance files.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:api": "npm run dev --workspace apps/api",
+    "build:web": "npm run build --workspace apps/web",
+    "deploy:api": "npm run deploy --workspace apps/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
