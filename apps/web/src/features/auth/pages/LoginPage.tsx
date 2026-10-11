@@ -30,7 +30,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="登录" subtitle="成员网络">
+    <AuthLayout title="登录" subtitle="成员网络" centered>
       <form onSubmit={submit} className="space-y-4">
         <Field label="邮箱">
           <TextInput type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -42,7 +42,7 @@ export function LoginPage() {
         <Button type="submit" block loading={busy}>
           登录
         </Button>
-        <div className="flex gap-6 text-sm">
+        <div className="flex justify-center gap-8 text-sm">
           <Link to="/forgot" className="whitespace-nowrap text-brand-800">
             忘记密码
           </Link>
