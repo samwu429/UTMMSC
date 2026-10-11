@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { FILE_MAX_BYTES, hasPermission, isFileCategory, type FileListResponse } from '@utmmsc/shared';
 import { createFile, deleteFile, findFile, listFiles, toFileRecord } from '../../../infrastructure/d1/files';
 import { deleteObject, getObject, libraryObjectKey, putObject } from '../../../infrastructure/r2/objects';
+import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
@@ -37,8 +38,9 @@ fileRoutes.post('/category/:category', requirePermission('files.upload'), async 
   if (!sizeBytes) throw badRequest('empty_file', '文件为空');
   if (sizeBytes > FILE_MAX_BYTES) throw badRequest('too_large', '文件不能超过 25MB');
 
+  const bucket = requireBucket(c.env);
   const objectKey = libraryObjectKey(category, fileName);
-  await putObject(c.env.FILES, objectKey, await c.req.arrayBuffer(), contentType);
+  await putObject(bucket, objectKey, await c.req.arrayBuffer(), contentType);
   const row = await createFile(c.env.DB, { category, objectKey, fileName, contentType, sizeBytes, uploadedBy: c.get('member').id });
   return c.json({ file: toFileRecord(row) }, 201);
 });
@@ -46,7 +48,7 @@ fileRoutes.post('/category/:category', requirePermission('files.upload'), async 
 fileRoutes.get('/:id/download', requirePermission('files.view'), async (c) => {
   const row = await findFile(c.env.DB, c.req.param('id'));
   if (!row) throw notFound('文件不存在');
-  const object = await getObject(c.env.FILES, row.object_key);
+  const object = await getObject(requireBucket(c.env), row.object_key);
   if (!object) throw notFound('文件不存在');
   return new Response(object.body, {
     headers: {
@@ -63,7 +65,7 @@ fileRoutes.delete('/:id', async (c) => {
   if (!row) throw notFound('文件不存在');
   const ownFile = row.uploaded_by === member.id;
   if (!ownFile && !hasPermission(member.role, 'channels.manage')) throw forbidden('只能删除自己上传的文件');
-  await deleteObject(c.env.FILES, row.object_key);
+  await deleteObject(requireBucket(c.env), row.object_key);
   await deleteFile(c.env.DB, row.id);
   return c.json({ ok: true });
 });

@@ -4,7 +4,7 @@ Member network for UTMMSC: a members-only web app with large chat channels, dire
 
 UTMMSC 成员网络：面向成员的网页应用，提供大频道聊天、私聊、在校生与毕业生目录、给主席团使用的身份管理、分类文件库，以及显示日期、多伦多天气和近期活动的每日卡片。
 
-Live site: https://samwu429.github.io/UTMMSC/
+Live site: https://topphi.com/UTMMSC/ (https://samwu429.github.io/UTMMSC/ redirects here)
 
 ## Structure
 
@@ -34,8 +34,9 @@ Create `apps/api/.dev.vars` (ignored by git) with the keys listed in `apps/api/.
 
 ## Deployment
 
-- Web: push to `main`. The workflow in `.github/workflows/deploy-pages.yml` builds `apps/web` and publishes it to GitHub Pages.
-- API: `npm run deploy:api` after `npx wrangler login`. Secrets are set with `npx wrangler secret put <NAME>` inside `apps/api`.
+- Web: push to `main`. The workflow in `.github/workflows/deploy-pages.yml` builds `apps/web` and publishes it to GitHub Pages. The repository variable `API_BASE_URL` holds the Worker origin.
+- API: `npm run deploy:api` after `npx wrangler login`. Secrets are set with `npx wrangler secret put <NAME>` inside `apps/api`. The Worker runs at `https://utmmsc-api.utmmsc.workers.dev`.
+- Files: R2 has to be enabled once in the Cloudflare dashboard. Then run `npx wrangler r2 bucket create utmmsc-files`, restore the `r2_buckets` block in `apps/api/wrangler.jsonc`, and deploy again. Until then the file library and chat images return 503.
 
 ## Scripts
 

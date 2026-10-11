@@ -19,6 +19,7 @@ import { findMemberById, type MemberRow } from '../../../infrastructure/d1/membe
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
 import type { ChatRoom } from '../../../realtime/rooms/chat-room';
 import type { Env } from '../../../env';
+import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound, unauthorized } from '../../errors';
 import { requireSession } from '../../middleware/session';
@@ -173,8 +174,9 @@ chatRoutes.post('/rooms/:roomId/images', requireSession, async (c) => {
   if (!(CHAT_IMAGE_TYPES as readonly string[]).includes(contentType)) throw badRequest('unsupported_type', '只支持 JPEG、PNG、WebP、GIF');
   const length = Number(c.req.header('content-length') ?? '0');
   if (!length || length > CHAT_IMAGE_MAX_BYTES) throw badRequest('too_large', '图片不能超过 8MB');
+  const bucket = requireBucket(c.env);
   const key = chatImageKey(roomId, contentType);
-  await putObject(c.env.FILES, key, await c.req.arrayBuffer(), contentType);
+  await putObject(bucket, key, await c.req.arrayBuffer(), contentType);
   return c.json({ imageKey: key }, 201);
 });
 
@@ -184,7 +186,7 @@ chatRoutes.get('/media/*', async (c) => {
   if (!claims || claims.kind !== 'media' || claims.exp <= Date.now()) throw unauthorized('媒体链接已过期');
   const key = decodeURIComponent(c.req.path.replace(/^\/chat\/media\//, ''));
   if (!key.startsWith(`chat/${claims.roomId.replace(':', '/')}/`)) throw forbidden();
-  const object = await getObject(c.env.FILES, key);
+  const object = await getObject(requireBucket(c.env), key);
   if (!object) throw notFound();
   return new Response(object.body, {
     headers: {

@@ -22,6 +22,7 @@ export const forbidden = (message = '没有权限执行此操作') => new ApiHtt
 export const notFound = (message = '未找到') => new ApiHttpError(404, 'not_found', message);
 export const conflict = (code: string, message: string) => new ApiHttpError(409, code, message);
 export const tooMany = (message = '操作过于频繁，请稍后再试') => new ApiHttpError(429, 'rate_limited', message);
+export const serviceUnavailable = (code: string, message: string) => new ApiHttpError(503, code, message);
 
 export function errorResponse(error: unknown, c: Context): Response {
   if (error instanceof ApiHttpError) {

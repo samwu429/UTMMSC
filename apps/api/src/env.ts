@@ -4,9 +4,13 @@
  */
 export interface Env {
   DB: D1Database;
-  FILES: R2Bucket;
+  /** Absent until R2 is enabled on the Cloudflare account; file routes answer 503 without it. */
+  /** Cloudflare 账号开通 R2 前此绑定不存在；届时文件接口返回 503。 */
+  FILES?: R2Bucket;
   CHAT_ROOMS: DurableObjectNamespace;
 
+  /** Comma-separated browser origins allowed by CORS. */
+  /** CORS 允许的浏览器来源，逗号分隔。 */
   APP_ORIGIN: string;
   APP_BASE_URL: string;
   MAIL_FROM_EMAIL: string;

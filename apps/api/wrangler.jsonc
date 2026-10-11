@@ -10,8 +10,10 @@
   // `wrangler secret put` and never written here.
   // 非密钥配置。密钥通过 `wrangler secret put` 设置，不写在此处。
   "vars": {
-    "APP_ORIGIN": "https://samwu429.github.io",
-    "APP_BASE_URL": "https://samwu429.github.io/UTMMSC/",
+    // GitHub Pages serves this project under the account's custom domain; the github.io URL redirects there.
+    // GitHub Pages 在账号自定义域名下提供本项目；github.io 地址会跳转过去。
+    "APP_ORIGIN": "https://topphi.com,https://samwu429.github.io",
+    "APP_BASE_URL": "https://topphi.com/UTMMSC/",
     "MAIL_FROM_EMAIL": "wuyihang429@gmail.com",
     "MAIL_FROM_NAME": "UTMMSC",
     "WEATHER_LATITUDE": "43.6532",
@@ -23,17 +25,20 @@
     {
       "binding": "DB",
       "database_name": "utmmsc",
-      "database_id": "REPLACE_AFTER_CREATE",
+      "database_id": "5e71c6ae-8d51-4dc8-9a19-98d42ce44c40",
       "migrations_dir": "migrations"
     }
   ],
 
-  "r2_buckets": [
-    {
-      "binding": "FILES",
-      "bucket_name": "utmmsc-files"
-    }
-  ],
+  // R2 must first be enabled in the Cloudflare dashboard (R2 > Get started). After that, run
+  // `wrangler r2 bucket create utmmsc-files`, restore this block and deploy again.
+  // 需先在 Cloudflare 控制台开通 R2，再执行 `wrangler r2 bucket create utmmsc-files`，恢复此段并重新部署。
+  // "r2_buckets": [
+  //   {
+  //     "binding": "FILES",
+  //     "bucket_name": "utmmsc-files"
+  //   }
+  // ],
 
   "durable_objects": {
     "bindings": [
