@@ -30,7 +30,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="UTMMSC" subtitle="成员登录">
+    <AuthLayout title="登录" subtitle="成员网络">
       <form onSubmit={submit} className="space-y-4">
         <Field label="邮箱">
           <TextInput type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -42,12 +42,12 @@ export function LoginPage() {
         <Button type="submit" block loading={busy}>
           登录
         </Button>
-        <div className="flex justify-between text-sm">
-          <Link to="/forgot" className="text-brand-700">
+        <div className="flex gap-6 text-sm">
+          <Link to="/forgot" className="whitespace-nowrap text-brand-800">
             忘记密码
           </Link>
-          <Link to="/register" className="text-brand-700">
-            注册新账号
+          <Link to="/register" className="whitespace-nowrap text-brand-800">
+            注册
           </Link>
         </div>
       </form>

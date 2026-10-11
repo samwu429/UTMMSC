@@ -2,13 +2,11 @@ import type { ReactNode } from 'react';
 
 export function AuthLayout({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-full max-w-md flex-col justify-center px-5 py-10">
-      <div className="mb-8 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-700 text-xl font-bold text-accent-300 ring-4 ring-accent-300/80">U</div>
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
-      </div>
-      <div className="rounded-2xl bg-white p-5 shadow-sm">{children}</div>
+    <div className="mx-auto flex min-h-full max-w-md flex-col px-6 pb-10 pt-14">
+      <p className="text-sm font-semibold tracking-wide text-brand-800">UTMMSC</p>
+      <h1 className="mt-3 text-[28px] font-semibold tracking-tight">{title}</h1>
+      {subtitle ? <p className="mt-1 text-sm text-stone-500">{subtitle}</p> : null}
+      <div className="mt-8">{children}</div>
     </div>
   );
 }

@@ -36,7 +36,7 @@ export function ChatOverviewPage() {
   return (
     <div className="space-y-4">
       <PageTitle>聊天</PageTitle>
-      <div className="flex rounded-xl bg-white p-1 shadow-sm">
+      <div className="flex gap-5 border-b border-stone-200">
         {(
           [
             ['channels', '频道', unreadChannels],
@@ -46,10 +46,10 @@ export function ChatOverviewPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`min-h-11 flex-1 rounded-lg py-2 text-sm font-medium ${tab === key ? 'bg-accent-400 text-brand-900' : 'text-slate-600'}`}
+            className={`-mb-px border-b-2 pb-2 text-[15px] ${tab === key ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {label}
-            {unread > 0 ? ` (${unread})` : ''}
+            {unread > 0 ? <span className="ml-1 text-xs text-stone-400">{unread}</span> : null}
           </button>
         ))}
       </div>

@@ -81,7 +81,7 @@ export function EventsPanel() {
       ) : (
         <div className="space-y-2">
           {events.map((event) => (
-            <div key={event.id} className="flex items-start justify-between gap-2 rounded-2xl bg-white p-3 shadow-sm">
+            <div key={event.id} className="flex items-start justify-between gap-2 rounded-xl bg-white px-4 py-3 ring-1 ring-stone-200">
               <div className="min-w-0">
                 <p className="truncate font-medium">{event.title}</p>
                 <p className="text-xs text-slate-500">

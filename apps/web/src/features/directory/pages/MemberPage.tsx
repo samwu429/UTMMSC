@@ -36,20 +36,20 @@ export function MemberPage() {
 
   return (
     <div className="space-y-4">
-      <Link to="/directory" className="text-sm text-brand-700">
+      <Link to="/directory" className="text-sm text-brand-800">
         ← 返回成员列表
       </Link>
-      <Card className="text-center">
-        <div className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-brand-100 text-3xl font-semibold text-brand-800">
+      <Card>
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-stone-200 text-xl font-medium text-stone-700">
           {member.displayName.slice(0, 1)}
         </div>
         <h1 className="text-xl font-semibold">{member.displayName}</h1>
-        <div className="mt-2 flex justify-center gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <Badge>{member.graduationYear} 届</Badge>
           <Badge>{ENROLLMENT_LABELS[member.enrollmentStatus]}</Badge>
           <Badge tone="brand">{ROLE_LABELS[member.role]}</Badge>
         </div>
-        {member.major ? <p className="mt-3 text-sm text-slate-600">{member.major}</p> : null}
+        {member.major ? <p className="mt-3 text-sm text-stone-600">{member.major}</p> : null}
       </Card>
       {self && self.id !== member.id ? (
         <Button block onClick={openDirect} loading={opening}>

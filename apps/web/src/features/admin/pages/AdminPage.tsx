@@ -36,19 +36,19 @@ export function AdminPage() {
     <div className="space-y-4">
       <PageTitle
         action={
-          <Link to="/settings" className="text-sm text-brand-700">
+          <Link to="/settings" className="text-sm text-brand-800">
             我的账号
           </Link>
         }
       >
         管理
       </PageTitle>
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex gap-5 overflow-x-auto border-b border-stone-200">
         {sections.map((s) => (
           <button
             key={s.key}
             onClick={() => setActive(s.key)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium ${current?.key === s.key ? 'bg-brand-700 text-white' : 'bg-white text-slate-700'}`}
+            className={`-mb-px shrink-0 border-b-2 pb-2 text-[15px] ${current?.key === s.key ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {s.label}
           </button>

@@ -54,9 +54,9 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
   }
 
   return (
-    <form onSubmit={submit} className="flex items-end gap-2 border-t border-brand-100 bg-white px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
+    <form onSubmit={submit} className="flex items-end gap-2 border-t border-stone-200 bg-[#f7f6f3] px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
       <input ref={fileRef} type="file" accept={CHAT_IMAGE_TYPES.join(',')} className="hidden" onChange={(e) => e.target.files?.[0] && pickImage(e.target.files[0])} />
-      <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || uploading} className="h-10 w-10 shrink-0 rounded-full text-xl text-slate-500 disabled:opacity-40" aria-label="发送图片">
+      <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || uploading} className="mb-0.5 h-9 w-9 shrink-0 text-xl text-stone-500 disabled:opacity-40" aria-label="发送图片">
         {uploading ? '…' : '＋'}
       </button>
       <textarea
@@ -66,9 +66,9 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
         rows={1}
         disabled={disabled}
         placeholder={placeholder ?? (disabled ? '此频道不允许你发言' : '输入消息')}
-        className="max-h-32 flex-1 resize-none rounded-2xl border border-brand-100 px-4 py-2 outline-none focus:border-brand-600 focus:ring-2 focus:ring-accent-300 disabled:bg-slate-100"
+        className="max-h-32 flex-1 resize-none rounded-2xl border border-stone-300 bg-white px-3 py-2 outline-none focus:border-brand-800 disabled:bg-stone-100"
       />
-      <button type="submit" disabled={disabled || !text.trim()} className="h-10 shrink-0 rounded-full bg-accent-400 px-4 font-semibold text-brand-900 disabled:opacity-40">
+      <button type="submit" disabled={disabled || !text.trim()} className="mb-0.5 h-9 shrink-0 rounded-full bg-[#f5c400] px-3.5 text-sm font-semibold text-stone-900 disabled:bg-stone-200 disabled:text-stone-400">
         发送
       </button>
     </form>

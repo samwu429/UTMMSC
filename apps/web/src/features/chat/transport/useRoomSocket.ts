@@ -96,9 +96,6 @@ export function useRoomSocket(roomId: string) {
       } catch (err) {
         const status = err instanceof ApiClientError ? err.status : 0;
         const retry = !disposed && (status === 0 || status >= 500);
-        // #region agent log
-        fetch('http://127.0.0.1:7526/ingest/b8cbb28b-ea80-4b82-b1a0-311700a11609',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'611054'},body:JSON.stringify({sessionId:'611054',location:'useRoomSocket.ts:ticket',message:'ticket failed',data:{status,retry},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         setState((prev) => ({ ...prev, status: 'closed', retrying: retry, error: errorMessage(err) }));
         if (retry) {
           const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** attemptRef.current);
@@ -109,9 +106,6 @@ export function useRoomSocket(roomId: string) {
       }
       if (disposed) return;
       const canPost = ticket.canPost !== false;
-      // #region agent log
-      fetch('http://127.0.0.1:7526/ingest/b8cbb28b-ea80-4b82-b1a0-311700a11609',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'611054'},body:JSON.stringify({sessionId:'611054',location:'useRoomSocket.ts:ticket',message:'ticket ok',data:{canPost},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       setState((prev) => ({ ...prev, mediaToken: ticket.mediaToken, canPost }));
 
       const socket = new WebSocket(ticket.socketUrl);

@@ -51,7 +51,7 @@ export function RolesPanel() {
       {visible.map((m) => {
         const editable = m.id !== self.id && (self.role === 'superadmin' || roleRank(m.role) < roleRank(self.role));
         return (
-          <div key={m.id} className="rounded-2xl bg-white p-3 shadow-sm">
+          <div key={m.id} className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate font-medium">

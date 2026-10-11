@@ -4,7 +4,7 @@ import { errorMessage } from '../../../shared/api/errors';
 import { formatBytes, formatRelative } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
-import { EmptyState, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
+import { EmptyState, List, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
 import { filesApi } from '../api';
 
 export function FilesPage() {
@@ -85,12 +85,12 @@ export function FilesPage() {
       >
         文件
       </PageTitle>
-      <div className="flex gap-2 overflow-x-auto">
+      <div className="flex gap-5 overflow-x-auto border-b border-stone-200">
         {FILE_CATEGORIES.map((c) => (
           <button
             key={c}
             onClick={() => setCategory(c)}
-            className={`min-h-10 shrink-0 rounded-full px-4 py-2 text-sm font-medium ${category === c ? 'bg-accent-400 text-brand-900' : 'bg-white text-slate-700'}`}
+            className={`-mb-px shrink-0 border-b-2 pb-2 text-[15px] ${category === c ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {FILE_CATEGORY_LABELS[c]}
           </button>
@@ -98,13 +98,13 @@ export function FilesPage() {
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
       {files === null ? <Spinner /> : files.length === 0 ? <EmptyState>这个分类还没有文件</EmptyState> : null}
-      {files ? (
-        <div className="space-y-2">
+      {files && files.length > 0 ? (
+        <List>
           {files.map((file) => (
-            <div key={file.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
+            <div key={file.id} className="flex items-center gap-3 px-4 py-3">
               <button onClick={() => download(file)} className="min-w-0 flex-1 text-left">
                 <p className="truncate font-medium">{file.fileName}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-stone-500">
                   {formatBytes(file.sizeBytes)} · {file.uploadedBy.displayName} · {formatRelative(file.createdAt)}
                 </p>
               </button>
@@ -115,7 +115,7 @@ export function FilesPage() {
               ) : null}
             </div>
           ))}
-        </div>
+        </List>
       ) : null}
     </div>
   );

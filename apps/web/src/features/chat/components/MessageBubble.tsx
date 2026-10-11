@@ -17,16 +17,16 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
   return (
     <div className={`flex gap-2 ${own ? 'flex-row-reverse' : ''}`}>
       {!own ? (
-        <button onClick={() => onOpenProfile(message.author.id)} className="mt-5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-800">
+        <button onClick={() => onOpenProfile(message.author.id)} className="mt-5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-200 text-sm font-medium text-stone-700">
           {message.author.displayName.slice(0, 1)}
         </button>
       ) : null}
       <div className={`max-w-[78%] ${own ? 'items-end' : 'items-start'} flex flex-col`}>
-        <div className={`mb-0.5 flex items-center gap-2 text-xs text-slate-500 ${own ? 'flex-row-reverse' : ''}`}>
+        <div className={`mb-0.5 flex items-center gap-2 text-xs text-stone-400 ${own ? 'flex-row-reverse' : ''}`}>
           {!own ? <span>{message.author.displayName}</span> : null}
           <span>{formatMessageTime(message.createdAt)}</span>
         </div>
-        <div className={`rounded-2xl px-3 py-2 ${own ? 'bg-brand-700 text-white' : 'bg-white text-slate-900 shadow-sm'} ${message.deleted ? 'italic opacity-60' : ''}`}>
+        <div className={`rounded-2xl px-3 py-2 ${own ? 'rounded-br-md bg-brand-800 text-white' : 'rounded-bl-md bg-white text-stone-900 ring-1 ring-stone-200'} ${message.deleted ? 'italic text-stone-400' : ''}`}>
           {message.deleted ? (
             <span className="text-sm">消息已删除</span>
           ) : (
@@ -39,7 +39,7 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
           )}
         </div>
         {!message.deleted && (canDelete || (canModerate && !own)) ? (
-          <div className="mt-0.5 flex gap-3 text-xs text-slate-400">
+          <div className="mt-1 flex gap-3 text-xs text-stone-400">
             {canDelete ? <button onClick={() => onDelete(message.id)}>删除</button> : null}
             {canModerate && !own ? <button onClick={() => onMute(message.author.id)}>禁言</button> : null}
           </div>

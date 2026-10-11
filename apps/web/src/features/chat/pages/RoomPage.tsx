@@ -68,8 +68,8 @@ export function RoomPage() {
   const title = parsed?.kind === 'direct' ? '私聊' : '频道';
 
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col bg-[#f6f3fb]">
-      <header className="flex items-center gap-3 border-b border-brand-100 bg-white px-3 py-2">
+    <div className="mx-auto flex h-full max-w-2xl flex-col bg-[#efece6]">
+      <header className="flex items-center gap-2 border-b border-stone-200 bg-[#f7f6f3] px-2 py-2">
         <button onClick={() => navigate('/chat')} className="h-10 w-10 rounded-full text-xl text-slate-600" aria-label="返回">
           ←
         </button>

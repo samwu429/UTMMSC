@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DailyCardResponse } from '@utmmsc/shared';
-import { ROLE_LABELS } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_LABELS } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatEventTime } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
-import { Badge, Card, EmptyState, Notice, Spinner } from '../../../shared/ui/Card';
+import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
 import { homeApi } from '../api';
 
 export function HomePage() {
@@ -18,71 +18,85 @@ export function HomePage() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-sm text-slate-500">你好</p>
-        <h1 className="text-2xl font-semibold">
-          {member?.displayName} <Badge tone="brand">{member ? ROLE_LABELS[member.role] : ''}</Badge>
-        </h1>
-      </div>
+    <div>
+      <header>
+        <p className="text-[13px] text-stone-500">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
+        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">{member?.displayName}</h1>
+        {member ? (
+          <p className="mt-1 text-sm text-stone-500">
+            {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]} · {ROLE_LABELS[member.role]}
+          </p>
+        ) : null}
+      </header>
 
-      {error ? <Notice tone="error">{error}</Notice> : null}
+      {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
       {!card && !error ? <Spinner /> : null}
 
       {card ? (
-        <>
-          <Card className="bg-gradient-to-br from-brand-800 to-brand-600 text-white">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="inline-block rounded-full bg-accent-400 px-2.5 py-0.5 text-xs font-semibold text-brand-900">{card.weekday}</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight">{card.date}</p>
-              </div>
+        <section className="mt-5 rounded-xl bg-white px-4 py-4 ring-1 ring-stone-200">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-stone-500">{card.date}</p>
               {card.weather ? (
-                <div className="text-right">
-                  <p className="text-3xl font-semibold">{card.weather.temperatureC}°</p>
-                  <p className="text-sm opacity-90">
-                    {card.weather.description} · 体感 {card.weather.apparentC}°
+                <>
+                  <p className="mt-1 text-[34px] font-semibold leading-none tracking-tight">{card.weather.temperatureC}°</p>
+                  <p className="mt-2 text-sm text-stone-600">
+                    {card.weather.description}
+                    <span className="text-stone-400"> · 体感 {card.weather.apparentC}°</span>
                   </p>
-                  {card.weather.precipitationChance !== null ? <p className="text-xs opacity-80">降水概率 {card.weather.precipitationChance}%</p> : null}
-                </div>
+                </>
               ) : (
-                <p className="text-sm opacity-80">天气暂不可用</p>
+                <p className="mt-2 text-sm text-stone-500">天气暂时取不到</p>
               )}
             </div>
-            <p className="mt-3 text-xs opacity-80">多伦多</p>
-          </Card>
-
-          <section>
-            <h2 className="mb-2 text-base font-semibold">近期活动</h2>
-            {card.events.length === 0 ? (
-              <EmptyState>暂无活动安排</EmptyState>
-            ) : (
-              <div className="space-y-2">
-                {card.events.map((event) => (
-                  <Card key={event.id}>
-                    <p className="font-medium">{event.title}</p>
-                    <p className="text-sm text-slate-500">{formatEventTime(event.startsAt)}</p>
-                    {event.location ? <p className="text-sm text-slate-500">{event.location}</p> : null}
-                    {event.description ? <p className="mt-1 whitespace-pre-wrap text-sm">{event.description}</p> : null}
-                  </Card>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+            {card.weather?.precipitationChance !== null && card.weather ? (
+              <p className="pt-1 text-right text-sm text-stone-500">
+                降水
+                <span className="mt-0.5 block text-base font-medium text-stone-800">{card.weather.precipitationChance}%</span>
+              </p>
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
-      <section className="grid grid-cols-2 gap-3">
-        <Link to="/chat" className="rounded-2xl bg-white p-4 shadow-sm shadow-brand-900/5 active:scale-[0.98]">
-          <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-accent-400 text-sm font-bold text-brand-900">聊</span>
-          <p className="text-lg font-semibold">聊天</p>
-          <p className="text-sm text-slate-500">频道与私聊</p>
-        </Link>
-        <Link to="/directory" className="rounded-2xl bg-white p-4 shadow-sm shadow-brand-900/5 active:scale-[0.98]">
-          <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-accent-300">名</span>
-          <p className="text-lg font-semibold">成员</p>
-          <p className="text-sm text-slate-500">按届别查找</p>
-        </Link>
+      <section className="mt-7">
+        <h2 className="mb-2 text-[13px] font-medium text-stone-500">近期活动</h2>
+        {!card || card.events.length === 0 ? (
+          <EmptyState>主席团还没有录入活动</EmptyState>
+        ) : (
+          <List>
+            {card.events.map((event) => (
+              <div key={event.id} className="px-4 py-3">
+                <p className="font-medium">{event.title}</p>
+                <p className="mt-0.5 text-sm text-stone-500">
+                  {formatEventTime(event.startsAt)}
+                  {event.location ? ` · ${event.location}` : ''}
+                </p>
+                {event.description ? <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700">{event.description}</p> : null}
+              </div>
+            ))}
+          </List>
+        )}
+      </section>
+
+      <section className="mt-7">
+        <h2 className="mb-2 text-[13px] font-medium text-stone-500">常用</h2>
+        <List>
+          <Link to="/chat" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
+            <span>
+              <span className="block font-medium">聊天</span>
+              <span className="text-sm text-stone-500">频道和私聊</span>
+            </span>
+            <span className="text-stone-300">›</span>
+          </Link>
+          <Link to="/directory" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
+            <span>
+              <span className="block font-medium">成员</span>
+              <span className="text-sm text-stone-500">按届别和专业找人</span>
+            </span>
+            <span className="text-stone-300">›</span>
+          </Link>
+        </List>
       </section>
     </div>
   );

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, GRADUATION_YEAR_MIN, graduationYearMax, type EnrollmentStatus, type MemberProfile } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { Button } from '../../../shared/ui/Button';
-import { EmptyState, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
+import { EmptyState, List, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
 import { Select, TextInput } from '../../../shared/ui/Field';
 import { directoryApi } from '../api';
 import { MemberRow } from '../components/MemberRow';
@@ -82,7 +82,7 @@ export function DirectoryPage() {
           {q || enrollment || year ? (
             <button
               type="button"
-              className="mt-3 block w-full font-medium text-brand-700"
+              className="mt-2 font-medium text-brand-800"
               onClick={() => {
                 setQ('');
                 setEnrollment('');
@@ -95,10 +95,14 @@ export function DirectoryPage() {
         </EmptyState>
       ) : null}
       {!loading ? (
-        <div className="space-y-2">
-          {members.map((m) => (
-            <MemberRow key={m.id} member={m} />
-          ))}
+        <div className="space-y-3">
+          {members.length > 0 ? (
+            <List>
+              {members.map((m) => (
+                <MemberRow key={m.id} member={m} />
+              ))}
+            </List>
+          ) : null}
           {cursor ? (
             <Button variant="secondary" block onClick={loadMore}>
               加载更多
