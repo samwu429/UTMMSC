@@ -48,7 +48,7 @@ export function AdminPage() {
           <button
             key={s.key}
             onClick={() => setActive(s.key)}
-            className={`-mb-px shrink-0 border-b-2 pb-2 text-[15px] ${current?.key === s.key ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
+            className={`-mb-px shrink-0 border-b-[3px] pb-2 text-[15px] ${current?.key === s.key ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {s.label}
           </button>

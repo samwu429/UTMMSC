@@ -75,7 +75,7 @@ export function AppShell() {
       <main className="flex-1 px-4 pb-24 pt-5">
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-stone-200 bg-[#f7f6f3]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav className="fixed inset-x-0 bottom-0 border-t border-stone-200 bg-paper" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="mx-auto flex max-w-2xl">
           {items.map((item) => (
             <NavLink
@@ -83,13 +83,14 @@ export function AppShell() {
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
-                `flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-500'}`
+                `flex min-h-[52px] flex-1 flex-col items-center justify-center text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-400'}`
               }
             >
               {({ isActive }) => (
                 <>
                   <TabIcon name={item.icon} />
                   <span className={isActive ? 'font-medium' : ''}>{item.label}</span>
+                  <span className={`mt-0.5 h-[3px] w-4 ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
                 </>
               )}
             </NavLink>

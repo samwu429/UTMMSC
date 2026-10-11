@@ -26,7 +26,7 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
           {!own ? <span>{message.author.displayName}</span> : null}
           <span>{formatMessageTime(message.createdAt)}</span>
         </div>
-        <div className={`rounded-2xl px-3 py-2 ${own ? 'rounded-br-md bg-brand-800 text-white' : 'rounded-bl-md bg-white text-stone-900 ring-1 ring-stone-200'} ${message.deleted ? 'italic text-stone-400' : ''}`}>
+        <div className={`rounded-2xl px-3 py-2 ${own ? 'rounded-br-md bg-brand-700 text-white' : 'rounded-bl-md bg-white text-brand-800 ring-1 ring-stone-200'} ${message.deleted ? 'italic text-stone-400' : ''}`}>
           {message.deleted ? (
             <span className="text-sm">消息已删除</span>
           ) : (

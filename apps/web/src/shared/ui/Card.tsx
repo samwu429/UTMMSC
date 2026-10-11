@@ -16,9 +16,12 @@ export function List({ children }: { children: ReactNode }) {
 
 export function PageTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-3 flex items-end justify-between gap-3">
-      <h1 className="text-[22px] font-semibold tracking-tight text-stone-900">{children}</h1>
-      {action}
+    <div className="mb-4">
+      <div className="flex items-end justify-between gap-3">
+        <h1 className="text-[22px] font-semibold tracking-tight text-brand-800">{children}</h1>
+        {action}
+      </div>
+      <span className="mt-2 block h-[3px] w-10 bg-gold" />
     </div>
   );
 }

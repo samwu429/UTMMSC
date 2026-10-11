@@ -13,7 +13,7 @@ body,
 }
 
 body {
-  @apply bg-[#f7f6f3] text-stone-900 antialiased;
+  @apply bg-paper text-brand-800 antialiased;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -24,7 +24,7 @@ summary {
 }
 
 :focus-visible {
-  outline: 2px solid #4c1d95;
+  outline: 2px solid #5B2A86;
   outline-offset: 2px;
 }
 

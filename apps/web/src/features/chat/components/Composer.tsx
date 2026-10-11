@@ -54,7 +54,7 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
   }
 
   return (
-    <form onSubmit={submit} className="flex items-end gap-2 border-t border-stone-200 bg-[#f7f6f3] px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
+    <form onSubmit={submit} className="flex items-end gap-2 border-t-[3px] border-gold bg-paper px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
       <input ref={fileRef} type="file" accept={CHAT_IMAGE_TYPES.join(',')} className="hidden" onChange={(e) => e.target.files?.[0] && pickImage(e.target.files[0])} />
       <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || uploading} className="mb-0.5 h-9 w-9 shrink-0 text-xl text-stone-500 disabled:opacity-40" aria-label="发送图片">
         {uploading ? '…' : '＋'}
@@ -68,7 +68,7 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
         placeholder={placeholder ?? (disabled ? '此频道不允许你发言' : '输入消息')}
         className="max-h-32 flex-1 resize-none rounded-2xl border border-stone-300 bg-white px-3 py-2 outline-none focus:border-brand-800 disabled:bg-stone-100"
       />
-      <button type="submit" disabled={disabled || !text.trim()} className="mb-0.5 h-9 shrink-0 rounded-full bg-[#f5c400] px-3.5 text-sm font-semibold text-stone-900 disabled:bg-stone-200 disabled:text-stone-400">
+      <button type="submit" disabled={disabled || !text.trim()} className="mb-0.5 h-9 shrink-0 rounded-md bg-brand-800 px-3.5 text-sm font-medium text-white disabled:bg-stone-200 disabled:text-stone-400">
         发送
       </button>
     </form>

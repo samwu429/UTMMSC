@@ -46,7 +46,7 @@ export function ChatOverviewPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`-mb-px border-b-2 pb-2 text-[15px] ${tab === key ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
+            className={`-mb-px border-b-[3px] pb-2 text-[15px] ${tab === key ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {label}
             {unread > 0 ? <span className="ml-1 text-xs text-stone-400">{unread}</span> : null}

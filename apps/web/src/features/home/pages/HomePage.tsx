@@ -19,28 +19,30 @@ export function HomePage() {
 
   return (
     <div>
+      <img src={`${import.meta.env.BASE_URL}brand/logo-horizontal.svg`} alt="UTMMSC" className="mb-6 h-auto w-56" />
       <header>
-        <p className="text-[13px] text-stone-500">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">{member?.displayName}</h1>
+        <p className="text-[13px] text-brand-700">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
+        <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-brand-800">{member?.displayName}</h1>
         {member ? (
           <p className="mt-1 text-sm text-stone-500">
             {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]} · {ROLE_LABELS[member.role]}
           </p>
         ) : null}
+        <span className="mt-3 block h-[3px] w-10 bg-gold" />
       </header>
 
       {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
       {!card && !error ? <Spinner /> : null}
 
       {card ? (
-        <section className="mt-5 rounded-xl bg-white px-4 py-4 ring-1 ring-stone-200">
+        <section className="mt-5 bg-white px-4 py-4 ring-1 ring-stone-200">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm text-stone-500">{card.date}</p>
+              <p className="text-sm text-brand-700">{card.date}</p>
               {card.weather ? (
                 <>
-                  <p className="mt-1 text-[34px] font-semibold leading-none tracking-tight">{card.weather.temperatureC}°</p>
-                  <p className="mt-2 text-sm text-stone-600">
+                  <p className="mt-1 text-[40px] font-semibold leading-none tracking-tight text-brand-800">{card.weather.temperatureC}°</p>
+                  <p className="mt-2 text-sm text-brand-700">
                     {card.weather.description}
                     <span className="text-stone-400"> · 体感 {card.weather.apparentC}°</span>
                   </p>
@@ -60,7 +62,7 @@ export function HomePage() {
       ) : null}
 
       <section className="mt-7">
-        <h2 className="mb-2 text-[13px] font-medium text-stone-500">近期活动</h2>
+        <h2 className="mb-2 text-[15px] font-medium text-brand-800">近期活动</h2>
         {!card || card.events.length === 0 ? (
           <EmptyState>主席团还没有录入活动</EmptyState>
         ) : (
@@ -80,7 +82,7 @@ export function HomePage() {
       </section>
 
       <section className="mt-7">
-        <h2 className="mb-2 text-[13px] font-medium text-stone-500">常用</h2>
+        <h2 className="mb-2 text-[15px] font-medium text-brand-800">常用</h2>
         <List>
           <Link to="/chat" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
             <span>

@@ -6,20 +6,14 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: '#f6f1ff',
-          100: '#efe6ff',
-          500: '#8b5cf6',
-          600: '#7c3aed',
-          700: '#6d28d9',
-          800: '#5b21b6',
-          900: '#4c1d95',
+          50: '#f4eef8',
+          100: '#e7dcf0',
+          700: '#5B2A86',
+          800: '#3C165F',
+          900: '#2A1044',
         },
-        accent: {
-          100: '#fff4c2',
-          300: '#ffe566',
-          400: '#ffd21f',
-          500: '#f5c400',
-        },
+        gold: '#FFD23F',
+        paper: '#F7F4EE',
       },
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', 'Arial', 'sans-serif'],
