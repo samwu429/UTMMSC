@@ -6,11 +6,12 @@ import { chatApi } from '../api';
 interface Props {
   roomId: string;
   disabled: boolean;
+  placeholder?: string;
   onSend: (text: string, imageKey?: string) => void;
   onError: (message: string) => void;
 }
 
-export function Composer({ roomId, disabled, onSend, onError }: Props) {
+export function Composer({ roomId, disabled, placeholder, onSend, onError }: Props) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,7 +65,7 @@ export function Composer({ roomId, disabled, onSend, onError }: Props) {
         onKeyDown={onKeyDown}
         rows={1}
         disabled={disabled}
-        placeholder={disabled ? '此频道不允许你发言' : '输入消息'}
+        placeholder={placeholder ?? (disabled ? '此频道不允许你发言' : '输入消息')}
         className="max-h-32 flex-1 resize-none rounded-2xl border border-brand-100 px-4 py-2 outline-none focus:border-brand-600 focus:ring-2 focus:ring-accent-300 disabled:bg-slate-100"
       />
       <button type="submit" disabled={disabled || !text.trim()} className="h-10 shrink-0 rounded-full bg-accent-400 px-4 font-semibold text-brand-900 disabled:opacity-40">

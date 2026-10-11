@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseServerFrame, type ChatMessage, type ClientFrame, type ServerFrame } from '@utmmsc/shared';
-import { errorMessage } from '../../../shared/api/errors';
+import { ApiClientError, errorMessage } from '../../../shared/api/errors';
 import { chatApi } from '../api';
 
 export type SocketStatus = 'connecting' | 'open' | 'closed';
@@ -12,6 +12,10 @@ export interface RoomState {
   onlineCount: number;
   lastReadId: number;
   mediaToken: string | null;
+  /** Null until the ticket returns. False means the room policy blocks this member. */
+  /** 票据返回前为 null。false 表示房间规则不允许该成员发言。 */
+  canPost: boolean | null;
+  retrying: boolean;
   error: string | null;
 }
 
@@ -32,6 +36,8 @@ export function useRoomSocket(roomId: string) {
     onlineCount: 0,
     lastReadId: 0,
     mediaToken: null,
+    canPost: null,
+    retrying: false,
     error: null,
   });
   const socketRef = useRef<WebSocket | null>(null);
@@ -83,16 +89,30 @@ export function useRoomSocket(roomId: string) {
 
     async function connect() {
       if (disposed) return;
-      setState((prev) => ({ ...prev, status: 'connecting' }));
+      setState((prev) => ({ ...prev, status: 'connecting', retrying: false }));
       let ticket;
       try {
         ticket = await chatApi.ticket(roomId);
       } catch (err) {
-        setState((prev) => ({ ...prev, status: 'closed', error: errorMessage(err) }));
+        const status = err instanceof ApiClientError ? err.status : 0;
+        const retry = !disposed && (status === 0 || status >= 500);
+        // #region agent log
+        fetch('http://127.0.0.1:7526/ingest/b8cbb28b-ea80-4b82-b1a0-311700a11609',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'611054'},body:JSON.stringify({sessionId:'611054',location:'useRoomSocket.ts:ticket',message:'ticket failed',data:{status,retry},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        setState((prev) => ({ ...prev, status: 'closed', retrying: retry, error: errorMessage(err) }));
+        if (retry) {
+          const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** attemptRef.current);
+          attemptRef.current += 1;
+          reconnectTimer = setTimeout(connect, delay);
+        }
         return;
       }
       if (disposed) return;
-      setState((prev) => ({ ...prev, mediaToken: ticket.mediaToken }));
+      const canPost = ticket.canPost !== false;
+      // #region agent log
+      fetch('http://127.0.0.1:7526/ingest/b8cbb28b-ea80-4b82-b1a0-311700a11609',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'611054'},body:JSON.stringify({sessionId:'611054',location:'useRoomSocket.ts:ticket',message:'ticket ok',data:{canPost},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      setState((prev) => ({ ...prev, mediaToken: ticket.mediaToken, canPost }));
 
       const socket = new WebSocket(ticket.socketUrl);
       socketRef.current = socket;
@@ -117,7 +137,7 @@ export function useRoomSocket(roomId: string) {
         heartbeat = null;
         socketRef.current = null;
         if (disposed || closedByUserRef.current) return;
-        setState((prev) => ({ ...prev, status: 'closed' }));
+        setState((prev) => ({ ...prev, status: 'closed', retrying: true }));
         const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** attemptRef.current);
         attemptRef.current += 1;
         reconnectTimer = setTimeout(connect, delay);
@@ -134,7 +154,7 @@ export function useRoomSocket(roomId: string) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socketRef.current?.close();
       socketRef.current = null;
-      setState({ status: 'connecting', messages: [], hasMore: false, onlineCount: 0, lastReadId: 0, mediaToken: null, error: null });
+      setState({ status: 'connecting', messages: [], hasMore: false, onlineCount: 0, lastReadId: 0, mediaToken: null, canPost: null, retrying: false, error: null });
     };
   }, [roomId, handleFrame]);
 

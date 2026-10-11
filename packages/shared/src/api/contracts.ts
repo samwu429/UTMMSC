@@ -97,6 +97,9 @@ export interface RoomTicketResponse {
   ticket: string;
   roomId: string;
   socketUrl: string;
+  /** False when the member may read the room but the post policy excludes them. */
+  /** 成员能看这个房间、但发言规则不允许时为 false。 */
+  canPost: boolean;
 }
 
 export interface CreateChannelBody {

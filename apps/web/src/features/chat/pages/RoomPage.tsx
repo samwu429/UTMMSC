@@ -25,7 +25,8 @@ export function RoomPage() {
 
   const parsed = parseRoomId(roomId);
   const canModerate = member ? hasPermission(member.role, 'chat.moderate') : false;
-  const canPost = room.status === 'open';
+  const socketOpen = room.status === 'open';
+  const blocked = room.canPost === false;
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -75,7 +76,7 @@ export function RoomPage() {
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{title}</p>
           <p className="text-xs text-slate-500">
-            {room.status === 'open' ? `${room.onlineCount} 人在线` : room.status === 'connecting' ? '连接中…' : '已断开，正在重连'}
+            {socketOpen ? `${room.onlineCount} 人在线` : room.status === 'connecting' ? '连接中…' : room.retrying ? '已断开，正在重连' : '未连接'}
           </p>
         </div>
       </header>
@@ -113,7 +114,13 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      <Composer roomId={roomId} disabled={!canPost} onSend={room.send} onError={setLocalError} />
+      <Composer
+        roomId={roomId}
+        disabled={!socketOpen || blocked}
+        placeholder={blocked ? '此频道不允许你发言' : socketOpen ? '输入消息' : '连接中…'}
+        onSend={room.send}
+        onError={setLocalError}
+      />
     </div>
   );
 }

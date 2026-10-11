@@ -143,6 +143,7 @@ chatRoutes.post('/rooms/:roomId/ticket', requireSession, async (c) => {
     roomId,
     socketUrl: `${origin}/chat/rooms/${encodeURIComponent(roomId)}/socket?ticket=${encodeURIComponent(ticket)}`,
     mediaToken,
+    canPost: grant.canPost,
   };
   return c.json(response);
 });
