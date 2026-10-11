@@ -46,7 +46,7 @@ export function ChatOverviewPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 rounded-lg py-2 text-sm font-medium ${tab === key ? 'bg-brand-700 text-white' : 'text-slate-600'}`}
+            className={`min-h-11 flex-1 rounded-lg py-2 text-sm font-medium ${tab === key ? 'bg-accent-400 text-brand-900' : 'text-slate-600'}`}
           >
             {label}
             {unread > 0 ? ` (${unread})` : ''}

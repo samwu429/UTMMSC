@@ -9,8 +9,8 @@ export function ChannelList({ channels }: { channels: ChannelSummary[] }) {
   return (
     <div className="space-y-2">
       {channels.map((ch) => (
-        <Link key={ch.id} to={`/chat/room/${encodeURIComponent(channelRoomId(ch.id))}`} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-700 text-lg font-semibold text-white">#</div>
+        <Link key={ch.id} to={`/chat/room/${encodeURIComponent(channelRoomId(ch.id))}`} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm shadow-brand-900/5 active:bg-brand-50">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-700 text-lg font-semibold text-accent-300">#</div>
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{ch.name}</p>
             <p className="truncate text-sm text-slate-500">{ch.description ?? ''}</p>

@@ -30,15 +30,12 @@
     }
   ],
 
-  // R2 must first be enabled in the Cloudflare dashboard (R2 > Get started). After that, run
-  // `wrangler r2 bucket create utmmsc-files`, restore this block and deploy again.
-  // 需先在 Cloudflare 控制台开通 R2，再执行 `wrangler r2 bucket create utmmsc-files`，恢复此段并重新部署。
-  // "r2_buckets": [
-  //   {
-  //     "binding": "FILES",
-  //     "bucket_name": "utmmsc-files"
-  //   }
-  // ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "utmmsc-files"
+    }
+  ],
 
   "durable_objects": {
     "bindings": [

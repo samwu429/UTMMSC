@@ -24,14 +24,16 @@ export function AppShell() {
     (hasPermission(member.role, 'members.approve') ||
       hasPermission(member.role, 'channels.manage') ||
       hasPermission(member.role, 'events.manage'));
-  const items = staff ? [...BASE_NAV, { to: '/admin', label: '管理', icon: '⚙' }] : [...BASE_NAV, { to: '/settings', label: '我的', icon: '●' }];
+  const items = staff
+    ? [...BASE_NAV, { to: '/admin', label: '管理', icon: '⚙' }, { to: '/settings', label: '我的', icon: '●' }]
+    : [...BASE_NAV, { to: '/settings', label: '我的', icon: '●' }];
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">
       <main className="flex-1 px-4 pb-24 pt-6">
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav className="fixed inset-x-0 bottom-0 border-t border-brand-100 bg-white/95 backdrop-blur" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="mx-auto flex max-w-2xl justify-around">
           {items.map((item) => (
             <NavLink
@@ -39,11 +41,16 @@ export function AppShell() {
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
-                `flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${isActive ? 'text-brand-700' : 'text-slate-500'}`
+                `flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium ${isActive ? 'text-brand-800' : 'text-slate-500'}`
               }
             >
-              <span className="text-lg leading-none">{item.icon}</span>
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <span className={`h-1 w-5 rounded-full ${isActive ? 'bg-accent-400' : 'bg-transparent'}`} />
+                  <span className="text-lg leading-none">{item.icon}</span>
+                  {item.label}
+                </>
+              )}
             </NavLink>
           ))}
         </div>

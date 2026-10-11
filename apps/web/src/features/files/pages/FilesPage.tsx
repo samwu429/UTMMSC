@@ -90,7 +90,7 @@ export function FilesPage() {
           <button
             key={c}
             onClick={() => setCategory(c)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium ${category === c ? 'bg-brand-700 text-white' : 'bg-white text-slate-700'}`}
+            className={`min-h-10 shrink-0 rounded-full px-4 py-2 text-sm font-medium ${category === c ? 'bg-accent-400 text-brand-900' : 'bg-white text-slate-700'}`}
           >
             {FILE_CATEGORY_LABELS[c]}
           </button>

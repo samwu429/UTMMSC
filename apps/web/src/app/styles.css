@@ -13,8 +13,19 @@ body,
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+  @apply bg-[#f6f3fb] text-slate-900 antialiased;
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid #f5c400;
+  outline-offset: 2px;
 }
 
 /* Prevent iOS from zooming when focusing inputs smaller than 16px. */

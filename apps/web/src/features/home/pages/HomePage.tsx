@@ -31,11 +31,11 @@ export function HomePage() {
 
       {card ? (
         <>
-          <Card className="bg-gradient-to-br from-brand-700 to-brand-500 text-white">
-            <div className="flex items-start justify-between">
+          <Card className="bg-gradient-to-br from-brand-800 to-brand-600 text-white">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm opacity-80">{card.weekday}</p>
-                <p className="text-3xl font-semibold">{card.date}</p>
+                <p className="inline-block rounded-full bg-accent-400 px-2.5 py-0.5 text-xs font-semibold text-brand-900">{card.weekday}</p>
+                <p className="mt-2 text-3xl font-semibold tracking-tight">{card.date}</p>
               </div>
               {card.weather ? (
                 <div className="text-right">
@@ -73,11 +73,13 @@ export function HomePage() {
       ) : null}
 
       <section className="grid grid-cols-2 gap-3">
-        <Link to="/chat" className="rounded-2xl bg-white p-4 shadow-sm">
+        <Link to="/chat" className="rounded-2xl bg-white p-4 shadow-sm shadow-brand-900/5 active:scale-[0.98]">
+          <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-accent-400 text-sm font-bold text-brand-900">聊</span>
           <p className="text-lg font-semibold">聊天</p>
           <p className="text-sm text-slate-500">频道与私聊</p>
         </Link>
-        <Link to="/directory" className="rounded-2xl bg-white p-4 shadow-sm">
+        <Link to="/directory" className="rounded-2xl bg-white p-4 shadow-sm shadow-brand-900/5 active:scale-[0.98]">
+          <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-accent-300">名</span>
           <p className="text-lg font-semibold">成员</p>
           <p className="text-sm text-slate-500">按届别查找</p>
         </Link>

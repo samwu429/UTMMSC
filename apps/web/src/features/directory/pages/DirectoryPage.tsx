@@ -76,7 +76,24 @@ export function DirectoryPage() {
         </Select>
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
-      {loading ? <Spinner /> : members.length === 0 ? <EmptyState>没有匹配的成员</EmptyState> : null}
+      {loading ? <Spinner /> : members.length === 0 ? (
+        <EmptyState>
+          没有匹配的成员
+          {q || enrollment || year ? (
+            <button
+              type="button"
+              className="mt-3 block w-full font-medium text-brand-700"
+              onClick={() => {
+                setQ('');
+                setEnrollment('');
+                setYear('');
+              }}
+            >
+              清除筛选
+            </button>
+          ) : null}
+        </EmptyState>
+      ) : null}
       {!loading ? (
         <div className="space-y-2">
           {members.map((m) => (

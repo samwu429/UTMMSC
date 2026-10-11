@@ -36,7 +36,7 @@ Create `apps/api/.dev.vars` (ignored by git) with the keys listed in `apps/api/.
 
 - Web: push to `main`. The workflow in `.github/workflows/deploy-pages.yml` builds `apps/web` and publishes it to GitHub Pages. The repository variable `API_BASE_URL` holds the Worker origin.
 - API: `npm run deploy:api` after `npx wrangler login`. Secrets are set with `npx wrangler secret put <NAME>` inside `apps/api`. The Worker runs at `https://utmmsc-api.utmmsc.workers.dev`.
-- Files: R2 has to be enabled once in the Cloudflare dashboard. Then run `npx wrangler r2 bucket create utmmsc-files`, restore the `r2_buckets` block in `apps/api/wrangler.jsonc`, and deploy again. Until then the file library and chat images return 503.
+- Files: the R2 bucket `utmmsc-files` is bound as `FILES`. Chat images and the file library are stored there.
 
 ## Scripts
 

@@ -19,7 +19,7 @@ export function DirectList({ conversations }: { conversations: DirectConversatio
   return (
     <div className="space-y-2">
       {conversations.map((dm) => (
-        <Link key={dm.id} to={`/chat/room/${encodeURIComponent(directRoomId(dm.id))}`} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
+        <Link key={dm.id} to={`/chat/room/${encodeURIComponent(directRoomId(dm.id))}`} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm shadow-brand-900/5 active:bg-brand-50">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-lg font-semibold text-brand-800">
             {dm.peer.displayName.slice(0, 1)}
           </div>
