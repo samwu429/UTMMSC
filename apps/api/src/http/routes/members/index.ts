@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { ENROLLMENT_STATUSES, type DirectoryResponse, type EnrollmentStatus, type MemberDetailResponse } from '@utmmsc/shared';
 import { base64UrlToBytes, bytesToBase64Url, bytesToUtf8, utf8ToBytes } from '../../../domain/crypto/encoding';
+import { issueProfileMediaToken } from '../../../domain/profile/media-token';
 import { findMemberById, listDirectory, toProfile } from '../../../infrastructure/d1/members';
 import { listExperiences, listMemberPosts } from '../../../infrastructure/d1/profile';
 import type { AppEnv } from '../../context';
@@ -66,6 +67,11 @@ memberRoutes.get('/:id', async (c) => {
     listExperiences(c.env.DB, row.id),
     listMemberPosts(c.env.DB, row.id, PROFILE_POSTS),
   ]);
-  const response: MemberDetailResponse = { member: toProfile(row), experiences, posts };
+  const response: MemberDetailResponse = {
+    member: toProfile(row),
+    experiences,
+    posts,
+    mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET),
+  };
   return c.json(response);
 });

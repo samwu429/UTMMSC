@@ -45,7 +45,7 @@ export function RegisterPage() {
         graduationYear: Number(profile.graduationYear),
         major: profile.major || undefined,
       });
-      setSession(session.token, session.member);
+      setSession(session.token, session.member, session.mediaToken);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

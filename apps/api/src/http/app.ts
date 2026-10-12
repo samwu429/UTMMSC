@@ -9,6 +9,7 @@ import { chatRoutes } from './routes/chat';
 import { fileRoutes } from './routes/files';
 import { homeRoutes } from './routes/home';
 import { memberRoutes } from './routes/members';
+import { serveMemberMedia } from './routes/members/media';
 
 /** Composes all route groups under one Hono app with shared CORS and error handling. */
 /** 将所有路由组装到一个 Hono 应用，共享 CORS 与错误处理。 */
@@ -20,6 +21,9 @@ export function createApp() {
 
   app.get('/', (c) => c.json({ service: 'utmmsc-api', status: 'ok' }));
   app.route('/auth', authRoutes);
+  // Registered before the session-protected member routes so image and video tags can use a media token.
+  // 放在需要登录的成员路由之前，图片和视频标签才能用媒体令牌访问。
+  app.get('/members/media/*', serveMemberMedia);
   app.route('/members', memberRoutes);
   app.route('/chat', chatRoutes);
   app.route('/channels', channelRoutes);

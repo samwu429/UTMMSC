@@ -10,5 +10,7 @@ describe('member routes', () => {
     expect(byId).toBeGreaterThan(feed);
     expect(paths).toContain('PATCH /me');
     expect(paths).toContain('POST /me/posts');
+    expect(paths).toContain('POST /me/avatar');
+    expect(paths).toContain('POST /me/media');
   });
 });

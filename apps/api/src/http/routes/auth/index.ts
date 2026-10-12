@@ -12,6 +12,7 @@ import {
   type SessionResponse,
 } from '@utmmsc/shared';
 import { hashPassword, verifyPassword } from '../../../domain/identity/password';
+import { issueProfileMediaToken } from '../../../domain/profile/media-token';
 import { issueSessionToken } from '../../../domain/identity/session-token';
 import {
   evaluateVerification,
@@ -55,7 +56,8 @@ export const authRoutes = new Hono<AppEnv>();
 async function startSession(env: Env, member: MemberRow): Promise<SessionResponse> {
   const session = await createSession(env.DB, member.id);
   const token = await issueSessionToken(env.SESSION_SECRET, session.id, member.id, session.expiresAt);
-  return { token, expiresAt: session.expiresAt.toISOString(), member: toSelf(member) };
+  const mediaToken = await issueProfileMediaToken(env.SESSION_SECRET);
+  return { token, expiresAt: session.expiresAt.toISOString(), member: toSelf(member), mediaToken };
 }
 
 /**
@@ -186,7 +188,9 @@ authRoutes.post('/apply', rateLimit(5, 60_000), async (c) => {
   return c.json({ ok: true }, 201);
 });
 
-authRoutes.get('/me', requireSession, (c) => c.json({ member: toSelf(c.get('member')) }));
+authRoutes.get('/me', requireSession, async (c) => {
+  return c.json({ member: toSelf(c.get('member')), mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
+});
 
 authRoutes.post('/logout', requireSession, async (c) => {
   await revokeSession(c.env.DB, c.get('sessionId'));

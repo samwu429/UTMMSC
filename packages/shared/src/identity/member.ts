@@ -26,6 +26,7 @@ export interface MemberProfile {
   location: string | null;
   skills: string[];
   openTo: OpenTo[];
+  avatarKey: string | null;
 }
 
 /** The signed-in member's own view, including private fields. */

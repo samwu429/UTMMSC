@@ -17,6 +17,7 @@ export interface MemberRow {
   location: string | null;
   skills: string | null;
   open_to: string | null;
+  avatar_key: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +50,7 @@ export function toProfile(row: MemberRow): MemberProfile {
     location: row.location,
     skills: stringList(row.skills),
     openTo: openToList(row.open_to),
+    avatarKey: row.avatar_key ?? null,
   };
 }
 
@@ -113,6 +115,10 @@ export interface ProfileUpdate {
   major?: string | null;
   skills?: string[];
   openTo?: OpenTo[];
+}
+
+export async function updateAvatarKey(db: D1Database, memberId: string, avatarKey: string | null): Promise<void> {
+  await db.prepare('UPDATE members SET avatar_key = ?, updated_at = ? WHERE id = ?').bind(avatarKey, nowIso(), memberId).run();
 }
 
 export async function updateProfile(db: D1Database, memberId: string, patch: ProfileUpdate): Promise<void> {

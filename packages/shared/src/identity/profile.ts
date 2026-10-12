@@ -20,6 +20,13 @@ export const SKILL_MAX_COUNT = 12;
 export const SKILL_MAX_LENGTH = 20;
 export const POST_MAX = 500;
 export const EXPERIENCE_LIMIT = 8;
+export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+export const MOMENT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+export const MOMENT_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+export const MOMENT_IMAGE_LIMIT = 9;
+
+export const MOMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
+export const MOMENT_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'] as const;
 
 export interface Experience {
   id: string;
@@ -31,6 +38,12 @@ export interface Experience {
   description: string | null;
 }
 
+export interface PostMedia {
+  key: string;
+  contentType: string;
+  kind: 'image' | 'video';
+}
+
 export interface ActivityPost {
   id: string;
   body: string;
@@ -38,4 +51,6 @@ export interface ActivityPost {
   authorId: string;
   authorName: string;
   authorHeadline: string | null;
+  authorAvatarKey: string | null;
+  media: PostMedia[];
 }

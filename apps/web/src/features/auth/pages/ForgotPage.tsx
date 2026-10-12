@@ -24,7 +24,7 @@ export function ForgotPage() {
     setBusy(true);
     try {
       const session = await authApi.reset({ email: normalizeEmail(email), code, password });
-      setSession(session.token, session.member);
+      setSession(session.token, session.member, session.mediaToken);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

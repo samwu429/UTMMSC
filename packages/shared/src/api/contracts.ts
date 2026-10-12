@@ -1,7 +1,7 @@
 import type { ChannelSummary, DirectConversationSummary, ChannelAudience, PostPolicy } from '../chat/rooms';
 import type { FileCategory, FileRecord } from '../files/categories';
 import type { EnrollmentStatus, MemberProfile, MemberSelf } from '../identity/member';
-import type { ActivityPost, Experience, OpenTo } from '../identity/profile';
+import type { ActivityPost, Experience, OpenTo, PostMedia } from '../identity/profile';
 import type { Role } from '../identity/roles';
 
 /** Error envelope returned by every failing API call. */
@@ -50,6 +50,9 @@ export interface SessionResponse {
   token: string;
   expiresAt: string;
   member: MemberSelf;
+  /** Lets image and video tags load member media without sending the session header. */
+  /** 供图片和视频标签加载成员媒体，无需附带会话头。 */
+  mediaToken: string;
 }
 
 export interface ManualApplicationBody {
@@ -106,17 +109,26 @@ export interface CreateExperienceBody {
 }
 
 export interface CreatePostBody {
-  text: string;
+  text?: string;
+  media?: Pick<PostMedia, 'key' | 'contentType'>[];
+}
+
+export interface UploadedMedia {
+  key: string;
+  contentType: string;
+  kind: PostMedia['kind'];
 }
 
 export interface MemberDetailResponse {
   member: MemberProfile;
   experiences: Experience[];
   posts: ActivityPost[];
+  mediaToken: string;
 }
 
 export interface FeedResponse {
   posts: ActivityPost[];
+  mediaToken: string;
 }
 
 /* Chat */

@@ -63,10 +63,17 @@ function TabIcon({ name }: { name: IconName }) {
 export function AppShell() {
   const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
+  const setMediaToken = useSessionStore((s) => s.setMediaToken);
 
   useEffect(() => {
-    authApi.me().then((res) => setMember(res.member)).catch(() => undefined);
-  }, [setMember]);
+    authApi
+      .me()
+      .then((res) => {
+        setMember(res.member);
+        setMediaToken(res.mediaToken);
+      })
+      .catch(() => undefined);
+  }, [setMember, setMediaToken]);
   const staff =
     member &&
     (hasPermission(member.role, 'members.approve') ||

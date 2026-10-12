@@ -21,9 +21,11 @@ function sortExperiences(items: Experience[]): Experience[] {
 export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void }) {
   const selfId = useSessionStore((s) => s.member?.id);
   const setMember = useSessionStore((s) => s.setMember);
+  const setMediaToken = useSessionStore((s) => s.setMediaToken);
   const [detail, setDetail] = useState<MemberDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetName | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   useEffect(() => {
     if (!selfId) return;
@@ -31,7 +33,9 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
     profileApi
       .detail(selfId)
       .then((res) => {
-        if (!cancelled) setDetail(res);
+        if (cancelled) return;
+        setDetail(res);
+        setMediaToken(res.mediaToken);
       })
       .catch((err) => {
         if (!cancelled) setError(errorMessage(err));
@@ -39,7 +43,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
     return () => {
       cancelled = true;
     };
-  }, [selfId]);
+  }, [selfId, setMediaToken]);
 
   function applyMember(member: MemberSelf, close: boolean) {
     setMember(member);
@@ -55,6 +59,33 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
       setDetail((prev) => (prev ? { ...prev, experiences: prev.experiences.filter((item) => item.id !== id) } : prev));
     } catch (err) {
       setError(errorMessage(err));
+    }
+  }
+
+  async function pickAvatar(file: File) {
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const res = await profileApi.uploadAvatar(file);
+      applyMember(res.member, false);
+      setMediaToken(res.mediaToken);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const res = await profileApi.removeAvatar();
+      applyMember(res.member, false);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setAvatarBusy(false);
     }
   }
 
@@ -81,6 +112,9 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
         onAddExperience={() => setSheet('experience')}
         onDeleteExperience={removeExperience}
         onShowActivity={onShowActivity}
+        onPickAvatar={pickAvatar}
+        onRemoveAvatar={removeAvatar}
+        avatarBusy={avatarBusy}
       />
       {sheet === 'intro' ? (
         <Sheet title="编辑资料" onClose={() => setSheet(null)}>

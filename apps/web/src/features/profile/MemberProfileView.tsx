@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, isStaffRole, type ActivityPost, type Experience, type MemberProfile } from '@utmmsc/shared';
 import { experiencePeriod, formatPostTime } from './format';
-import { InitialAvatar } from './InitialAvatar';
-import { PencilIcon, PlusIcon } from './icons';
+import { MemberAvatar } from './InitialAvatar';
+import { CameraIcon, PencilIcon, PlusIcon } from './icons';
+import { PostMediaView } from './PostMediaView';
 
 function openToLabels(member: MemberProfile): string[] {
   const picked = new Set(member.openTo ?? []);
@@ -55,6 +56,9 @@ export function MemberProfileView({
   onAddExperience,
   onDeleteExperience,
   onShowActivity,
+  onPickAvatar,
+  onRemoveAvatar,
+  avatarBusy,
   action,
 }: {
   member: MemberProfile;
@@ -67,6 +71,9 @@ export function MemberProfileView({
   onAddExperience?: () => void;
   onDeleteExperience?: (id: string) => void;
   onShowActivity?: () => void;
+  onPickAvatar?: (file: File) => void;
+  onRemoveAvatar?: () => void;
+  avatarBusy?: boolean;
   action?: ReactNode;
 }) {
   const looking = openToLabels(member);
@@ -81,7 +88,25 @@ export function MemberProfileView({
           <div className="h-1 bg-gold" />
         </div>
         <div className="px-4 pb-4">
-          <InitialAvatar name={member.displayName} className="-mt-10 h-20 w-20 text-2xl ring-4 ring-white" />
+          <div className="relative -mt-10 h-20 w-20">
+            <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className={`h-20 w-20 text-2xl ring-4 ring-white ${avatarBusy ? 'opacity-50' : ''}`} />
+            {onPickAvatar ? (
+              <label className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-brand-800 text-white ring-2 ring-white">
+                <CameraIcon />
+                <span className="sr-only">换头像</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) onPickAvatar(file);
+                  }}
+                />
+              </label>
+            ) : null}
+          </div>
           <div className="mt-3 flex items-start justify-between gap-2">
             <h1 className="text-[24px] font-semibold leading-tight text-brand-800">
               {member.displayName}
@@ -97,6 +122,11 @@ export function MemberProfileView({
           {onEditIntro && !member.headline ? (
             <button type="button" onClick={onEditIntro} className="mt-1 text-[15px] text-brand-800">
               添加标题
+            </button>
+          ) : null}
+          {onRemoveAvatar && member.avatarKey ? (
+            <button type="button" onClick={onRemoveAvatar} className="mt-1 text-sm text-stone-400">
+              去掉头像
             </button>
           ) : null}
           {member.location ? <p className="mt-1 text-sm text-stone-500">{member.location}</p> : null}
@@ -210,7 +240,8 @@ export function MemberProfileView({
             <div className="divide-y divide-stone-200">
               {preview.map((post) => (
                 <div key={post.id} className="py-3 first:pt-0 last:pb-0">
-                  <p className="line-clamp-4 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800">{post.body}</p>
+                  {post.body ? <p className="line-clamp-4 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800">{post.body}</p> : null}
+                  <PostMediaView media={(post.media ?? []).slice(0, 1)} />
                   <p className="mt-1 text-xs text-stone-400">{formatPostTime(post.createdAt)}</p>
                 </div>
               ))}

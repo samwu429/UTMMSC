@@ -5,8 +5,10 @@ import { persist } from 'zustand/middleware';
 interface SessionState {
   token: string | null;
   member: MemberSelf | null;
-  setSession: (token: string, member: MemberSelf) => void;
+  mediaToken: string | null;
+  setSession: (token: string, member: MemberSelf, mediaToken?: string | null) => void;
   setMember: (member: MemberSelf) => void;
+  setMediaToken: (mediaToken: string) => void;
   clear: () => void;
 }
 
@@ -17,9 +19,11 @@ export const useSessionStore = create<SessionState>()(
     (set) => ({
       token: null,
       member: null,
-      setSession: (token, member) => set({ token, member }),
+      mediaToken: null,
+      setSession: (token, member, mediaToken = null) => set({ token, member, mediaToken }),
       setMember: (member) => set({ member }),
-      clear: () => set({ token: null, member: null }),
+      setMediaToken: (mediaToken) => set({ mediaToken }),
+      clear: () => set({ token: null, member: null, mediaToken: null }),
     }),
     { name: 'utmmsc.session' },
   ),

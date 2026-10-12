@@ -21,7 +21,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       const session = await authApi.login({ email, password });
-      setSession(session.token, session.member);
+      setSession(session.token, session.member, session.mediaToken);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

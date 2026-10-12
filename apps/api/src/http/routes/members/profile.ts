@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
-import { ABOUT_MAX, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, POST_MAX } from '@utmmsc/shared';
+import { ABOUT_MAX, AVATAR_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX } from '@utmmsc/shared';
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
+import { avatarObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
+import { issueProfileMediaToken } from '../../../domain/profile/media-token';
 import {
   countExperiences,
   deleteExperience,
@@ -9,11 +11,13 @@ import {
   insertPost,
   listFeed,
 } from '../../../infrastructure/d1/profile';
-import { findMemberById, toSelf, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { findMemberById, toSelf, updateAvatarKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
+import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
 import { badRequest, notFound } from '../../errors';
 import { rateLimit } from '../../middleware/rate-limit';
-import { optionalString, readJson, requireString } from '../../validation';
+import { optionalString, readJson } from '../../validation';
 
 const MAJOR_MAX = 80;
 const FEED_LIMIT = 40;
@@ -31,7 +35,59 @@ export const profileRoutes = new Hono<AppEnv>();
 
 profileRoutes.get('/feed', async (c) => {
   const posts = await listFeed(c.env.DB, FEED_LIMIT);
-  return c.json({ posts });
+  return c.json({ posts, mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
+});
+
+async function readUpload(c: { req: { header: (name: string) => string | undefined; arrayBuffer: () => Promise<ArrayBuffer> } }, maxBytes: number, tooLarge: string): Promise<{ bytes: ArrayBuffer; contentType: string }> {
+  const contentType = c.req.header('content-type') ?? '';
+  const length = Number(c.req.header('content-length') ?? '0');
+  if (!length) throw badRequest('empty_file', '文件为空');
+  if (length > maxBytes) throw badRequest('too_large', tooLarge);
+  const bytes = await c.req.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > maxBytes) throw badRequest('too_large', tooLarge);
+  return { bytes, contentType };
+}
+
+profileRoutes.post('/me/avatar', rateLimit(10, 60_000), async (c) => {
+  const { bytes, contentType } = await readUpload(c, AVATAR_MAX_BYTES, '头像不能超过 5MB');
+  const member = c.get('member');
+  let key: string;
+  try {
+    key = avatarObjectKey(member.id, contentType);
+  } catch (error) {
+    if (error instanceof FieldError) throw badRequest('unsupported_type', error.message);
+    throw error;
+  }
+  const bucket = requireBucket(c.env);
+  await putObject(bucket, key, bytes, contentType);
+  const previous = member.avatar_key;
+  await updateAvatarKey(c.env.DB, member.id, key);
+  if (previous && previous !== key) c.executionCtx.waitUntil(deleteObject(bucket, previous));
+  const updated = await findMemberById(c.env.DB, member.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated), mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
+});
+
+profileRoutes.delete('/me/avatar', async (c) => {
+  const member = c.get('member');
+  await updateAvatarKey(c.env.DB, member.id, null);
+  if (member.avatar_key) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), member.avatar_key));
+  const updated = await findMemberById(c.env.DB, member.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated) });
+});
+
+profileRoutes.post('/me/media', rateLimit(30, 60_000), async (c) => {
+  const contentType = c.req.header('content-type') ?? '';
+  const described = describeContentType(contentType);
+  if (!described) throw badRequest('unsupported_type', '只支持 JPEG、PNG、WebP、GIF 照片，或 MP4、MOV、WebM 视频');
+  const maxBytes = described.kind === 'video' ? MOMENT_VIDEO_MAX_BYTES : MOMENT_IMAGE_MAX_BYTES;
+  const tooLarge = described.kind === 'video' ? '视频不能超过 25MB' : '照片不能超过 8MB';
+  const { bytes } = await readUpload(c, maxBytes, tooLarge);
+  const member = c.get('member');
+  const key = momentObjectKey(member.id, contentType);
+  await putObject(requireBucket(c.env), key, bytes, contentType);
+  return c.json({ key, contentType, kind: described.kind }, 201);
 });
 
 profileRoutes.patch('/me', async (c) => {
@@ -90,13 +146,25 @@ profileRoutes.delete('/me/experiences/:id', async (c) => {
 
 profileRoutes.post('/me/posts', rateLimit(8, 60_000), async (c) => {
   const body = await readJson<Record<string, unknown>>(c);
-  const text = requireString(body.text, '内容', POST_MAX);
-  const post = await insertPost(c.env.DB, c.get('member').id, text);
+  let text = '';
+  if (body.text !== undefined && body.text !== null && body.text !== '') {
+    if (typeof body.text !== 'string') throw badRequest('invalid_field', '内容格式错误');
+    text = body.text.trim();
+    if (text.length > POST_MAX) throw badRequest('field_too_long', '内容过长');
+  }
+  const member = c.get('member');
+  const media = readField(() => normalizePostMedia(member.id, body.media));
+  if (!text && media.length === 0) throw badRequest('empty_post', '写点什么，或加上照片、视频');
+  const post = await insertPost(c.env.DB, member.id, text, media);
   return c.json({ post }, 201);
 });
 
 profileRoutes.delete('/me/posts/:id', async (c) => {
-  const removed = await deletePost(c.env.DB, c.get('member').id, c.req.param('id'));
-  if (!removed) throw notFound('动态不存在');
+  const keys = await deletePost(c.env.DB, c.get('member').id, c.req.param('id'));
+  if (!keys) throw notFound('动态不存在');
+  if (keys.length > 0) {
+    const bucket = requireBucket(c.env);
+    c.executionCtx.waitUntil(Promise.all(keys.map((key) => deleteObject(bucket, key))));
+  }
   return c.json({ ok: true });
 });

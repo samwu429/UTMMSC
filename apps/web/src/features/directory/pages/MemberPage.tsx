@@ -13,6 +13,7 @@ export function MemberPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const self = useSessionStore((s) => s.member);
+  const setMediaToken = useSessionStore((s) => s.setMediaToken);
   const [detail, setDetail] = useState<MemberDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
@@ -24,7 +25,9 @@ export function MemberPage() {
     profileApi
       .detail(id)
       .then((res) => {
-        if (!cancelled) setDetail(res);
+        if (cancelled) return;
+        setDetail(res);
+        setMediaToken(res.mediaToken);
       })
       .catch((err) => {
         if (!cancelled) setError(errorMessage(err));
@@ -32,7 +35,7 @@ export function MemberPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, setMediaToken]);
 
   async function openDirect() {
     setOpening(true);
