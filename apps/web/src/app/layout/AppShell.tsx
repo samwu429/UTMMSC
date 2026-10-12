@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
@@ -75,23 +75,13 @@ function tabClass(active: boolean) {
   return `flex flex-col items-center justify-end px-0.5 pb-1.5 pt-2 text-[11px] ${active ? 'text-brand-800' : 'text-stone-400'}`;
 }
 
-function TabFace({ icon, label, active, raised = false }: { icon: IconName; label: string; active: boolean; raised?: boolean }) {
+function TabFace({ icon, label, active }: { icon: IconName; label: string; active: boolean }) {
   return (
     <>
       <span className="relative flex h-6 w-full items-center justify-center">
-        {raised ? (
-          <span
-            className={`absolute bottom-0 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-brand-800 text-white ring-4 ring-paper outline outline-[3px] ${active ? 'outline-gold' : 'outline-gold/70'}`}
-          >
-            <TabIcon name={icon} />
-          </span>
-        ) : (
-          <TabIcon name={icon} />
-        )}
+        <TabIcon name={icon} />
       </span>
-      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${active ? 'font-medium' : ''} ${raised && !active ? 'text-brand-700' : ''}`}>
-        {label}
-      </span>
+      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${active ? 'font-medium' : ''}`}>{label}</span>
       <span className={`mt-1 h-[3px] w-4 rounded-full ${active ? 'bg-gold' : 'bg-transparent'}`} />
     </>
   );
@@ -118,9 +108,35 @@ function DiscoverTab() {
 function ChatTab() {
   const { pathname } = useLocation();
   const isActive = pathname === '/chat' || pathname.startsWith('/directory');
+  const wasActive = useRef(isActive);
+  const [motion, setMotion] = useState<'idle' | 'drop' | 'rise'>('idle');
+
+  useEffect(() => {
+    if (wasActive.current === isActive) return;
+    wasActive.current = isActive;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Only the tap that enters or leaves chat plays; the first paint stays still.
+    // 只有点进或点出聊天才播放，第一次画出来时不动。
+    setMotion(reduce ? 'idle' : isActive ? 'drop' : 'rise');
+  }, [isActive]);
+
+  const place = isActive ? 'is-settled' : 'is-raised';
+
   return (
     <NavLink to="/chat" className={tabClass(isActive)}>
-      <TabFace icon="chat" label="聊天" active={isActive} raised />
+      <span className="relative flex h-6 w-full items-center justify-center">
+        <span
+          className={`chat-blob ${place} ${isActive ? 'is-active' : ''} ${motion === 'drop' ? 'chat-drop' : ''} ${motion === 'rise' ? 'chat-rise' : ''}`}
+          onAnimationEnd={(event) => {
+            if (event.animationName === 'chat-drop' || event.animationName === 'chat-rise') setMotion('idle');
+          }}
+        />
+        <span className={`chat-glyph ${place} ${motion === 'drop' ? 'chat-drop-glyph' : ''} ${motion === 'rise' ? 'chat-rise-glyph' : ''}`}>
+          <TabIcon name="chat" />
+        </span>
+      </span>
+      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${isActive ? 'font-medium' : 'text-brand-700'}`}>聊天</span>
+      <span className={`mt-1 h-[3px] w-4 rounded-full ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
     </NavLink>
   );
 }

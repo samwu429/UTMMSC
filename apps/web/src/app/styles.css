@@ -35,3 +35,101 @@ select,
 textarea {
   font-size: 16px;
 }
+
+/* The chat tab is a drop: raised until it is opened, then it falls into line with the other icons. */
+/* 聊天键像一滴水：平时浮起，点开后落下，和其他图标对齐。 */
+.chat-blob,
+.chat-glyph {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+
+.chat-blob {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  background: #3c165f;
+  box-shadow: 0 0 0 4px #f7f4ee;
+  outline: 3px solid rgb(255 210 63 / 0.7);
+}
+
+.chat-blob.is-active {
+  outline-color: #ffd23f;
+}
+
+.chat-glyph {
+  display: flex;
+  color: #fff;
+}
+
+.chat-blob.is-raised,
+.chat-glyph.is-raised {
+  transform: translate(-50%, calc(-50% - 16px));
+}
+
+.chat-blob.is-settled {
+  transform: translate(-50%, -50%) scale(0.5);
+}
+
+.chat-glyph.is-settled {
+  transform: translate(-50%, -50%);
+}
+
+.chat-drop {
+  animation: chat-drop 700ms linear both;
+}
+
+.chat-drop-glyph {
+  animation: chat-drop-glyph 700ms linear both;
+}
+
+.chat-rise {
+  animation: chat-rise 620ms linear both;
+}
+
+.chat-rise-glyph {
+  animation: chat-rise-glyph 620ms linear both;
+}
+
+@keyframes chat-drop {
+  0% { transform: translate(-50%, calc(-50% - 16px)) scale(1); }
+  14% { transform: translate(-50%, calc(-50% - 30px)) scale(0.9, 1.14); }
+  48% { transform: translate(-50%, calc(-50% + 7px)) scale(0.68, 0.4); }
+  68% { transform: translate(-50%, calc(-50% - 9px)) scale(0.46, 0.6); }
+  84% { transform: translate(-50%, calc(-50% + 2px)) scale(0.54, 0.46); }
+  100% { transform: translate(-50%, -50%) scale(0.5); }
+}
+
+@keyframes chat-drop-glyph {
+  0% { transform: translate(-50%, calc(-50% - 16px)); }
+  14% { transform: translate(-50%, calc(-50% - 30px)); }
+  48% { transform: translate(-50%, calc(-50% + 7px)); }
+  68% { transform: translate(-50%, calc(-50% - 9px)); }
+  84% { transform: translate(-50%, calc(-50% + 2px)); }
+  100% { transform: translate(-50%, -50%); }
+}
+
+@keyframes chat-rise {
+  0% { transform: translate(-50%, -50%) scale(0.5); }
+  38% { transform: translate(-50%, calc(-50% - 28px)) scale(1.08, 0.9); }
+  68% { transform: translate(-50%, calc(-50% - 8px)) scale(0.94, 1.08); }
+  100% { transform: translate(-50%, calc(-50% - 16px)) scale(1); }
+}
+
+@keyframes chat-rise-glyph {
+  0% { transform: translate(-50%, -50%); }
+  38% { transform: translate(-50%, calc(-50% - 28px)); }
+  68% { transform: translate(-50%, calc(-50% - 8px)); }
+  100% { transform: translate(-50%, calc(-50% - 16px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-drop,
+  .chat-drop-glyph,
+  .chat-rise,
+  .chat-rise-glyph {
+    animation: none;
+  }
+}
