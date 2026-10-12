@@ -141,7 +141,7 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
   }
 
   return (
-    <div className="-mb-24 min-h-[100dvh] bg-white">
+    <div className="-mb-28 min-h-[100dvh] bg-white">
       <div className="flex items-center justify-between border-b border-stone-200 px-4">
         <button type="button" onClick={onCancel} className="min-h-11 text-[16px] text-stone-600">
           取消

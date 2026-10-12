@@ -12,12 +12,12 @@ interface NavItem {
   icon: IconName;
 }
 
-const BASE_NAV: NavItem[] = [
+const LEFT_NAV: NavItem[] = [
   { to: '/', label: '首页', icon: 'home' },
-  { to: '/chat', label: '聊天', icon: 'chat' },
   { to: '/directory', label: '成员', icon: 'people' },
-  { to: '/files', label: '文件', icon: 'files' },
 ];
+
+const RIGHT_NAV: NavItem[] = [{ to: '/files', label: '文件', icon: 'files' }];
 
 function TabIcon({ name }: { name: IconName }) {
   const common = {
@@ -58,6 +58,41 @@ function TabIcon({ name }: { name: IconName }) {
   return <svg {...common}>{paths[name]}</svg>;
 }
 
+function SideTab({ item }: { item: NavItem }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      className={({ isActive }) =>
+        `flex min-h-[52px] flex-1 flex-col items-center justify-center text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-400'}`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <TabIcon name={item.icon} />
+          <span className={isActive ? 'font-medium' : ''}>{item.label}</span>
+          <span className={`mt-0.5 h-[3px] w-4 ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function ChatTab() {
+  return (
+    <NavLink to="/chat" className="flex w-[4.75rem] flex-col items-center justify-end">
+      {({ isActive }) => (
+        <>
+          <span className={`-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-brand-800 text-white ring-4 ring-paper outline outline-[3px] ${isActive ? 'outline-gold' : 'outline-gold/70'}`}>
+            <TabIcon name="chat" />
+          </span>
+          <span className={`mt-1 text-[11px] ${isActive ? 'font-medium text-brand-800' : 'text-brand-700'}`}>聊天</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
 /** Mobile-first shell: scrolling content above a fixed bottom tab bar. */
 /** 手机优先的外壳：内容区在上，固定的底部标签栏在下。 */
 export function AppShell() {
@@ -79,35 +114,28 @@ export function AppShell() {
     (hasPermission(member.role, 'members.approve') ||
       hasPermission(member.role, 'channels.manage') ||
       hasPermission(member.role, 'events.manage'));
-  const items = staff
-    ? [...BASE_NAV, { to: '/admin', label: '管理', icon: 'admin' as const }, { to: '/settings', label: '我的', icon: 'me' as const }]
-    : [...BASE_NAV, { to: '/settings', label: '我的', icon: 'me' as const }];
+  const right = staff
+    ? [...RIGHT_NAV, { to: '/admin', label: '管理', icon: 'admin' as const }, { to: '/settings', label: '我的', icon: 'me' as const }]
+    : [...RIGHT_NAV, { to: '/settings', label: '我的', icon: 'me' as const }];
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">
-      <main className="flex-1 px-4 pb-24 pt-5">
+      <main className="flex-1 px-4 pb-28 pt-5">
         <Outlet />
       </main>
       <nav className="fixed inset-x-0 bottom-0 border-t border-stone-200 bg-paper" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="mx-auto flex max-w-2xl">
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) =>
-                `flex min-h-[52px] flex-1 flex-col items-center justify-center text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-400'}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <TabIcon name={item.icon} />
-                  <span className={isActive ? 'font-medium' : ''}>{item.label}</span>
-                  <span className={`mt-0.5 h-[3px] w-4 ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
-                </>
-              )}
-            </NavLink>
-          ))}
+        <div className="mx-auto flex max-w-2xl items-end">
+          <div className="flex flex-1">
+            {LEFT_NAV.map((item) => (
+              <SideTab key={item.to} item={item} />
+            ))}
+          </div>
+          <ChatTab />
+          <div className="flex flex-1">
+            {right.map((item) => (
+              <SideTab key={item.to} item={item} />
+            ))}
+          </div>
         </div>
       </nav>
     </div>
