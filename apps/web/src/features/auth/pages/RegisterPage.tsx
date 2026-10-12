@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { encodeProgramSelection, isUniversityEmail, normalizeEmail, programChoiceState } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
 import { Notice, Spinner } from '../../../shared/ui/Card';
@@ -28,6 +29,7 @@ export function RegisterPage() {
   const [inviteReady, setInviteReady] = useState(!inviteToken);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const tr = useTr();
 
   const approvedFlow = !inviteToken && params.get('approved') === '1';
   const university = isUniversityEmail(email);
@@ -84,32 +86,36 @@ export function RegisterPage() {
     }
   }
 
-  const subtitle = inviteToken ? '注册为校外荣誉顾问' : approvedFlow ? '申请已通过，请设置密码' : '使用多伦多大学邮箱';
+  const subtitle = inviteToken
+    ? tr('注册为校外荣誉顾问', 'Register as an external honorary advisor')
+    : approvedFlow
+      ? tr('申请已通过，请设置密码', 'Your application was approved. Set a password.')
+      : tr('使用多伦多大学邮箱', 'Use a University of Toronto email');
 
   return (
-    <AuthLayout title="注册" subtitle={subtitle}>
+    <AuthLayout title={tr('注册', 'Register')} subtitle={subtitle}>
       {inviteToken && !inviteReady && !error ? <Spinner /> : null}
       {inviteToken && error && !inviteReady ? <Notice tone="error">{error}</Notice> : null}
       {!inviteToken || inviteReady ? (
         <form onSubmit={submit} className="space-y-4">
-          <Field label="邮箱" hint={inviteToken || approvedFlow ? undefined : '支持 mail.utoronto.ca、utoronto.ca、alumni.utoronto.ca'}>
+          <Field label={tr('邮箱', 'Email')} hint={inviteToken || approvedFlow ? undefined : tr('支持 mail.utoronto.ca、utoronto.ca、alumni.utoronto.ca', 'mail.utoronto.ca, utoronto.ca, or alumni.utoronto.ca')}>
             <TextInput type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} readOnly={approvedFlow || Boolean(inviteToken)} />
           </Field>
           {showManualHint ? (
             <Notice>
-              这不是学校邮箱。已毕业且无法使用学校邮箱的同学，请{' '}
+              {tr('这不是学校邮箱。已毕业且无法使用学校邮箱的同学，请', 'This is not a university email. Graduates who cannot use one should')}{' '}
               <Link to={`/apply?email=${encodeURIComponent(email)}`} className="underline">
-                提交人工申请
+                {tr('提交人工申请', 'submit a manual application')}
               </Link>
-              。
+              {tr('。', '.')}
             </Notice>
           ) : null}
           {needsCode ? <CodeField email={normalizeEmail(email)} purpose="register" value={code} onChange={setCode} onError={setError} /> : null}
-          <Field label="设置密码" hint="至少 8 位">
+          <Field label={tr('设置密码', 'Password')} hint={tr('至少 8 位', 'At least 8 characters')}>
             <TextInput type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
           {inviteToken ? (
-            <Field label="姓名">
+            <Field label={tr('姓名', 'Name')}>
               <TextInput value={displayName} maxLength={40} onChange={(e) => setDisplayName(e.target.value)} />
             </Field>
           ) : (
@@ -117,12 +123,12 @@ export function RegisterPage() {
           )}
           {error ? <Notice tone="error">{error}</Notice> : null}
           <Button type="submit" block loading={busy} disabled={inviteToken ? displayName.trim().length < 2 : showManualHint || !programsReady}>
-            完成注册
+            {tr('完成注册', 'Create account')}
           </Button>
           <p className="text-center text-sm">
-            已有账号？{' '}
+            {tr('已有账号？', 'Already have an account?')}{' '}
             <Link to="/login" className="text-brand-700">
-              去登录
+              {tr('去登录', 'Sign in')}
             </Link>
           </p>
         </form>

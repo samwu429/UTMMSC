@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
 import { Field, TextInput } from '../../../shared/ui/Field';
 import { authApi } from '../api';
@@ -19,6 +20,7 @@ const RESEND_SECONDS = 60;
 export function CodeField({ email, purpose, value, onChange, onError }: Props) {
   const [seconds, setSeconds] = useState(0);
   const [sending, setSending] = useState(false);
+  const tr = useTr();
 
   useEffect(() => {
     if (seconds <= 0) return;
@@ -40,18 +42,18 @@ export function CodeField({ email, purpose, value, onChange, onError }: Props) {
   }
 
   return (
-    <Field label="邮箱验证码">
+    <Field label={tr('邮箱验证码', 'Email code')}>
       <div className="flex gap-2">
         <TextInput
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={6}
-          placeholder="6 位数字"
+          placeholder={tr('6 位数字', '6 digits')}
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
         />
         <Button type="button" variant="secondary" onClick={send} disabled={!email || seconds > 0} loading={sending} className="shrink-0">
-          {seconds > 0 ? `${seconds}s` : '发送'}
+          {seconds > 0 ? `${seconds}s` : tr('发送', 'Send')}
         </Button>
       </div>
     </Field>
