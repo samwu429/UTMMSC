@@ -44,7 +44,7 @@ export function HomePage() {
       {!card && !error ? <Spinner /> : null}
 
       {card ? (
-        <section className="mt-5 bg-white px-4 py-4 ring-1 ring-stone-200">
+        <section className="-mx-4 mt-5 bg-white px-4 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm text-brand-700">{card.date}</p>

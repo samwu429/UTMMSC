@@ -46,9 +46,10 @@ export function ChatOverviewPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <PageTitle>聊天</PageTitle>
-      <div className="flex border-b border-stone-200">
+      <div className="-mx-4 border-b border-stone-200 bg-white">
+        <div className="flex">
         {(
           [
             ['channels', '频道', unreadChannels],
@@ -59,17 +60,20 @@ export function ChatOverviewPage() {
           <button
             key={key}
             onClick={() => select(key)}
-            className={`-mb-px flex-1 border-b-[3px] pb-2 text-[15px] ${tab === key ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
+            className={`-mb-px flex-1 border-b-[3px] pb-2 pt-2 text-[15px] ${tab === key ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {label}
             {unread > 0 ? <span className="ml-1 text-xs text-stone-400">{unread}</span> : null}
           </button>
         ))}
+        </div>
       </div>
+      <div className="mt-2">
       {tab === 'members' ? <DirectoryPage embedded /> : null}
       {tab !== 'members' && error ? <Notice tone="error">{error}</Notice> : null}
       {tab !== 'members' && !data && !error ? <Spinner /> : null}
       {tab !== 'members' && data ? (tab === 'channels' ? <ChannelList channels={data.channels} /> : <DirectList conversations={data.direct} />) : null}
+      </div>
     </div>
   );
 }

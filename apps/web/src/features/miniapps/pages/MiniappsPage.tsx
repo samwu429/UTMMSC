@@ -66,9 +66,9 @@ export function MiniappsPage() {
       <section>
         <h2 className="mb-2 text-[15px] font-medium">我的收藏</h2>
         {pinnedApps.length === 0 ? (
-          <p className="rounded-xl bg-white px-4 py-3 text-sm text-stone-500 ring-1 ring-stone-200">点右侧星标，会固定在这里。</p>
+          <p className="-mx-4 bg-white px-4 py-3 text-sm text-stone-500">点右侧星标，会固定在这里。</p>
         ) : (
-          <div className="grid grid-cols-5 gap-y-3 rounded-xl bg-white px-1 py-3 ring-1 ring-stone-200">
+          <div className="-mx-4 grid grid-cols-5 gap-y-3 bg-white px-1 py-3">
             {pinnedApps.map((app) => (
               <a key={app.id} href={app.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 flex-col items-center gap-1 px-1 active:opacity-70">
                 <AppMark app={app} />

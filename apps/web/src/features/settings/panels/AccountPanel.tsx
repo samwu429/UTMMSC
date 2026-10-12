@@ -19,9 +19,9 @@ function isStandalone(): boolean {
 
 function Group({ label, children, footer }: { label?: string; children: ReactNode; footer?: string }) {
   return (
-    <section>
+    <section className="-mx-4">
       {label ? <p className="px-4 pb-1.5 text-xs text-stone-500">{label}</p> : null}
-      <div className="divide-y divide-stone-200 overflow-hidden rounded-xl bg-white ring-1 ring-stone-200">{children}</div>
+      <div className="divide-y divide-stone-200 bg-white">{children}</div>
       {footer ? <p className="px-4 pt-1.5 text-xs leading-relaxed text-stone-400">{footer}</p> : null}
     </section>
   );
@@ -125,7 +125,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const year = `${member.graduationYear} 届 · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <Group>
         <button type="button" onClick={onOpenProfile} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-stone-50">
           <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-14 w-14 text-xl" />

@@ -59,7 +59,7 @@ export function DiscoverPage() {
         />
       </List>
       {staff ? (
-        <div className="mt-6">
+        <div className="mt-2">
           <List>
             <Row
               to="/admin"

@@ -8,10 +8,10 @@ export function Card({ className = '', children, ...rest }: HTMLAttributes<HTMLD
   );
 }
 
-/** A single white group with hairline rows, the way a settings or chat list is usually built. */
-/** 一块白底、行间细线的列表，设置页和聊天列表常用这种结构。 */
+/** Full-width rows with hairlines. The page gray shows between groups, like a WeChat list. */
+/** 通栏一行一行，组与组之间露出页面的浅灰，和微信列表一样。 */
 export function List({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-stone-200 overflow-hidden rounded-xl bg-white ring-1 ring-stone-200">{children}</div>;
+  return <div className="-mx-4 divide-y divide-stone-200 bg-white">{children}</div>;
 }
 
 export function PageTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
