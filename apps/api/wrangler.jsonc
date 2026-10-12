@@ -15,7 +15,7 @@
     "APP_ORIGIN": "https://topphi.com,https://samwu429.github.io",
     "APP_BASE_URL": "https://topphi.com/UTMMSC/",
     "MAIL_FROM_EMAIL": "wuyihang429@gmail.com",
-    "MAIL_FROM_NAME": "UTMMSC",
+    "MAIL_FROM_NAME": "UTMMSC 国语学者联盟",
     "WEATHER_LATITUDE": "43.6532",
     "WEATHER_LONGITUDE": "-79.3832",
     "WEATHER_TIMEZONE": "America/Toronto"
