@@ -36,7 +36,7 @@ export function ProgramPicker({
   return (
     <div className="space-y-2">
       <p className="text-[13px] font-medium text-stone-600">专业</p>
-      <p className="text-xs leading-relaxed text-stone-500">{PROGRAM_RULE_SUMMARY}</p>
+      <p className="text-xs leading-relaxed text-stone-500">专业可以随时更改。{PROGRAM_RULE_SUMMARY}</p>
       {legacyMajor ? <p className="text-xs leading-relaxed text-stone-600">当前记录：{legacyMajor}。重新选择并保存后会替换它。</p> : null}
 
       {programs && programs.length > 0 ? (

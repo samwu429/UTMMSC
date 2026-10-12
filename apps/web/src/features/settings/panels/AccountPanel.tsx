@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, enrollmentYearLabel, formatStoredMajor, isStaffRole, shouldGraduate, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, encodeProgramSelection, enrollmentYearLabel, formatStoredMajor, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -12,8 +12,9 @@ import { ChevronIcon } from '../../profile/icons';
 import { authApi } from '../../auth/api';
 import { adminApi } from '../../admin/api';
 import { profileApi } from '../../profile/api';
+import { ProgramPicker } from '../../auth/components/ProgramPicker';
 
-type Screen = 'list' | 'password' | 'install';
+type Screen = 'list' | 'password' | 'install' | 'programs';
 
 function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -87,6 +88,46 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
+function ProgramsScreen({ onBack }: { onBack: () => void }) {
+  const member = useSessionStore((s) => s.member);
+  const setMember = useSessionStore((s) => s.setMember);
+  const stored = readStoredProgramCodes(member?.major);
+  const [programs, setPrograms] = useState<string[] | null>(stored.kind === 'programs' ? stored.codes : stored.kind === 'empty' ? [] : null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const choice = programChoiceState(programs);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!choice.ready || programs === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await profileApi.update({ major: encodeProgramSelection(programs) });
+      setMember(res.member);
+      onBack();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <BackHeader onBack={onBack} label="设置" title="专业" />
+      <form onSubmit={save} className="mt-2 space-y-3">
+        <p className="text-sm leading-relaxed text-stone-500">专业可以随时更改，不用找管理员。</p>
+        <ProgramPicker programs={programs} onChange={setPrograms} legacyMajor={stored.kind === 'legacy' ? stored.text : null} />
+        {error ? <Notice tone="error">{error}</Notice> : null}
+        <Button type="submit" block loading={busy} disabled={!choice.ready}>
+          保存
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 function InstallScreen({ onBack }: { onBack: () => void }) {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   return (
@@ -150,6 +191,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   }
 
   if (screen === 'password') return <PasswordScreen onBack={() => setScreen('list')} />;
+  if (screen === 'programs') return <ProgramsScreen onBack={() => setScreen('list')} />;
   if (screen === 'install') return <InstallScreen onBack={() => setScreen('list')} />;
   if (!member) return null;
 
@@ -193,11 +235,11 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
         </button>
       </Group>
 
-      <Group label="账号" footer="入学年份登记后不能自行修改，如需更正请联系系统管理员。邮箱只有你自己能看到。">
+      <Group label="账号" footer="入学年份登记后不能自行修改，如需更正请联系系统管理员。专业可以随时更改。邮箱只有你自己能看到。">
         <Row label="邮箱" value={member.email} />
         <Row label="入学年份" value={enrollmentYearLabel(member.graduationYear)} />
         <Row label="状态" value={status} />
-        <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} />
+        <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} onClick={() => setScreen('programs')} />
         {alumni ? null : (
           <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
             我已毕业
