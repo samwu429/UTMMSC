@@ -10,20 +10,20 @@ export const PROGRAM_LEVELS = ['specialist', 'major', 'minor'] as const;
 export type ProgramLevel = (typeof PROGRAM_LEVELS)[number];
 
 export const PROGRAM_LEVEL_LABELS: Record<ProgramLevel, string> = {
-  specialist: '专业方向',
-  major: '主修',
-  minor: '辅修',
+  specialist: 'specialist',
+  major: 'major',
+  minor: 'minor',
 };
 
 export const PROGRAM_AREAS = ['Arts', 'Science', 'BCom', 'BBA', 'HBA'] as const;
 export type ProgramArea = (typeof PROGRAM_AREAS)[number];
 
 export const PROGRAM_AREA_LABELS: Record<ProgramArea, string> = {
-  Arts: '文学',
-  Science: '理学',
-  BCom: '商学',
-  BBA: '工商管理',
-  HBA: '荣誉文学',
+  Arts: 'Arts',
+  Science: 'Science',
+  BCom: 'BCom',
+  BBA: 'BBA',
+  HBA: 'HBA',
 };
 
 export interface UtmDepartment {
@@ -231,7 +231,7 @@ export function programsInDepartment(departmentId: string): UtmProgram[] {
 }
 
 export function programOptionLabel(program: UtmProgram): string {
-  const area = program.area ? `（${PROGRAM_AREA_LABELS[program.area]}）` : '';
-  return `${PROGRAM_LEVEL_LABELS[program.level]} · ${program.name}${area}`;
+  const area = program.area ? ` · ${PROGRAM_AREA_LABELS[program.area]}` : '';
+  return `${program.name} · ${PROGRAM_LEVEL_LABELS[program.level]}${area}`;
 }
 

@@ -25,7 +25,7 @@ export const PROGRAM_MAJOR_PREFIX = 'utm:';
 export const PROGRAM_MAJOR_MAX = 240;
 
 export const PROGRAM_RULE_SUMMARY =
-  '读满 4.0 学分后要选定项目。完整组合是一个专业方向，或两个主修，或一个主修加两个辅修。最多三个项目，且选满三个时必须包含一个辅修，因此还可以是专业方向加辅修，或两个主修加一个辅修。专业方向不能和主修叠在一起，也不能选两个专业方向。不能只选辅修，不能重复，同一编号的专业方向、主修和辅修也不能一起选。一年级还没选项目时，请选「尚未选择专业」，它不能和其他项目一起选。';
+  '读满 4.0 学分后，可选一个 specialist，或两个 major，或一个 major 加两个 minor。最多三个，选满三个时必须有一个 minor。specialist 可以再加 minor，两个 major 可以再加一个 minor。specialist 不能和 major 叠在一起，也不能选两个 specialist。不能只选 minor。还没选项目时，请点「尚未选择专业」。';
 
 function subjectCode(code: string): string {
   return code.slice(-4);
@@ -47,15 +47,15 @@ export function programSelectionError(codes: readonly string[]): string | null {
   }
 
   if (new Set(programs.map((program) => subjectCode(program.code))).size !== programs.length) {
-    return '同一编号的专业方向、主修和辅修不能同时选择';
+    return '同一编号的 specialist、major 和 minor 不能同时选择';
   }
 
   const specialists = programs.filter((program) => program.level === 'specialist').length;
   const majors = programs.filter((program) => program.level === 'major').length;
   const minors = programs.filter((program) => program.level === 'minor').length;
 
-  if (specialists > 2) return '专业方向最多两个';
-  if (majors > 2) return '主修最多两个';
+  if (specialists > 2) return 'specialist 最多两个';
+  if (majors > 2) return 'major 最多两个';
   if (specialists + majors + minors > 3) return '最多选择三个项目';
 
   const legal =
@@ -64,10 +64,10 @@ export function programSelectionError(codes: readonly string[]): string | null {
     (specialists === 0 && majors === 1 && minors === 2);
   if (legal) return null;
 
-  if (specialists === 0 && majors === 0) return '只选辅修不能作为完整组合';
-  if (specialists > 0 && majors > 0) return '专业方向不能和主修组合';
-  if (specialists >= 2) return '两个专业方向不能作为完整组合';
-  if (majors === 1) return '一个主修需要再加一个主修，或配两个辅修';
+  if (specialists === 0 && majors === 0) return '只选 minor 不能作为完整组合';
+  if (specialists > 0 && majors > 0) return 'specialist 不能和 major 组合';
+  if (specialists >= 2) return '两个 specialist 不能作为完整组合';
+  if (majors === 1) return '一个 major 需要再加一个 major，或配两个 minor';
   return '这个组合不符合校历';
 }
 

@@ -1,0 +1,8 @@
+---
+description: Push finished UTMMSC work without asking
+alwaysApply: true
+---
+
+When a feature or fix in this repo is finished, commit it and push to `origin` with `git push origin HEAD`. Do not ask first.
+
+If the API or shared code the Worker bundles changed, deploy the Worker from `apps/api` after the push. Do not commit secrets, `.dev.vars`, or unrelated local edits. Do not change git config.

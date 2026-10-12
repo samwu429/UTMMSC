@@ -45,32 +45,32 @@ describe('program combination rules', () => {
   });
 
   it('rejects a lone minor, only minors, duplicates, and other illegal mixes', () => {
-    expect(programSelectionError([PSY_MINOR])).toBe('只选辅修不能作为完整组合');
-    expect(programSelectionError([PSY_MINOR, ECO_MINOR])).toBe('只选辅修不能作为完整组合');
-    expect(programSelectionError([CS_MAJOR])).toMatch(/一个主修/);
-    expect(programSelectionError([CS_MAJOR, PSY_MINOR])).toMatch(/一个主修/);
+    expect(programSelectionError([PSY_MINOR])).toBe('只选 minor 不能作为完整组合');
+    expect(programSelectionError([PSY_MINOR, ECO_MINOR])).toBe('只选 minor 不能作为完整组合');
+    expect(programSelectionError([CS_MAJOR])).toMatch(/一个 major/);
+    expect(programSelectionError([CS_MAJOR, PSY_MINOR])).toMatch(/一个 major/);
     expect(programSelectionError([CS_SPECIALIST, CS_SPECIALIST])).toBe('同一项目不能重复选择');
-    expect(programSelectionError([CS_SPECIALIST, ECO_MAJOR])).toBe('专业方向不能和主修组合');
-    expect(programSelectionError([CS_SPECIALIST, PSY_SPECIALIST])).toBe('两个专业方向不能作为完整组合');
-    expect(programSelectionError([CS_SPECIALIST, CS_MINOR])).toBe('同一编号的专业方向、主修和辅修不能同时选择');
+    expect(programSelectionError([CS_SPECIALIST, ECO_MAJOR])).toBe('specialist 不能和 major 组合');
+    expect(programSelectionError([CS_SPECIALIST, PSY_SPECIALIST])).toBe('两个 specialist 不能作为完整组合');
+    expect(programSelectionError([CS_SPECIALIST, CS_MINOR])).toBe('同一编号的 specialist、major 和 minor 不能同时选择');
     expect(programSelectionError([UNDECLARED_PROGRAM, PSY_MINOR])).toBe('尚未选择专业不能和其他项目一起选');
     expect(programSelectionError(['ERSPE0000'])).toBe('有无法识别的项目');
 
     const majors = UTM_PROGRAMS.filter((program) => program.level === 'major').slice(0, 10).map((program) => program.code);
     expect(majors).toHaveLength(10);
-    expect(programSelectionError(majors)).toBe('主修最多两个');
+    expect(programSelectionError(majors)).toBe('major 最多两个');
   });
 
   it('stores a canonical selection and still shows old free text', () => {
     const stored = encodeProgramSelection([PSY_MINOR, CS_SPECIALIST]);
     expect(stored).toBe('utm:ERMIN1160,ERSPE1688 Psychology | Computer Science');
-    expect(formatStoredMajor(stored)).toBe('专业方向 · Computer Science（理学）、辅修 · Psychology（理学）');
+    expect(formatStoredMajor(stored)).toBe('Computer Science · specialist · Science、Psychology · minor · Science');
     expect(formatStoredMajor('Computer Science')).toBe('Computer Science');
     expect(formatStoredMajor(null)).toBeNull();
 
     expect(canonicalizeProgramMajor(null)).toEqual({ ok: true, major: null });
     expect(canonicalizeProgramMajor('Computer Science')).toEqual({ ok: false, message: '请从列表中选择项目' });
-    expect(canonicalizeProgramMajor('utm:ERMIN1160')).toEqual({ ok: false, message: '只选辅修不能作为完整组合' });
+    expect(canonicalizeProgramMajor('utm:ERMIN1160')).toEqual({ ok: false, message: '只选 minor 不能作为完整组合' });
     expect(canonicalizeProgramMajor('utm:ERSPE1688')).toEqual({
       ok: true,
       major: 'utm:ERSPE1688 Computer Science',
