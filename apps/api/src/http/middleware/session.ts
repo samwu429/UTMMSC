@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { hasPermission, type Permission } from '@utmmsc/shared';
 import { readSessionToken } from '../../domain/identity/session-token';
-import { findMemberById } from '../../infrastructure/d1/members';
+import { findMemberById, viewedRole } from '../../infrastructure/d1/members';
 import { isSessionLive } from '../../infrastructure/d1/sessions';
 import type { AppEnv } from '../context';
 import { forbidden, unauthorized } from '../errors';
@@ -29,7 +29,7 @@ export const requireSession: MiddlewareHandler<AppEnv> = async (c, next) => {
 export function requirePermission(permission: Permission): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const member = c.get('member');
-    if (!hasPermission(member.role, permission)) throw forbidden();
+    if (!hasPermission(viewedRole(member), permission)) throw forbidden();
     await next();
   };
 }

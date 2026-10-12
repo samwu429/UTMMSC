@@ -36,6 +36,12 @@ export interface MemberSelf extends MemberProfile {
   email: string;
   status: MemberStatus;
   createdAt: string;
+  /** Stored role. Stays superadmin while a test identity is active. */
+  /** 存在库里的身份。测试其他职位时仍是系统管理员。 */
+  realRole: Role;
+  /** Temporary identity for the system admin. Null means use the real role. */
+  /** 系统管理员的临时测试身份。空表示用真实身份。 */
+  actingRole: Role | null;
 }
 
 export const GRADUATION_YEAR_MIN = 1960;

@@ -8,8 +8,10 @@ import {
   listActiveMemberEmails,
   listAllMembersForAdmin,
   toProfile,
+  toSelf,
   updateMemberRole,
   updateMemberStatus,
+  updateActingRole,
   officeHolderExists,
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
@@ -23,6 +25,18 @@ import { optionalString, readJson, requireOneOf, requireString } from '../../val
 export const adminRoutes = new Hono<AppEnv>();
 
 adminRoutes.use('*', requireSession);
+
+adminRoutes.post('/acting-role', async (c) => {
+  const actor = c.get('member');
+  if (actor.role !== 'superadmin') throw forbidden('只有系统管理员可以切换测试身份');
+  const body = await readJson<Record<string, unknown>>(c);
+  const raw = body.role;
+  const acting = raw === null || raw === 'superadmin' ? null : requireOneOf<Role>(raw, ROLES, '身份');
+  await updateActingRole(c.env.DB, actor.id, acting);
+  const updated = await findMemberById(c.env.DB, actor.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated) });
+});
 
 function mailConfig(env: AppEnv['Bindings']) {
   return { apiKey: env.BREVO_API_KEY, fromEmail: env.MAIL_FROM_EMAIL, fromName: env.MAIL_FROM_NAME };

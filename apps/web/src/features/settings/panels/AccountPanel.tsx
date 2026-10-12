@@ -1,15 +1,16 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_LABELS, isStaffRole } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, isStaffRole, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
-import { Field, TextInput } from '../../../shared/ui/Field';
+import { Field, Select, TextInput } from '../../../shared/ui/Field';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 import { ChevronIcon } from '../../profile/icons';
 import { authApi } from '../../auth/api';
+import { adminApi } from '../../admin/api';
 
 type Screen = 'list' | 'password' | 'install';
 
@@ -99,14 +100,26 @@ function InstallScreen({ onBack }: { onBack: () => void }) {
 
 export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () => void; onPushed: (pushed: boolean) => void }) {
   const member = useSessionStore((s) => s.member);
+  const setMember = useSessionStore((s) => s.setMember);
   const clear = useSessionStore((s) => s.clear);
   const [screen, setScreen] = useState<Screen>('list');
+  const [actingError, setActingError] = useState<string | null>(null);
   const ask = useConfirm();
   const installed = isStandalone();
 
   useEffect(() => {
     onPushed(screen !== 'list');
   }, [screen, onPushed]);
+
+  async function switchActing(value: string) {
+    setActingError(null);
+    try {
+      const res = await adminApi.setActingRole(value === 'superadmin' ? null : (value as Role));
+      setMember(res.member);
+    } catch (err) {
+      setActingError(errorMessage(err));
+    }
+  }
 
   async function logout() {
     const ok = await ask({ title: '退出登录？', confirmLabel: '退出', danger: true });
@@ -124,8 +137,32 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
 
   const year = `${member.graduationYear} 届 · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
 
+  const real = member.realRole ?? member.role;
+
   return (
     <div className="space-y-2">
+      {real === 'superadmin' ? (
+        <Group label="调试">
+          <div className="px-4 py-3">
+            <p className="text-sm leading-relaxed text-stone-500">系统管理员一直保留。换一个职位后，就按那个职位的权限使用。</p>
+            {actingError ? <div className="mt-2"><Notice tone="error">{actingError}</Notice></div> : null}
+            <div className="mt-2">
+              <Select value={member.actingRole ?? 'superadmin'} onChange={(event) => void switchActing(event.target.value)}>
+                <option value="superadmin">系统管理员</option>
+                {ROLE_GROUPS.filter((group) => group.label !== '系统').map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.roles.map((role) => (
+                      <option key={role} value={role}>
+                        {ROLE_LABELS[role]}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+            </div>
+          </div>
+        </Group>
+      ) : null}
       <Group>
         <button type="button" onClick={onOpenProfile} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-stone-50">
           <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-14 w-14 text-xl" />

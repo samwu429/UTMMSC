@@ -7,6 +7,7 @@ import type {
   EventRecord,
   ManualApplication,
   MemberStatus,
+  MemberSelf,
   Role,
 } from '@utmmsc/shared';
 import { api } from '../../shared/api/client';
@@ -17,6 +18,7 @@ export const adminApi = {
   members: () => api<{ members: AdminMemberRow[] }>('/admin/members'),
   setRole: (id: string, role: Role) => api<{ ok: true }>(`/admin/members/${encodeURIComponent(id)}/role`, { method: 'POST', body: { role } }),
   setStatus: (id: string, status: MemberStatus) => api<{ ok: true }>(`/admin/members/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
+  setActingRole: (role: Role | null) => api<{ member: MemberSelf }>('/admin/acting-role', { method: 'POST', body: { role } }),
   createChannel: (body: CreateChannelBody) => api<{ channel: unknown }>('/channels', { method: 'POST', body }),
   events: () => api<{ events: EventRecord[] }>('/admin/events'),
   createEvent: (body: CreateEventBody) => api<{ event: EventRecord }>('/admin/events', { method: 'POST', body }),

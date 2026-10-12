@@ -16,7 +16,7 @@ import { issueRoomTicket, readRoomTicket } from '../../../domain/identity/room-t
 import { findChannel, listChannels, listMembershipChannelIds } from '../../../infrastructure/d1/channels';
 import { findDirect, listDirectForMember, openDirect } from '../../../infrastructure/d1/direct';
 import { areFriends, listFriendIds } from '../../../infrastructure/d1/friends';
-import { findMemberById, type MemberRow } from '../../../infrastructure/d1/members';
+import { findMemberById, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
 import type { ChatRoom } from '../../../realtime/rooms/chat-room';
 import type { Env } from '../../../env';
@@ -50,7 +50,7 @@ interface RoomGrant {
 async function resolveRoomAccess(env: Env, member: MemberRow, roomId: string): Promise<RoomGrant> {
   const parsed = parseRoomId(roomId);
   if (!parsed) throw notFound('房间不存在');
-  const actor = { role: member.role, enrollmentStatus: member.enrollment_status };
+  const actor = { role: viewedRole(member), enrollmentStatus: member.enrollment_status };
 
   if (parsed.kind === 'channel') {
     const channel = await findChannel(env.DB, parsed.id);
@@ -73,7 +73,7 @@ async function resolveRoomAccess(env: Env, member: MemberRow, roomId: string): P
 
 chatRoutes.get('/overview', requireSession, async (c) => {
   const member = c.get('member');
-  const actor = { role: member.role, enrollmentStatus: member.enrollment_status };
+  const actor = { role: viewedRole(member), enrollmentStatus: member.enrollment_status };
   const [channels, memberships, direct, friendIds] = await Promise.all([
     listChannels(c.env.DB),
     listMembershipChannelIds(c.env.DB, member.id),
@@ -135,7 +135,7 @@ chatRoutes.post('/rooms/:roomId/ticket', requireSession, async (c) => {
     roomId,
     memberId: member.id,
     displayName: member.display_name,
-    role: member.role,
+    role: viewedRole(member),
     canPost: grant.canPost,
   });
   const mediaToken = await signPayload(c.env.SESSION_SECRET, {

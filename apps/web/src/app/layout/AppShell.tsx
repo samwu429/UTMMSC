@@ -1,5 +1,7 @@
+import { ROLE_LABELS } from '@utmmsc/shared';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { adminApi } from '../../features/admin/api';
 import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
 
@@ -145,6 +147,7 @@ function ChatTab() {
 /** 手机优先的外壳：内容区在上，固定的底部标签栏在下。 */
 export function AppShell() {
   const setMember = useSessionStore((s) => s.setMember);
+  const member = useSessionStore((s) => s.member);
   const setMediaToken = useSessionStore((s) => s.setMediaToken);
 
   useEffect(() => {
@@ -161,6 +164,20 @@ export function AppShell() {
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">
       <main className="flex-1 px-4 pb-28 pt-5">
+        {member?.realRole === 'superadmin' && member.actingRole ? (
+          <div className="-mx-4 mb-4 flex items-center justify-between gap-3 bg-brand-800 px-4 py-2 text-sm text-white">
+            <span className="min-w-0 truncate">正在以{ROLE_LABELS[member.actingRole]}测试</span>
+            <button
+              type="button"
+              className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-brand-800"
+              onClick={() => {
+                adminApi.setActingRole(null).then((res) => setMember(res.member)).catch(() => undefined);
+              }}
+            >
+              回到系统管理员
+            </button>
+          </div>
+        ) : null}
         <Outlet />
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-30 overflow-visible border-t border-stone-200 bg-white" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>

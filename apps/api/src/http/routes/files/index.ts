@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { FILE_MAX_BYTES, hasPermission, isFileCategory, type FileListResponse } from '@utmmsc/shared';
 import { createFile, deleteFile, findFile, listFiles, toFileRecord } from '../../../infrastructure/d1/files';
+import { viewedRole } from '../../../infrastructure/d1/members';
 import { deleteObject, getObject, libraryObjectKey, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
@@ -64,7 +65,7 @@ fileRoutes.delete('/:id', async (c) => {
   const row = await findFile(c.env.DB, c.req.param('id'));
   if (!row) throw notFound('文件不存在');
   const ownFile = row.uploaded_by === member.id;
-  if (!ownFile && !hasPermission(member.role, 'channels.manage')) throw forbidden('只能删除自己上传的文件');
+  if (!ownFile && !hasPermission(viewedRole(member), 'channels.manage')) throw forbidden('只能删除自己上传的文件');
   await deleteObject(requireBucket(c.env), row.object_key);
   await deleteFile(c.env.DB, row.id);
   return c.json({ ok: true });

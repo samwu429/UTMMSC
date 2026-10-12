@@ -3,7 +3,7 @@ import { ENROLLMENT_STATUSES, type DirectoryResponse, type EnrollmentStatus, typ
 import { base64UrlToBytes, bytesToBase64Url, bytesToUtf8, utf8ToBytes } from '../../../domain/crypto/encoding';
 import { relation } from '../../../infrastructure/d1/friends';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
-import { findMemberById, listDirectory, toProfile } from '../../../infrastructure/d1/members';
+import { findMemberById, listDirectory, toProfile, viewedRole } from '../../../infrastructure/d1/members';
 import { listExperiences, listMemberPosts } from '../../../infrastructure/d1/profile';
 import type { AppEnv } from '../../context';
 import { notFound } from '../../errors';
@@ -68,12 +68,15 @@ memberRoutes.get('/:id', async (c) => {
     listExperiences(c.env.DB, row.id),
     listMemberPosts(c.env.DB, row.id, PROFILE_POSTS),
   ]);
+  const viewer = c.get('member');
+  const member = toProfile(row);
+  if (viewer.id === row.id) member.role = viewedRole(viewer);
   const response: MemberDetailResponse = {
-    member: toProfile(row),
+    member,
     experiences,
     posts,
     mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET),
-    friendship: await relation(c.env.DB, c.get('member').id, row.id),
+    friendship: await relation(c.env.DB, viewer.id, row.id),
   };
   return c.json(response);
 });

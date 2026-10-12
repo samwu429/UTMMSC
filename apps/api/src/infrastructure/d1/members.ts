@@ -1,4 +1,4 @@
-import { OPEN_TO, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
+import { OPEN_TO, ROLES, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
 import { randomId } from '../../domain/crypto/encoding';
 import { nowIso } from './time';
 
@@ -19,6 +19,7 @@ export interface MemberRow {
   open_to: string | null;
   avatar_key: string | null;
   cover_key: string | null;
+  acting_role: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,14 @@ function stringList(raw: string | null): string[] {
 
 function openToList(raw: string | null): OpenTo[] {
   return stringList(raw).filter((item): item is OpenTo => (OPEN_TO as readonly string[]).includes(item));
+}
+
+export function viewedRole(row: MemberRow): Role {
+  const acting = row.acting_role;
+  if (row.role === 'superadmin' && acting && acting !== 'superadmin' && (ROLES as readonly string[]).includes(acting)) {
+    return acting as Role;
+  }
+  return row.role;
 }
 
 export function toProfile(row: MemberRow): MemberProfile {
@@ -57,7 +66,16 @@ export function toProfile(row: MemberRow): MemberProfile {
 }
 
 export function toSelf(row: MemberRow): MemberSelf {
-  return { ...toProfile(row), email: row.email, status: row.status, createdAt: row.created_at };
+  const acting = row.acting_role && row.acting_role !== 'superadmin' && (ROLES as readonly string[]).includes(row.acting_role) ? (row.acting_role as Role) : null;
+  return {
+    ...toProfile(row),
+    role: viewedRole(row),
+    realRole: row.role,
+    actingRole: row.role === 'superadmin' ? acting : null,
+    email: row.email,
+    status: row.status,
+    createdAt: row.created_at,
+  };
 }
 
 export async function findMemberByEmail(db: D1Database, email: string): Promise<MemberRow | null> {
@@ -108,6 +126,10 @@ export async function updateMemberRole(db: D1Database, memberId: string, role: R
 
 export async function updateMemberStatus(db: D1Database, memberId: string, status: MemberStatus): Promise<void> {
   await db.prepare('UPDATE members SET status = ?, updated_at = ? WHERE id = ?').bind(status, nowIso(), memberId).run();
+}
+
+export async function updateActingRole(db: D1Database, memberId: string, actingRole: Role | null): Promise<void> {
+  await db.prepare('UPDATE members SET acting_role = ?, updated_at = ? WHERE id = ?').bind(actingRole, nowIso(), memberId).run();
 }
 
 export async function officeHolderExists(db: D1Database, role: string, exceptId: string): Promise<boolean> {
