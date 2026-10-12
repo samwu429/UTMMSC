@@ -15,6 +15,7 @@ export function SplashScreen() {
     }
     const video = videoRef.current;
     if (!video) return;
+    if (Number.isFinite(video.duration) && video.duration > 0) video.playbackRate = video.duration;
     const play = video.play();
     if (play) {
       play.catch(() => {
@@ -23,7 +24,7 @@ export function SplashScreen() {
         }, 700);
       });
     }
-    const cap = window.setTimeout(() => setPhase((current) => (current === 'play' ? 'leave' : current)), 12000);
+    const cap = window.setTimeout(() => setPhase((current) => (current === 'play' ? 'leave' : current)), 2500);
     return () => window.clearTimeout(cap);
   }, []);
 
@@ -31,7 +32,7 @@ export function SplashScreen() {
 
   return (
     <div
-      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black transition-opacity duration-500 ${phase === 'leave' ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black transition-opacity duration-200 ${phase === 'leave' ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       onTransitionEnd={() => {
         if (phase === 'leave') setPhase('done');
       }}
@@ -43,6 +44,12 @@ export function SplashScreen() {
         autoPlay
         muted
         playsInline
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          // The file is two seconds. Playing at that rate finishes it in one second.
+          // 成片是两秒。按片长做播放速度，正好一秒播完。
+          if (Number.isFinite(video.duration) && video.duration > 0) video.playbackRate = video.duration;
+        }}
         onEnded={() => setPhase('leave')}
         onError={() => setPhase('done')}
       />
