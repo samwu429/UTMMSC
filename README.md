@@ -8,7 +8,7 @@ Public site: https://utmmsc.com/ (official site; a holding page until the public
 
 Member network: https://utmmsc.com/UTMMSC/
 
-https://topphi.com/UTMMSC/ is blank. The member network is only at the address above.
+The member network is only at the address above. GitHub Pages for this repository is not used.
 
 ## Structure
 
@@ -40,7 +40,7 @@ Create `apps/api/.dev.vars` (ignored by git) with the keys listed in `apps/api/.
 ## Deployment
 
 - Member network and public home: `npm run deploy:site` after `npx wrangler login`. This builds `apps/web` and publishes it with the `utmmsc.com` Worker. `/` is the public site. `/UTMMSC/` is the member network. Do not attach the member app to the apex.
-- The old address `https://topphi.com/UTMMSC/` stays blank. Pushing to `main` publishes that empty page and does not put the member app back there.
+- Pushing to `main` checks the code. It does not publish the site. Publish with `npm run deploy:site`.
 - API: `npm run deploy:api` after `npx wrangler login`. Secrets are set with `npx wrangler secret put <NAME>` inside `apps/api`. The Worker runs at `https://utmmsc-api.utmmsc.workers.dev`.
 - Files: the R2 bucket `utmmsc-files` is bound as `FILES`. Chat images and the file library are stored there.
 

@@ -1,6 +1,6 @@
 # apps/web
 
-Mobile-first single-page app for UTMMSC members. Built with Vite, React, TypeScript, Tailwind CSS, and `vite-plugin-pwa`; published to GitHub Pages at `/UTMMSC/`.
+Mobile-first single-page app for UTMMSC members. Built with Vite, React, TypeScript, Tailwind CSS, and `vite-plugin-pwa`. The site Worker publishes the build at `https://utmmsc.com/UTMMSC/`.
 
 ## Layout
 
