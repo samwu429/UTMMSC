@@ -13,7 +13,7 @@ function openToLabels(member: MemberProfile): string[] {
 
 function ActionChip({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="min-h-9 rounded-full bg-paper px-3 text-sm font-medium text-brand-800 active:bg-stone-200">
+    <button type="button" onClick={onClick} className="min-h-9 rounded-full bg-stone-100 px-3 text-sm font-medium text-brand-800 active:bg-stone-200">
       {label}
     </button>
   );
@@ -21,7 +21,7 @@ function ActionChip({ label, onClick }: { label: string; onClick: () => void }) 
 
 function AddRow({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-paper text-[15px] font-medium text-brand-800 active:bg-stone-200">
+    <button type="button" onClick={onClick} className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-stone-100 text-[15px] font-medium text-brand-800 active:bg-stone-200">
       <PlusIcon />
       {label}
     </button>

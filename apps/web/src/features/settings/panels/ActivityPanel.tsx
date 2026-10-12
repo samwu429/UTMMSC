@@ -172,7 +172,7 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
         </div>
       ) : null}
       <div className="flex gap-2 px-4 py-3">
-        <button type="button" disabled={busy} onClick={() => imageRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-paper text-[15px] font-medium text-brand-800 disabled:text-stone-300">
+        <button type="button" disabled={busy} onClick={() => imageRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-stone-100 text-[15px] font-medium text-brand-800 disabled:text-stone-300">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
             <rect x="4" y="5" width="16" height="14" rx="2" />
             <circle cx="9" cy="10" r="1.4" />
@@ -180,7 +180,7 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
           </svg>
           照片
         </button>
-        <button type="button" disabled={busy} onClick={() => videoRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-paper text-[15px] font-medium text-brand-800 disabled:text-stone-300">
+        <button type="button" disabled={busy} onClick={() => videoRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-stone-100 text-[15px] font-medium text-brand-800 disabled:text-stone-300">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
             <rect x="3.5" y="6" width="12" height="12" rx="2" />
             <path d="m15.5 10.5 5-2.5v8l-5-2.5v-3Z" />
@@ -250,7 +250,7 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
   }
 
   return (
-    <div>
+    <div className="bg-white">
       <CoverBanner coverKey={self?.coverKey} tall editable={Boolean(self)}>
         <button type="button" onClick={() => setComposing(true)} className="absolute right-3 top-3 z-10 min-h-10 rounded-full border-t-[3px] border-gold bg-white px-4 text-[15px] font-medium text-brand-800">
           发表
@@ -258,7 +258,7 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
         {self ? <p className="absolute bottom-6 right-28 left-4 truncate text-right text-[18px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]">{self.displayName}</p> : null}
         {self ? (
           <button type="button" onClick={onOpenProfile} className="absolute -bottom-8 right-4 z-10" aria-label="我的资料">
-            <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-16 w-16 text-xl ring-4 ring-paper" />
+            <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-16 w-16 text-xl ring-4 ring-white" />
           </button>
         ) : null}
       </CoverBanner>

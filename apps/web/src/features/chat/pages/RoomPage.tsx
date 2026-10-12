@@ -72,7 +72,7 @@ export function RoomPage() {
   const title = parsed?.kind === 'direct' ? '私聊' : '频道';
 
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col bg-paper">
+    <div className="mx-auto flex h-full max-w-2xl flex-col bg-canvas">
       <BackHeader
         flush
         to="/chat"

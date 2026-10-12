@@ -54,7 +54,7 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
   }
 
   return (
-    <form onSubmit={submit} className="flex items-end gap-2 border-t-[3px] border-gold bg-paper px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
+    <form onSubmit={submit} className="flex items-end gap-2 border-t-[3px] border-gold bg-white px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
       <input ref={fileRef} type="file" accept={CHAT_IMAGE_TYPES.join(',')} className="hidden" onChange={(e) => e.target.files?.[0] && pickImage(e.target.files[0])} />
       <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || uploading} className="mb-0.5 h-9 w-9 shrink-0 text-xl text-stone-500 disabled:opacity-40" aria-label="发送图片">
         {uploading ? '…' : '＋'}

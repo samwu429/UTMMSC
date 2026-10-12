@@ -13,7 +13,7 @@ export default {
           900: '#2A1044',
         },
         gold: '#FFD23F',
-        paper: '#F7F4EE',
+        canvas: '#F2F3F5',
       },
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', 'Arial', 'sans-serif'],

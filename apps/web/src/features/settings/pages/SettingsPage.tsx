@@ -29,7 +29,7 @@ export function SettingsPage() {
   return (
     <div className="-mx-4 -mt-5">
       {pushed ? null : (
-        <div className="sticky top-0 z-20 flex border-b border-stone-200 bg-paper" role="tablist">
+        <div className="sticky top-0 z-20 flex border-b border-stone-200 bg-white" role="tablist">
           {TABS.map((item) => {
             const on = item.id === tab;
             return (

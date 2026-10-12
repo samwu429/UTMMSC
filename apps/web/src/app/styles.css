@@ -13,7 +13,7 @@ body,
 }
 
 body {
-  @apply bg-paper text-brand-800 antialiased;
+  @apply bg-canvas text-brand-800 antialiased;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -51,7 +51,7 @@ textarea {
   height: 3.5rem;
   border-radius: 9999px;
   background: #3c165f;
-  box-shadow: 0 0 0 4px #f7f4ee;
+  box-shadow: 0 0 0 4px #fff;
   outline: 3px solid rgb(255 210 63 / 0.7);
 }
 

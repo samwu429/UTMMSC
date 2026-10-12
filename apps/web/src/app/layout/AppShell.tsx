@@ -163,7 +163,7 @@ export function AppShell() {
       <main className="flex-1 px-4 pb-28 pt-5">
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 overflow-visible border-t border-stone-200 bg-paper" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav className="fixed inset-x-0 bottom-0 z-30 overflow-visible border-t border-stone-200 bg-white" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="mx-auto grid max-w-2xl grid-cols-5 items-end">
           {LEFT_NAV.map((item) => (
             <SideTab key={item.to} item={item} />
