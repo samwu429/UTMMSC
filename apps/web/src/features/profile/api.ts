@@ -32,4 +32,8 @@ export const profileApi = {
   addPost: (body: CreatePostBody) => api<{ post: ActivityPost }>('/members/me/posts', { method: 'POST', body }),
   removePost: (id: string) => api<{ ok: true }>(`/members/me/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   graduate: () => api<{ member: MemberSelf }>('/members/me/graduate', { method: 'POST' }),
+  enrollmentYearRequest: () => api<{ request: { id: string; requestedYear: number; createdAt: string } | null }>('/members/me/enrollment-year-request'),
+  submitEnrollmentYear: (graduationYear: number) =>
+    api<{ request: { id: string; requestedYear: number; createdAt: string } }>('/members/me/enrollment-year-request', { method: 'POST', body: { graduationYear } }),
+  cancelEnrollmentYear: () => api<{ ok: true }>('/members/me/enrollment-year-request', { method: 'DELETE' }),
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, encodeProgramSelection, enrollmentYearLabel, formatStoredMajor, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, ADMIN_ENROLLMENT_YEAR_MIN, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, formatStoredMajor, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -14,7 +14,7 @@ import { adminApi } from '../../admin/api';
 import { profileApi } from '../../profile/api';
 import { ProgramPicker } from '../../auth/components/ProgramPicker';
 
-type Screen = 'list' | 'password' | 'install' | 'programs';
+type Screen = 'list' | 'password' | 'install' | 'programs' | 'year';
 
 function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -88,6 +88,80 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
+function YearScreen({ onBack }: { onBack: () => void }) {
+  const member = useSessionStore((s) => s.member);
+  const [year, setYear] = useState(String(member?.graduationYear ?? ''));
+  const [pendingYear, setPendingYear] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const years: number[] = [];
+  for (let y = enrollmentYearMax(); y >= ADMIN_ENROLLMENT_YEAR_MIN; y--) years.push(y);
+
+  useEffect(() => {
+    profileApi.enrollmentYearRequest().then((res) => setPendingYear(res.request?.requestedYear ?? null)).catch(() => undefined);
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await profileApi.submitEnrollmentYear(Number(year));
+      setPendingYear(res.request.requestedYear);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancel() {
+    setBusy(true);
+    setError(null);
+    try {
+      await profileApi.cancelEnrollmentYear();
+      setPendingYear(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <BackHeader onBack={onBack} label="设置" title="入学年份" />
+      <form onSubmit={submit} className="mt-2 space-y-3">
+        <p className="text-sm leading-relaxed text-stone-500">
+          现在是 {member ? enrollmentYearLabel(member.graduationYear) : ''}。提交后要等系统管理员同意，同意之前不会改。
+        </p>
+        {pendingYear !== null ? <Notice>已提交改为 {pendingYear} 年，等待系统管理员同意。</Notice> : null}
+        <Field label="申请改为">
+          <Select value={year} onChange={(event) => setYear(event.target.value)}>
+            {years.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {member && member.enrollmentStatus === 'student' && shouldGraduate(Number(year), 'student') ? (
+          <p className="text-sm leading-relaxed text-stone-500">这个年份已经满五年，同意后会记为毕业生。</p>
+        ) : null}
+        {error ? <Notice tone="error">{error}</Notice> : null}
+        <Button type="submit" block loading={busy} disabled={Number(year) === member?.graduationYear}>
+          提交申请
+        </Button>
+        {pendingYear !== null ? (
+          <Button type="button" variant="secondary" block disabled={busy} onClick={() => void cancel()}>
+            撤回申请
+          </Button>
+        ) : null}
+      </form>
+    </div>
+  );
+}
+
 function ProgramsScreen({ onBack }: { onBack: () => void }) {
   const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
@@ -147,12 +221,18 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const [screen, setScreen] = useState<Screen>('list');
   const [actingError, setActingError] = useState<string | null>(null);
   const [graduateError, setGraduateError] = useState<string | null>(null);
+  const [pendingYear, setPendingYear] = useState<number | null>(null);
   const ask = useConfirm();
   const installed = isStandalone();
 
   useEffect(() => {
     onPushed(screen !== 'list');
   }, [screen, onPushed]);
+
+  useEffect(() => {
+    if (screen !== 'list') return;
+    profileApi.enrollmentYearRequest().then((res) => setPendingYear(res.request?.requestedYear ?? null)).catch(() => undefined);
+  }, [screen]);
 
   async function switchActing(value: string) {
     setActingError(null);
@@ -192,6 +272,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
 
   if (screen === 'password') return <PasswordScreen onBack={() => setScreen('list')} />;
   if (screen === 'programs') return <ProgramsScreen onBack={() => setScreen('list')} />;
+  if (screen === 'year') return <YearScreen onBack={() => setScreen('list')} />;
   if (screen === 'install') return <InstallScreen onBack={() => setScreen('list')} />;
   if (!member) return null;
 
@@ -235,9 +316,13 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
         </button>
       </Group>
 
-      <Group label="账号" footer="入学年份登记后不能自行修改，如需更正请联系系统管理员。专业可以随时更改。邮箱只有你自己能看到。">
+      <Group label="账号" footer="入学年份要改的话，先提交申请，系统管理员同意后才生效。专业可以随时更改。邮箱只有你自己能看到。">
         <Row label="邮箱" value={member.email} />
-        <Row label="入学年份" value={enrollmentYearLabel(member.graduationYear)} />
+        <Row
+          label="入学年份"
+          value={pendingYear !== null ? `${enrollmentYearLabel(member.graduationYear)} · 待同意 ${pendingYear}` : enrollmentYearLabel(member.graduationYear)}
+          onClick={() => setScreen('year')}
+        />
         <Row label="状态" value={status} />
         <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} onClick={() => setScreen('programs')} />
         {alumni ? null : (

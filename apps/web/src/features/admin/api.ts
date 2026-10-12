@@ -24,6 +24,12 @@ export const adminApi = {
       body: { graduationYear, enrollmentStatus },
     }),
   setActingRole: (role: Role | null) => api<{ member: MemberSelf }>('/admin/acting-role', { method: 'POST', body: { role } }),
+  enrollmentYearRequests: () =>
+    api<{
+      requests: { id: string; memberId: string; displayName: string; email: string; currentYear: number; requestedYear: number; createdAt: string }[];
+    }>('/admin/enrollment-year-requests'),
+  decideEnrollmentYear: (id: string, decision: 'approve' | 'reject') =>
+    api<{ ok: true }>(`/admin/enrollment-year-requests/${encodeURIComponent(id)}/${decision}`, { method: 'POST' }),
   createChannel: (body: CreateChannelBody) => api<{ channel: unknown }>('/channels', { method: 'POST', body }),
   events: () => api<{ events: EventRecord[] }>('/admin/events'),
   createEvent: (body: CreateEventBody) => api<{ event: EventRecord }>('/admin/events', { method: 'POST', body }),

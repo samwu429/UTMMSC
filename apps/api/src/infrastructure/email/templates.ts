@@ -37,6 +37,15 @@ export function applicationRejectedMail(to: string, displayName: string): MailMe
   return { to: [{ email: to, name: displayName }], subject: 'UTMMSC 成员申请结果', text, html };
 }
 
+export function enrollmentYearDecisionMail(to: string, displayName: string, year: number, approved: boolean): MailMessage {
+  const subject = approved ? 'UTMMSC 入学年份已更新' : 'UTMMSC 入学年份申请未通过';
+  const text = approved
+    ? `${displayName}，系统管理员已同意把你的入学年份改为 ${year} 年。`
+    : `${displayName}，系统管理员没有同意把入学年份改为 ${year} 年。现在的年份保持不变。`;
+  const html = wrap(approved ? '入学年份已更新' : '入学年份申请未通过', `<p>${escapeHtml(text)}</p>`);
+  return { to: [{ email: to, name: displayName }], subject, text, html };
+}
+
 export function announcementMail(to: { email: string; name: string }[], title: string, body: string, appBaseUrl: string): MailMessage {
   const html = wrap(
     title,

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, PROGRAM_MAJOR_MAX, canonicalizeProgramMajor, isPresetAvatarId, presetAvatarKey } from '@utmmsc/shared';
+import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, PROGRAM_MAJOR_MAX, canonicalizeProgramMajor, isPresetAvatarId, isValidAdminEnrollmentYear, presetAvatarKey } from '@utmmsc/shared';
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
 import { avatarObjectKey, coverObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
@@ -12,12 +12,13 @@ import {
   listFeed,
 } from '../../../infrastructure/d1/profile';
 import { findMemberById, markGraduated, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { cancelPendingYearRequest, findPendingYearRequest, savePendingYearRequest } from '../../../infrastructure/d1/enrollment-requests';
 import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
 import { badRequest, notFound } from '../../errors';
 import { rateLimit } from '../../middleware/rate-limit';
-import { optionalString, readJson } from '../../validation';
+import { optionalString, readJson, requireInteger } from '../../validation';
 
 const FEED_LIMIT = 40;
 
@@ -132,6 +133,30 @@ profileRoutes.post('/me/media', rateLimit(30, 60_000), async (c) => {
   const key = momentObjectKey(member.id, contentType);
   await putObject(requireBucket(c.env), key, bytes, contentType);
   return c.json({ key, contentType, kind: described.kind }, 201);
+});
+
+function toYearRequest(row: { id: string; requested_year: number; created_at: string }) {
+  return { id: row.id, requestedYear: row.requested_year, createdAt: row.created_at };
+}
+
+profileRoutes.get('/me/enrollment-year-request', async (c) => {
+  const pending = await findPendingYearRequest(c.env.DB, c.get('member').id);
+  return c.json({ request: pending ? toYearRequest(pending) : null });
+});
+
+profileRoutes.post('/me/enrollment-year-request', async (c) => {
+  const member = c.get('member');
+  const body = await readJson<Record<string, unknown>>(c);
+  const year = requireInteger(body.graduationYear, '入学年份');
+  if (!isValidAdminEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
+  if (year === member.graduation_year) throw badRequest('same_year', '这就是现在的入学年份');
+  const saved = await savePendingYearRequest(c.env.DB, member.id, year);
+  return c.json({ request: toYearRequest(saved) });
+});
+
+profileRoutes.delete('/me/enrollment-year-request', async (c) => {
+  await cancelPendingYearRequest(c.env.DB, c.get('member').id);
+  return c.json({ ok: true });
 });
 
 profileRoutes.post('/me/graduate', async (c) => {

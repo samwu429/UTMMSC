@@ -17,7 +17,8 @@ import {
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
-import { announcementMail, applicationApprovedMail, applicationRejectedMail } from '../../../infrastructure/email/templates';
+import { announcementMail, applicationApprovedMail, applicationRejectedMail, enrollmentYearDecisionMail } from '../../../infrastructure/email/templates';
+import { findYearRequest, listPendingYearRequests, reviewYearRequest } from '../../../infrastructure/d1/enrollment-requests';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
@@ -113,6 +114,40 @@ adminRoutes.post('/members/:id/enrollment', async (c) => {
   const status: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : requested;
   await correctEnrollment(c.env.DB, target, year, status);
   return c.json({ ok: true, graduationYear: year, enrollmentStatus: status });
+});
+
+adminRoutes.get('/enrollment-year-requests', async (c) => {
+  if (c.get('member').role !== 'superadmin') throw forbidden('只有系统管理员可以查看入学年份申请');
+  const rows = await listPendingYearRequests(c.env.DB);
+  return c.json({
+    requests: rows.map((row) => ({
+      id: row.id,
+      memberId: row.member_id,
+      displayName: row.display_name,
+      email: row.email,
+      currentYear: row.graduation_year,
+      requestedYear: row.requested_year,
+      createdAt: row.created_at,
+    })),
+  });
+});
+
+adminRoutes.post('/enrollment-year-requests/:id/:decision', async (c) => {
+  const actor = c.get('member');
+  if (actor.role !== 'superadmin') throw forbidden('只有系统管理员可以处理入学年份申请');
+  const decision = requireOneOf(c.req.param('decision'), ['approve', 'reject'] as const, '决定');
+  const request = await findYearRequest(c.env.DB, c.req.param('id'));
+  if (!request || request.status !== 'pending') throw notFound('申请不存在或已处理');
+  if (decision === 'approve') {
+    const target = await findMemberById(c.env.DB, request.member_id);
+    if (!target) throw notFound('成员不存在');
+    const status: EnrollmentStatus = shouldGraduate(request.requested_year, 'student') ? 'alumni' : target.enrollment_status;
+    await correctEnrollment(c.env.DB, target, request.requested_year, status);
+  }
+  await reviewYearRequest(c.env.DB, request.id, decision === 'approve' ? 'approved' : 'rejected', actor.id);
+  const mail = enrollmentYearDecisionMail(request.email, request.display_name, request.requested_year, decision === 'approve');
+  c.executionCtx.waitUntil(sendMail(mailConfig(c.env), mail));
+  return c.json({ ok: true, status: decision === 'approve' ? 'approved' : 'rejected' });
 });
 
 /* Events */
