@@ -50,3 +50,17 @@ export function translationFromMyMemory(payload: unknown): string | null {
   if (!text || UNUSABLE.test(text)) return null;
   return text.length > 4000 ? text.slice(0, 4000) : text;
 }
+
+/** Google's translate endpoint returns segments as the first array of string tuples. */
+/** Google 翻译接口把分段放在第一层数组里，每段的第一项是译文。 */
+export function translationFromGoogle(payload: unknown): string | null {
+  if (!Array.isArray(payload) || !Array.isArray(payload[0])) return null;
+  const parts: string[] = [];
+  for (const segment of payload[0]) {
+    if (!Array.isArray(segment) || typeof segment[0] !== 'string') return null;
+    parts.push(segment[0]);
+  }
+  const text = parts.join('').trim();
+  if (!text) return null;
+  return text.length > 4000 ? text.slice(0, 4000) : text;
+}

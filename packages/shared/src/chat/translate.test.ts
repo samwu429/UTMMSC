@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRANSLATE_MAX_BYTES, planTranslation, translationFromMyMemory } from './translate';
+import { TRANSLATE_MAX_BYTES, planTranslation, translationFromGoogle, translationFromMyMemory } from './translate';
 
 describe('planTranslation', () => {
   it('pairs Chinese and English in either direction', () => {
@@ -36,5 +36,16 @@ describe('translationFromMyMemory', () => {
     expect(translationFromMyMemory({ responseStatus: 429, responseData: { translatedText: 'secret' } })).toBeNull();
     expect(translationFromMyMemory(null)).toBeNull();
     expect(translationFromMyMemory({ responseStatus: 200, responseData: {} })).toBeNull();
+  });
+});
+
+describe('translationFromGoogle', () => {
+  it('joins every segment', () => {
+    expect(translationFromGoogle([[['Hello', '你好'], [' there', '啊']]])).toBe('Hello there');
+  });
+
+  it('rejects a payload that is not a translation', () => {
+    expect(translationFromGoogle(null)).toBeNull();
+    expect(translationFromGoogle([[['ok', '好'], 'nope']])).toBeNull();
   });
 });

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTr } from '../../../shared/i18n/locale';
 import { AccountPanel } from '../panels/AccountPanel';
 import { ProfilePanel } from '../panels/ProfilePanel';
 
 const TABS = [
-  { id: 'profile', label: '资料' },
-  { id: 'settings', label: '设置' },
+  { id: 'profile', zh: '资料', en: 'Profile' },
+  { id: 'settings', zh: '设置', en: 'Settings' },
 ] as const;
 
 type Tab = (typeof TABS)[number]['id'];
@@ -20,6 +21,7 @@ export function SettingsPage() {
   const [params, setParams] = useSearchParams();
   const tab = tabFromQuery(params.get('tab'));
   const [pushed, setPushed] = useState(false);
+  const tr = useTr();
 
   function select(next: Tab) {
     setPushed(false);
@@ -42,7 +44,7 @@ export function SettingsPage() {
                 className={`min-h-11 flex-1 text-[15px] ${on ? 'font-medium text-brand-800' : 'text-stone-400'}`}
               >
                 <span className="inline-flex min-h-11 flex-col items-center justify-center">
-                  {item.label}
+                  {tr(item.zh, item.en)}
                   <span className={`mt-1 h-[3px] w-8 ${on ? 'bg-gold' : 'bg-transparent'}`} />
                 </span>
               </button>

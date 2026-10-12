@@ -1,18 +1,20 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { directRoomId, enrollmentYearLabel, isHonoraryRole, ROLE_LABELS, showsEnrollment, type DirectConversationSummary } from '@utmmsc/shared';
+import { directRoomId, isHonoraryRole, showsEnrollment, type DirectConversationSummary } from '@utmmsc/shared';
 import { formatRelative } from '../../../shared/format/time';
+import { useLabels } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List } from '../../../shared/ui/Card';
 import { UnreadDot } from '../components/UnreadDot';
 
 export function DirectList({ conversations }: { conversations: DirectConversationSummary[] }) {
   const navigate = useNavigate();
+  const { tr, role, year } = useLabels();
   if (conversations.length === 0) {
     return (
       <div>
-        <EmptyState>还没有私聊。加了好友之后，才能在这里发私信。</EmptyState>
+        <EmptyState>{tr('还没有私聊。加了好友之后，才能在这里发私信。', 'No direct messages yet. Add a friend first.')}</EmptyState>
         <Button variant="secondary" block onClick={() => navigate('/chat?tab=members')}>
-          去加好友
+          {tr('去加好友', 'Add a friend')}
         </Button>
       </div>
     );
@@ -29,11 +31,11 @@ export function DirectList({ conversations }: { conversations: DirectConversatio
               {dm.peer.displayName}
               <span className="ml-1.5 text-xs font-normal text-stone-400">
                 {showsEnrollment(dm.peer.role)
-                  ? `${enrollmentYearLabel(dm.peer.graduationYear)}${isHonoraryRole(dm.peer.role) ? ` · ${ROLE_LABELS[dm.peer.role]}` : ''}`
-                  : ROLE_LABELS[dm.peer.role]}
+                  ? `${year(dm.peer.graduationYear)}${isHonoraryRole(dm.peer.role) ? ` · ${role(dm.peer.role)}` : ''}`
+                  : role(dm.peer.role)}
               </span>
             </p>
-            <p className="truncate text-sm text-stone-500">{dm.lastPreview ?? '开始聊天'}</p>
+            <p className="truncate text-sm text-stone-500">{dm.lastPreview ?? tr('开始聊天', 'Start chatting')}</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="text-xs text-stone-400">{formatRelative(dm.lastMessageAt)}</span>

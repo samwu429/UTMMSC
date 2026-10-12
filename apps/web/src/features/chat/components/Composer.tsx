@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { CHAT_IMAGE_MAX_BYTES, CHAT_IMAGE_TYPES, MESSAGE_TEXT_MAX } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { chatApi } from '../api';
 
 interface Props {
@@ -15,6 +16,7 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const tr = useTr();
 
   function submit(e?: FormEvent) {
     e?.preventDefault();
@@ -33,11 +35,11 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
 
   async function pickImage(file: File) {
     if (!(CHAT_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-      onError('只支持 JPEG、PNG、WebP、GIF');
+      onError(tr('只支持 JPEG、PNG、WebP、GIF', 'Only JPEG, PNG, WebP, and GIF images are supported'));
       return;
     }
     if (file.size > CHAT_IMAGE_MAX_BYTES) {
-      onError('图片不能超过 8MB');
+      onError(tr('图片不能超过 8MB', 'Images must be 8MB or smaller'));
       return;
     }
     setUploading(true);
@@ -56,7 +58,7 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
   return (
     <form onSubmit={submit} className="flex items-end gap-2 border-t-[3px] border-gold bg-white px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
       <input ref={fileRef} type="file" accept={CHAT_IMAGE_TYPES.join(',')} className="hidden" onChange={(e) => e.target.files?.[0] && pickImage(e.target.files[0])} />
-      <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || uploading} className="mb-0.5 h-9 w-9 shrink-0 text-xl text-stone-500 disabled:opacity-40" aria-label="发送图片">
+      <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || uploading} className="mb-0.5 h-9 w-9 shrink-0 text-xl text-stone-500 disabled:opacity-40" aria-label={tr('发送图片', 'Send an image')}>
         {uploading ? '…' : '＋'}
       </button>
       <textarea
@@ -65,11 +67,11 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
         onKeyDown={onKeyDown}
         rows={1}
         disabled={disabled}
-        placeholder={placeholder ?? (disabled ? '此频道不允许你发言' : '输入消息')}
+        placeholder={placeholder ?? (disabled ? tr('此频道不允许你发言', 'You cannot post in this channel') : tr('输入消息', 'Message'))}
         className="max-h-32 flex-1 resize-none rounded-2xl border border-stone-300 bg-white px-3 py-2 outline-none focus:border-brand-800 disabled:bg-stone-100"
       />
       <button type="submit" disabled={disabled || !text.trim()} className="mb-0.5 h-9 shrink-0 rounded-md bg-brand-800 px-3.5 text-sm font-medium text-white disabled:bg-stone-200 disabled:text-stone-400">
-        发送
+        {tr('发送', 'Send')}
       </button>
     </form>
   );

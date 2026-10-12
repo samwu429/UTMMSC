@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ChatOverviewResponse } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
 import { DirectoryPage } from '../../directory/pages/DirectoryPage';
 import { chatApi } from '../api';
@@ -20,6 +21,7 @@ export function ChatOverviewPage() {
   const tab = tabFromQuery(params.get('tab'));
   const [data, setData] = useState<ChatOverviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tr = useTr();
 
   useEffect(() => {
     let cancelled = false;
@@ -47,14 +49,14 @@ export function ChatOverviewPage() {
 
   return (
     <div>
-      <PageTitle>聊天</PageTitle>
+      <PageTitle>{tr('聊天', 'Chat')}</PageTitle>
       <div className="-mx-4 border-b border-stone-200 bg-white">
         <div className="flex">
         {(
           [
-            ['channels', '频道', unreadChannels],
-            ['direct', '私聊', unreadDirect],
-            ['members', '成员', 0],
+            ['channels', tr('频道', 'Channels'), unreadChannels],
+            ['direct', tr('私聊', 'Direct'), unreadDirect],
+            ['members', tr('成员', 'Members'), 0],
           ] as const
         ).map(([key, label, unread]) => (
           <button

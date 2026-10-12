@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hasPermission, parseRoomId } from '@utmmsc/shared';
+import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
@@ -16,6 +17,7 @@ import { useRoomSocket } from '../transport/useRoomSocket';
  * 独立于标签外壳的全屏房间视图。新消息时滚动贴底，加载更早历史时保持原位置。
  */
 export function RoomPage() {
+  const tr = useTr();
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
   const member = useSessionStore((s) => s.member);
@@ -69,24 +71,24 @@ export function RoomPage() {
   }
 
   const error = room.error ?? localError;
-  const title = parsed?.kind === 'direct' ? '私聊' : '频道';
+  const title = parsed?.kind === 'direct' ? tr('私聊', 'Direct') : tr('频道', 'Channel');
 
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col bg-canvas">
       <BackHeader
         flush
         to="/chat"
-        label="聊天"
+        label={tr('聊天', 'Chat')}
         title={title}
         trailing={
           <span className="truncate text-xs text-stone-400">
-            {socketOpen ? `${room.onlineCount} 人在线` : room.status === 'connecting' ? '连接中…' : room.retrying ? '重连中' : '未连接'}
+            {socketOpen ? tr(`${room.onlineCount} 人在线`, `${room.onlineCount} online`) : room.status === 'connecting' ? tr('连接中…', 'Connecting…') : room.retrying ? tr('重连中', 'Reconnecting') : tr('未连接', 'Offline')}
           </span>
         }
       />
 
       <div ref={listRef} onScroll={onScroll} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
-        {room.hasMore ? <p className="text-center text-xs text-slate-400">上拉加载更早的消息</p> : null}
+        {room.hasMore ? <p className="text-center text-xs text-slate-400">{tr('上拉加载更早的消息', 'Scroll up for earlier messages')}</p> : null}
         {room.messages.map((m) => (
           <MessageBubble
             key={m.id}
@@ -114,7 +116,7 @@ export function RoomPage() {
               }}
               className="ml-2 inline-flex min-h-11 items-center font-medium"
             >
-              关闭
+              {tr('关闭', 'Close')}
             </button>
           </Notice>
         </div>
@@ -123,21 +125,21 @@ export function RoomPage() {
       <Composer
         roomId={roomId}
         disabled={!socketOpen || blocked}
-        placeholder={blocked ? '此频道不允许你发言' : socketOpen ? '输入消息' : '连接中…'}
+        placeholder={blocked ? tr('此频道不允许你发言', 'You cannot post in this channel') : socketOpen ? tr('输入消息', 'Message') : tr('连接中…', 'Connecting…')}
         onSend={room.send}
         onError={setLocalError}
       />
       {muteId ? (
-        <Sheet title="禁言时长" onClose={() => setMuteId(null)}>
+        <Sheet title={tr('禁言时长', 'Mute for')} onClose={() => setMuteId(null)}>
           <div className="space-y-2">
             <Button block variant="secondary" onClick={() => chooseMute(10)}>
-              10 分钟
+              {tr('10 分钟', '10 minutes')}
             </Button>
             <Button block variant="secondary" onClick={() => chooseMute(60)}>
-              1 小时
+              {tr('1 小时', '1 hour')}
             </Button>
             <Button block variant="secondary" onClick={() => chooseMute(1440)}>
-              1 天
+              {tr('1 天', '1 day')}
             </Button>
           </div>
         </Sheet>

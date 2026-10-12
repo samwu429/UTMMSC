@@ -20,7 +20,7 @@ import { findChannel, listChannels, listMembershipChannelIds } from '../../../in
 import { findDirect, listDirectForMember, openDirect } from '../../../infrastructure/d1/direct';
 import { areFriends, listFriendIds } from '../../../infrastructure/d1/friends';
 import { findMemberById, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
-import { fetchMyMemoryTranslation, takeTranslateSlot } from '../../../domain/messaging/translate';
+import { fetchTranslation, takeTranslateSlot } from '../../../domain/messaging/translate';
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
 import type { ChatRoom } from '../../../realtime/rooms/chat-room';
 import type { Env } from '../../../env';
@@ -142,7 +142,7 @@ chatRoutes.post('/translate', rateLimit(15, 60_000), requireSession, async (c) =
     if (plan.error === 'too_long') throw badRequest('text_too_long', '这段内容较长，暂时只能翻译较短的文字');
     throw badRequest('missing_field', '缺少 文本');
   }
-  const translated = await fetchMyMemoryTranslation(plan.text, plan.pair);
+  const translated = await fetchTranslation(plan.text, plan.source, plan.target);
   if (!translated) throw serviceUnavailable('translate_unavailable', '翻译服务暂时不可用，请稍后再试');
   const response: TranslateMessageResponse = { text: translated, sourceLang: plan.source, targetLang: plan.target };
   return c.json(response);

@@ -1,6 +1,6 @@
-import { ROLE_LABELS } from '@utmmsc/shared';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
 import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
@@ -19,6 +19,14 @@ const LEFT_NAV: NavItem[] = [
 ];
 
 const RIGHT_NAV: NavItem[] = [{ to: '/settings', label: '我的', icon: 'me' }];
+
+const NAV_EN: Record<string, string> = {
+  首页: 'Home',
+  小程序: 'Mini apps',
+  我的: 'Me',
+  发现: 'Discover',
+  聊天: 'Chat',
+};
 
 function TabIcon({ name }: { name: IconName }) {
   const common = {
@@ -90,24 +98,27 @@ function TabFace({ icon, label, active }: { icon: IconName; label: string; activ
 }
 
 function SideTab({ item }: { item: NavItem }) {
+  const { tr } = useLabels();
   return (
     <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => tabClass(isActive)}>
-      {({ isActive }) => <TabFace icon={item.icon} label={item.label} active={isActive} />}
+      {({ isActive }) => <TabFace icon={item.icon} label={tr(item.label, NAV_EN[item.label] ?? item.label)} active={isActive} />}
     </NavLink>
   );
 }
 
 function DiscoverTab() {
+  const { tr } = useLabels();
   const { pathname } = useLocation();
   const isActive = pathname.startsWith('/discover') || pathname.startsWith('/files') || pathname.startsWith('/admin');
   return (
     <NavLink to="/discover" className={tabClass(isActive)}>
-      <TabFace icon="discover" label="发现" active={isActive} />
+      <TabFace icon="discover" label={tr('发现', 'Discover')} active={isActive} />
     </NavLink>
   );
 }
 
 function ChatTab() {
+  const { tr } = useLabels();
   const { pathname } = useLocation();
   const isActive = pathname === '/chat' || pathname.startsWith('/directory');
   const wasActive = useRef(isActive);
@@ -137,7 +148,7 @@ function ChatTab() {
           <TabIcon name="chat" />
         </span>
       </span>
-      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${isActive ? 'font-medium' : 'text-brand-700'}`}>聊天</span>
+      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${isActive ? 'font-medium' : 'text-brand-700'}`}>{tr('聊天', 'Chat')}</span>
       <span className={`mt-1 h-[3px] w-4 rounded-full ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
     </NavLink>
   );
@@ -146,6 +157,7 @@ function ChatTab() {
 /** Mobile-first shell: scrolling content above a fixed bottom tab bar. */
 /** 手机优先的外壳：内容区在上，固定的底部标签栏在下。 */
 export function AppShell() {
+  const { tr, role } = useLabels();
   const setMember = useSessionStore((s) => s.setMember);
   const member = useSessionStore((s) => s.member);
   const setMediaToken = useSessionStore((s) => s.setMediaToken);
@@ -166,7 +178,7 @@ export function AppShell() {
       <main className="flex-1 px-4 pb-28 pt-5">
         {member?.realRole === 'superadmin' && member.actingRole ? (
           <div className="-mx-4 mb-4 flex items-center justify-between gap-3 bg-brand-800 px-4 py-2 text-sm text-white">
-            <span className="min-w-0 truncate">正在以{ROLE_LABELS[member.actingRole]}测试</span>
+            <span className="min-w-0 truncate">{tr(`正在以${role(member.actingRole)}测试`, `Testing as ${role(member.actingRole)}`)}</span>
             <button
               type="button"
               className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-brand-800"
@@ -174,7 +186,7 @@ export function AppShell() {
                 adminApi.setActingRole(null).then((res) => setMember(res.member)).catch(() => undefined);
               }}
             >
-              回到系统管理员
+              {tr('回到系统管理员', 'Back to system administrator')}
             </button>
           </div>
         ) : null}

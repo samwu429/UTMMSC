@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MINI_APPS, type MiniApp } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { List, Notice, PageTitle } from '../../../shared/ui/Card';
 import { miniappApi } from '../api';
 
@@ -32,6 +33,7 @@ export function MiniappsPage() {
   const [pinned, setPinned] = useState<string[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tr = useTr();
 
   useEffect(() => {
     miniappApi.pins().then((res) => setPinned(res.ids)).catch((err) => setError(errorMessage(err)));
@@ -60,13 +62,13 @@ export function MiniappsPage() {
 
   return (
     <div>
-      <PageTitle>小程序</PageTitle>
+      <PageTitle>{tr('小程序', 'Mini apps')}</PageTitle>
       <p className="-mt-2 mb-6 text-[11px] leading-4 text-stone-400">Maintained and updated by technology department</p>
 
       <section>
-        <h2 className="mb-2 text-[15px] font-medium">我的收藏</h2>
+        <h2 className="mb-2 text-[15px] font-medium">{tr('我的收藏', 'Pinned')}</h2>
         {pinnedApps.length === 0 ? (
-          <p className="-mx-4 bg-white px-4 py-3 text-sm text-stone-500">点右侧星标，会固定在这里。</p>
+          <p className="-mx-4 bg-white px-4 py-3 text-sm text-stone-500">{tr('点右侧星标，会固定在这里。', 'Tap the star to pin an app here.')}</p>
         ) : (
           <div className="-mx-4 grid grid-cols-5 gap-y-3 bg-white px-1 py-3">
             {pinnedApps.map((app) => (
@@ -80,7 +82,7 @@ export function MiniappsPage() {
       </section>
 
       <section className="mt-7">
-        <h2 className="mb-2 text-[15px] font-medium">推荐</h2>
+        <h2 className="mb-2 text-[15px] font-medium">{tr('推荐', 'Recommended')}</h2>
         {error ? <div className="mb-3"><Notice tone="error">{error}</Notice></div> : null}
         <List>
           {recommended.map((app) => {
@@ -98,7 +100,7 @@ export function MiniappsPage() {
                   type="button"
                   disabled={busyId === app.id}
                   onClick={() => void toggle(app)}
-                  aria-label={on ? '取消收藏' : '收藏'}
+                  aria-label={on ? tr('取消收藏', 'Unpin') : tr('收藏', 'Pin')}
                   className={`flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40 ${on ? 'text-brand-800' : 'text-stone-300'}`}
                 >
                   <Star filled={on} />

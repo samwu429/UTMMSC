@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, formatStoredMajor, isHonoraryRole, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
+import { ROLE_GROUPS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, formatStoredMajor, isHonoraryRole, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useLabels, useLocaleStore } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
@@ -14,7 +15,7 @@ import { adminApi } from '../../admin/api';
 import { profileApi } from '../../profile/api';
 import { ProgramPicker } from '../../auth/components/ProgramPicker';
 
-type Screen = 'list' | 'password' | 'install' | 'programs' | 'year';
+type Screen = 'list' | 'password' | 'install' | 'programs' | 'year' | 'language';
 
 function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -47,7 +48,32 @@ function Row({ label, value, onClick }: { label: string; value?: string; onClick
   );
 }
 
+function LanguageScreen({ onBack }: { onBack: () => void }) {
+  const { tr } = useLabels();
+  const locale = useLocaleStore((s) => s.locale);
+  const setLocale = useLocaleStore((s) => s.setLocale);
+  return (
+    <div>
+      <BackHeader onBack={onBack} label={tr('设置', 'Settings')} title={tr('语言', 'Language')} />
+      <div className="mt-2 divide-y divide-stone-200 bg-white">
+        {(
+          [
+            ['zh', '中文'],
+            ['en', 'English'],
+          ] as const
+        ).map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setLocale(value)} className="flex min-h-12 w-full items-center px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
+            <span className="flex-1">{label}</span>
+            {locale === value ? <span aria-hidden>✓</span> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PasswordScreen({ onBack }: { onBack: () => void }) {
+  const { tr } = useLabels();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
@@ -61,7 +87,7 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
       await authApi.changePassword({ currentPassword: current, newPassword: next });
       setCurrent('');
       setNext('');
-      setMessage({ tone: 'success', text: '密码已更新' });
+      setMessage({ tone: 'success', text: tr('密码已更新', 'Password updated') });
     } catch (err) {
       setMessage({ tone: 'error', text: errorMessage(err) });
     } finally {
@@ -71,17 +97,17 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <div>
-      <BackHeader onBack={onBack} label="设置" title="修改密码" />
+      <BackHeader onBack={onBack} label={tr('设置', 'Settings')} title={tr('修改密码', 'Change password')} />
       <form onSubmit={changePassword} className="mt-2 space-y-3">
-        <Field label="当前密码">
+        <Field label={tr('当前密码', 'Current password')}>
           <TextInput type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} />
         </Field>
-        <Field label="新密码" hint="至少 8 位">
+        <Field label={tr('新密码', 'New password')} hint={tr('至少 8 位', 'At least 8 characters')}>
           <TextInput type="password" autoComplete="new-password" value={next} onChange={(event) => setNext(event.target.value)} />
         </Field>
         {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}
         <Button type="submit" block loading={busy}>
-          更新密码
+          {tr('更新密码', 'Update password')}
         </Button>
       </form>
     </div>
@@ -89,6 +115,7 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
 }
 
 function YearScreen({ onBack }: { onBack: () => void }) {
+  const { tr, year: yearLabel } = useLabels();
   const member = useSessionStore((s) => s.member);
   const [year, setYear] = useState(String(member?.graduationYear ?? ''));
   const [pendingYear, setPendingYear] = useState<number | null>(null);
@@ -134,13 +161,16 @@ function YearScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <div>
-      <BackHeader onBack={onBack} label="设置" title="入学年份" />
+      <BackHeader onBack={onBack} label={tr('设置', 'Settings')} title={tr('入学年份', 'Enrollment year')} />
       <form onSubmit={submit} className="mt-2 space-y-3">
         <p className="text-sm leading-relaxed text-stone-500">
-          现在是 {member ? enrollmentYearLabel(member.graduationYear) : ''}。提交后要等系统管理员同意，同意之前不会改。
+          {tr(
+            `现在是 ${member ? enrollmentYearLabel(member.graduationYear) : ''}。提交后要等系统管理员同意，同意之前不会改。`,
+            `Current year: ${member ? yearLabel(member.graduationYear) : ''}. A system administrator has to approve the change before it takes effect.`,
+          )}
         </p>
-        {pendingYear !== null ? <Notice>已提交改为 {pendingYear} 年，等待系统管理员同意。</Notice> : null}
-        <Field label="申请改为">
+        {pendingYear !== null ? <Notice>{tr(`已提交改为 ${pendingYear} 年，等待系统管理员同意。`, `Submitted a change to ${pendingYear}. Waiting for a system administrator.`)}</Notice> : null}
+        <Field label={tr('申请改为', 'Request')}>
           <Select value={year} onChange={(event) => setYear(event.target.value)}>
             {years.map((item) => (
               <option key={item} value={item}>
@@ -150,15 +180,15 @@ function YearScreen({ onBack }: { onBack: () => void }) {
           </Select>
         </Field>
         {member && member.enrollmentStatus === 'student' && shouldGraduate(Number(year), 'student') ? (
-          <p className="text-sm leading-relaxed text-stone-500">这个年份已经满五年，同意后会记为毕业生。</p>
+          <p className="text-sm leading-relaxed text-stone-500">{tr('这个年份已经满五年，同意后会记为毕业生。', 'This year is already five years ago. Approval will mark you as a graduate.')}</p>
         ) : null}
         {error ? <Notice tone="error">{error}</Notice> : null}
         <Button type="submit" block loading={busy} disabled={Number(year) === member?.graduationYear}>
-          提交申请
+          {tr('提交申请', 'Submit request')}
         </Button>
         {pendingYear !== null ? (
           <Button type="button" variant="secondary" block disabled={busy} onClick={() => void cancel()}>
-            撤回申请
+            {tr('撤回申请', 'Withdraw request')}
           </Button>
         ) : null}
       </form>
@@ -167,6 +197,7 @@ function YearScreen({ onBack }: { onBack: () => void }) {
 }
 
 function ProgramsScreen({ onBack }: { onBack: () => void }) {
+  const { tr } = useLabels();
   const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
   const stored = readStoredProgramCodes(member?.major);
@@ -193,13 +224,13 @@ function ProgramsScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <div>
-      <BackHeader onBack={onBack} label="设置" title="专业" />
+      <BackHeader onBack={onBack} label={tr('设置', 'Settings')} title={tr('专业', 'Program')} />
       <form onSubmit={save} className="mt-2 space-y-3">
-        <p className="text-sm leading-relaxed text-stone-500">专业可以随时更改，不用找管理员。</p>
+        <p className="text-sm leading-relaxed text-stone-500">{tr('专业可以随时更改，不用找管理员。', 'You can change your program anytime. An administrator does not need to approve it.')}</p>
         <ProgramPicker programs={programs} onChange={setPrograms} legacyMajor={stored.kind === 'legacy' ? stored.text : null} />
         {error ? <Notice tone="error">{error}</Notice> : null}
         <Button type="submit" block loading={busy} disabled={!choice.ready}>
-          保存
+          {tr('保存', 'Save')}
         </Button>
       </form>
     </div>
@@ -207,12 +238,15 @@ function ProgramsScreen({ onBack }: { onBack: () => void }) {
 }
 
 function InstallScreen({ onBack }: { onBack: () => void }) {
+  const { tr } = useLabels();
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   return (
     <div>
-      <BackHeader onBack={onBack} label="设置" title="添加到主屏幕" />
+      <BackHeader onBack={onBack} label={tr('设置', 'Settings')} title={tr('添加到主屏幕', 'Add to Home Screen')} />
       <p className="mt-4 text-[15px] leading-relaxed text-stone-700">
-        {ios ? '用 Safari 打开这个页面，点底部分享按钮，选「添加到主屏幕」。之后可以从主屏幕直接进来。' : '打开浏览器菜单，选「添加到主屏幕」或「安装应用」。之后可以从主屏幕直接进来。'}
+        {ios
+          ? tr('用 Safari 打开这个页面，点底部分享按钮，选「添加到主屏幕」。之后可以从主屏幕直接进来。', 'Open this page in Safari, tap the share button, and choose Add to Home Screen. You can then open it from the home screen.')
+          : tr('打开浏览器菜单，选「添加到主屏幕」或「安装应用」。之后可以从主屏幕直接进来。', 'Open the browser menu and choose Add to Home Screen or Install app. You can then open it from the home screen.')}
       </p>
     </div>
   );
@@ -227,6 +261,8 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const [graduateError, setGraduateError] = useState<string | null>(null);
   const [pendingYear, setPendingYear] = useState<number | null>(null);
   const ask = useConfirm();
+  const { tr, role, group, enrollment, year } = useLabels();
+  const locale = useLocaleStore((s) => s.locale);
   const installed = isStandalone();
 
   useEffect(() => {
@@ -250,9 +286,9 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
 
   async function graduate() {
     const ok = await ask({
-      title: '改为毕业生？',
-      body: '之后不能自己改回在校生。入学年份仍然不能修改。',
-      confirmLabel: '确认毕业',
+      title: tr('改为毕业生？', 'Mark yourself as a graduate?'),
+      body: tr('之后不能自己改回在校生。入学年份仍然不能修改。', 'You will not be able to switch yourself back to student. The enrollment year still cannot be edited directly.'),
+      confirmLabel: tr('确认毕业', 'Confirm'),
     });
     if (!ok) return;
     setGraduateError(null);
@@ -265,7 +301,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   }
 
   async function logout() {
-    const ok = await ask({ title: '退出登录？', confirmLabel: '退出', danger: true });
+    const ok = await ask({ title: tr('退出登录？', 'Sign out?'), confirmLabel: tr('退出', 'Sign out'), danger: true });
     if (!ok) return;
     try {
       await authApi.logout();
@@ -278,11 +314,12 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   if (screen === 'programs') return <ProgramsScreen onBack={() => setScreen('list')} />;
   if (screen === 'year') return <YearScreen onBack={() => setScreen('list')} />;
   if (screen === 'install') return <InstallScreen onBack={() => setScreen('list')} />;
+  if (screen === 'language') return <LanguageScreen onBack={() => setScreen('list')} />;
   if (!member) return null;
 
   const alumni = member.enrollmentStatus === 'alumni' || shouldGraduate(member.graduationYear, 'student');
-  const title = isHonoraryRole(member.role) ? ROLE_LABELS[member.role] : null;
-  const status = title ?? `${alumni ? ENROLLMENT_LABELS.alumni : ENROLLMENT_LABELS.student}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
+  const title = isHonoraryRole(member.role) ? role(member.role) : null;
+  const status = title ?? `${alumni ? enrollment('alumni') : enrollment('student')}${isStaffRole(member.role) ? ` · ${role(member.role)}` : ''}`;
   const campus = showsEnrollment(member.role);
 
   const real = member.realRole ?? member.role;
@@ -290,18 +327,18 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   return (
     <div className="space-y-2">
       {real === 'superadmin' ? (
-        <Group label="调试">
+        <Group label={tr('调试', 'Debug')}>
           <div className="px-4 py-3">
-            <p className="text-sm leading-relaxed text-stone-500">系统管理员一直保留。换一个职位后，就按那个职位的权限使用。</p>
+            <p className="text-sm leading-relaxed text-stone-500">{tr('系统管理员一直保留。换一个职位后，就按那个职位的权限使用。', 'You remain the system administrator. After you pick another role, the app uses that role’s permissions.')}</p>
             {actingError ? <div className="mt-2"><Notice tone="error">{actingError}</Notice></div> : null}
             <div className="mt-2">
               <Select value={member.actingRole ?? 'superadmin'} onChange={(event) => void switchActing(event.target.value)}>
-                <option value="superadmin">系统管理员</option>
-                {ROLE_GROUPS.filter((group) => group.label !== '系统').map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.roles.map((role) => (
-                      <option key={role} value={role}>
-                        {ROLE_LABELS[role]}
+                <option value="superadmin">{role('superadmin')}</option>
+                {ROLE_GROUPS.filter((item) => item.label !== '系统').map((item) => (
+                  <optgroup key={item.label} label={group(item.label)}>
+                    {item.roles.map((itemRole) => (
+                      <option key={itemRole} value={itemRole}>
+                        {role(itemRole)}
                       </option>
                     ))}
                   </optgroup>
@@ -316,41 +353,40 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
           <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-14 w-14 text-xl" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[18px] font-medium text-brand-800">{member.displayName}</span>
-            <span className="mt-0.5 block truncate text-sm text-stone-500">{member.headline || '去完善资料'}</span>
+            <span className="mt-0.5 block truncate text-sm text-stone-500">{member.headline || tr('去完善资料', 'Complete your profile')}</span>
           </span>
           <span className="shrink-0 text-stone-300"><ChevronIcon /></span>
         </button>
       </Group>
 
-      <Group label="账号" footer={campus ? '入学年份要改的话，先提交申请，系统管理员同意后才生效。专业可以随时更改。邮箱只有你自己能看到。' : '邮箱只有你自己能看到。'}>
-        <Row label="邮箱" value={member.email} />
+      <Group label={tr('账号', 'Account')} footer={campus ? tr('入学年份要改的话，先提交申请，系统管理员同意后才生效。专业可以随时更改。邮箱只有你自己能看到。', 'To change your enrollment year, submit a request. It takes effect after a system administrator approves it. You can change your program anytime. Only you can see your email.') : tr('邮箱只有你自己能看到。', 'Only you can see your email.')}>
+        <Row label={tr('邮箱', 'Email')} value={member.email} />
         {campus ? (
           <Row
-            label="入学年份"
-            value={pendingYear !== null ? `${enrollmentYearLabel(member.graduationYear)} · 待同意 ${pendingYear}` : enrollmentYearLabel(member.graduationYear)}
+            label={tr('入学年份', 'Enrollment year')}
+            value={pendingYear !== null ? `${year(member.graduationYear)} · ${tr(`待同意 ${pendingYear}`, `pending ${pendingYear}`)}` : year(member.graduationYear)}
             onClick={() => setScreen('year')}
           />
         ) : null}
-        <Row label="状态" value={status} />
-        {campus ? <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} onClick={() => setScreen('programs')} /> : null}
+        <Row label={tr('状态', 'Status')} value={status} />
+        {campus ? <Row label={tr('专业', 'Program')} value={formatStoredMajor(member.major) ?? tr('尚未选择专业', 'No program selected')} onClick={() => setScreen('programs')} /> : null}
         {campus && !alumni ? (
           <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
-            我已毕业
+            {tr('我已毕业', 'I have graduated')}
           </button>
         ) : null}
         {graduateError ? <div className="px-4 py-2"><Notice tone="error">{graduateError}</Notice></div> : null}
-        <Row label="修改密码" onClick={() => setScreen('password')} />
+        <Row label={tr('修改密码', 'Change password')} onClick={() => setScreen('password')} />
       </Group>
 
-      {installed ? null : (
-        <Group label="通用">
-          <Row label="添加到主屏幕" onClick={() => setScreen('install')} />
-        </Group>
-      )}
+      <Group label={tr('通用', 'General')}>
+        <Row label={tr('语言', 'Language')} value={locale === 'en' ? 'English' : '中文'} onClick={() => setScreen('language')} />
+        {installed ? null : <Row label={tr('添加到主屏幕', 'Add to Home Screen')} onClick={() => setScreen('install')} />}
+      </Group>
 
       <Group>
         <button type="button" onClick={() => void logout()} className="min-h-12 w-full text-center text-[16px] font-medium text-red-600 active:bg-stone-50">
-          退出登录
+          {tr('退出登录', 'Sign out')}
         </button>
       </Group>
     </div>

@@ -229,9 +229,10 @@ adminRoutes.post('/advisor-invites', async (c) => {
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (isUniversityEmail(email)) throw badRequest('university_email', '校友荣誉顾问请先用学校邮箱注册，再在成员身份里指定');
   if (await findMemberByEmail(c.env.DB, email)) throw badRequest('already_registered', '这个邮箱已经注册');
+  const lang = body.lang === 'en' ? 'en' : 'zh';
   const invite = await issueAdvisorInvite(c.env.DB, email, actor.id);
   const link = `${c.env.APP_BASE_URL}register?invite=${encodeURIComponent(invite.token)}`;
-  const sent = await sendMail(mailConfig(c.env), advisorInviteMail(email, link));
+  const sent = await sendMail(mailConfig(c.env), advisorInviteMail(email, link, lang));
   if (!sent) {
     await consumeAdvisorInvite(c.env.DB, invite.id);
     throw badRequest('mail_failed', '邮件发送失败，请稍后再试');

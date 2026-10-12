@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_LABELS, ENROLLMENT_STATUSES, enrollmentYearMax, type EnrollmentStatus, type FriendSummary, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
+import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_STATUSES, enrollmentYearMax, type EnrollmentStatus, type FriendSummary, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useLabels } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
@@ -23,6 +24,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
   const [friends, setFriends] = useState<FriendSummary | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const selfId = useSessionStore((s) => s.member?.id);
+  const { tr, enrollment: enrollmentLabel, year: yearLabel } = useLabels();
 
   useEffect(() => {
     friendsApi.summary().then(setFriends).catch(() => undefined);
@@ -107,10 +109,10 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div className="space-y-4">
-      {embedded ? null : <PageTitle>成员</PageTitle>}
+      {embedded ? null : <PageTitle>{tr('成员', 'Members')}</PageTitle>}
       {friends && friends.incoming.length > 0 ? (
         <div>
-          <h2 className="mb-2 text-[15px] font-medium text-brand-800">新的朋友</h2>
+          <h2 className="mb-2 text-[15px] font-medium text-brand-800">{tr('新的朋友', 'New friends')}</h2>
           <List>
             {friends.incoming.map((card) => (
               <MemberRow key={card.member.id} member={card.member} friendship="incoming" busy={busyId === card.member.id} onAccept={() => accept(card.member.id)} />
@@ -118,21 +120,21 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
           </List>
         </div>
       ) : null}
-      <TextInput placeholder="搜索姓名、专业、技能或所在地" value={q} onChange={(e) => setQ(e.target.value)} />
+      <TextInput placeholder={tr('搜索姓名、专业、技能或所在地', 'Search name, program, skills, or location')} value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid grid-cols-2 gap-3">
         <Select value={enrollment} onChange={(e) => setEnrollment(e.target.value as EnrollmentStatus | '')}>
-          <option value="">全部状态</option>
+          <option value="">{tr('全部状态', 'Any status')}</option>
           {ENROLLMENT_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {ENROLLMENT_LABELS[s]}
+              {enrollmentLabel(s)}
             </option>
           ))}
         </Select>
         <Select value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="">全部入学年份</option>
+          <option value="">{tr('全部入学年份', 'Any enrollment year')}</option>
           {YEARS.map((y) => (
             <option key={y} value={y}>
-              {y} 年入学
+              {yearLabel(y)}
             </option>
           ))}
         </Select>
@@ -140,7 +142,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
       {error ? <Notice tone="error">{error}</Notice> : null}
       {loading ? <Spinner /> : members.length === 0 ? (
         <div className="text-center">
-          <EmptyState>没有匹配的成员</EmptyState>
+          <EmptyState>{tr('没有匹配的成员', 'No matching members')}</EmptyState>
           {q || enrollment || year ? (
             <Button
               variant="secondary"
@@ -150,7 +152,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
                 setYear('');
               }}
             >
-              清除筛选
+              {tr('清除筛选', 'Clear filters')}
             </Button>
           ) : null}
         </div>
@@ -173,7 +175,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
           ) : null}
           {cursor ? (
             <Button variant="secondary" block onClick={loadMore}>
-              加载更多
+              {tr('加载更多', 'Load more')}
             </Button>
           ) : null}
         </div>

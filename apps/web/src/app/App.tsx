@@ -1,3 +1,4 @@
+import { useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { hasPermission } from '@utmmsc/shared';
 import { AdminPage } from '../features/admin/pages/AdminPage';
@@ -14,6 +15,7 @@ import { FilesPage } from '../features/files/pages/FilesPage';
 import { HomePage } from '../features/home/pages/HomePage';
 import { MiniappsPage } from '../features/miniapps/pages/MiniappsPage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
+import { useLocaleStore } from '../shared/i18n/locale';
 import { useSessionStore } from '../shared/session/store';
 import { ConfirmProvider } from '../shared/ui/confirm';
 import { AppShell } from './layout/AppShell';
@@ -39,8 +41,17 @@ function RequireStaff() {
   return allowed ? <Outlet /> : <Navigate to="/" replace />;
 }
 
+function LocaleRoot({ children }: { children: ReactNode }) {
+  const locale = useLocaleStore((s) => s.locale);
+  useEffect(() => {
+    document.documentElement.lang = locale === 'en' ? 'en' : 'zh-CN';
+  }, [locale]);
+  return children;
+}
+
 export function App() {
   return (
+    <LocaleRoot>
     <BrowserRouter basename="/UTMMSC">
       <ConfirmProvider>
       <Routes>
@@ -72,5 +83,6 @@ export function App() {
       <SplashScreen />
       </ConfirmProvider>
     </BrowserRouter>
+    </LocaleRoot>
   );
 }

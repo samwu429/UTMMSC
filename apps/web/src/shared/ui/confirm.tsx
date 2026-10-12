@@ -1,4 +1,5 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
+import { useTr } from '../i18n/locale';
 import { Button } from './Button';
 
 interface ConfirmRequest {
@@ -19,6 +20,7 @@ export function useConfirm() {
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const resolver = useRef<((value: boolean) => void) | null>(null);
+  const tr = useTr();
 
   function ask(next: ConfirmRequest) {
     resolver.current?.(false);
@@ -49,7 +51,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             {request.body ? <p className="mt-2 text-sm leading-relaxed text-stone-600">{request.body}</p> : null}
             <div className="mt-4 grid grid-cols-2 gap-2">
               <Button variant="secondary" onClick={() => finish(false)}>
-                取消
+                {tr('取消', 'Cancel')}
               </Button>
               <Button variant={request.danger ? 'danger' : 'primary'} onClick={() => finish(true)}>
                 {request.confirmLabel ?? '确定'}

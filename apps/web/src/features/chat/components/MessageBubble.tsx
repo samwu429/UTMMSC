@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 
 import { createPortal } from 'react-dom';
 import { RECALL_WINDOW_MS, withinRecallWindow, type ChatMessage, type TranslateLang } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { formatMessageTime } from '../../../shared/format/time';
 import { Button } from '../../../shared/ui/Button';
 import { useConfirm } from '../../../shared/ui/confirm';
@@ -26,10 +27,10 @@ function languageName(lang: TranslateLang): string {
   return lang === 'zh-CN' ? '中文' : 'English';
 }
 
-function recallNotice(own: boolean, name: string): string {
-  if (own) return '你撤回了一条消息';
-  const who = name.trim() || '有人';
-  return `${who}撤回了一条消息`;
+function recallNotice(own: boolean, name: string, tr: (zh: string, en: string) => string): string {
+  if (own) return tr('你撤回了一条消息', 'You recalled a message');
+  const who = name.trim() || tr('有人', 'Someone');
+  return tr(`${who}撤回了一条消息`, `${who} recalled a message`);
 }
 
 function copyWithFallback(text: string): boolean {
@@ -57,6 +58,7 @@ function copyWithFallback(text: string): boolean {
  */
 export function MessageBubble({ message, own, canModerate, mediaToken, onDelete, onRecall, onMute, onOpenProfile }: Props) {
   const ask = useConfirm();
+  const tr = useTr();
   const [menuOpen, setMenuOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [translating, setTranslating] = useState(false);
@@ -71,7 +73,7 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
   const hasText = !message.deleted && !message.recalled && message.text.trim().length > 0;
   const canRecall = own && !message.deleted && !message.recalled && withinRecallWindow(message.createdAt, now);
   const canOpen = hasText || canRecall;
-  const profileLabel = `${message.author.displayName.trim() || '成员'}的资料`;
+  const profileLabel = tr(`${message.author.displayName.trim() || '成员'}的资料`, `${message.author.displayName.trim() || 'Member'}'s profile`);
 
   useEffect(() => {
     if (!own || message.deleted || message.recalled) return;
@@ -111,7 +113,6 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
   function openMenu(deferClose = false) {
     translateSeq.current += 1;
     setTranslating(false);
-    setTranslation(null);
     setStatus(null);
     setNow(Date.now());
     setMenuOpen(true);
@@ -185,16 +186,16 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
   }
 
   async function remove() {
-    const ok = await ask({ title: '删除这条消息？', confirmLabel: '删除', danger: true });
+    const ok = await ask({ title: tr('删除这条消息？', 'Delete this message?'), confirmLabel: tr('删除', 'Delete'), danger: true });
     if (ok) onDelete(message.id);
   }
 
   async function recall() {
     setMenuOpen(false);
     const ok = await ask({
-      title: '撤回这条消息？',
-      body: '撤回后，大家会看到一条撤回提示，原文不会再显示。',
-      confirmLabel: '撤回',
+      title: tr('撤回这条消息？', 'Recall this message?'),
+      body: tr('撤回后，大家会看到一条撤回提示，原文不会再显示。', 'Everyone will see a recall notice. The original text will no longer be shown.'),
+      confirmLabel: tr('撤回', 'Recall'),
       danger: true,
     });
     if (ok) onRecall(message.id);
@@ -206,13 +207,13 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
-        setStatus('已复制');
+        setStatus(tr('已复制', 'Copied'));
         return;
       }
     } catch {
       // The legacy path below covers browsers that block the async clipboard.
     }
-    setStatus(copyWithFallback(text) ? '已复制' : '复制失败');
+    setStatus(copyWithFallback(text) ? tr('已复制', 'Copied') : tr('复制失败', 'Could not copy'));
   }
 
   async function translate() {
@@ -224,6 +225,7 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
       const res = await chatApi.translate(message.text);
       if (request !== translateSeq.current) return;
       setTranslation({ text: res.text, label: `${languageName(res.sourceLang)} → ${languageName(res.targetLang)}` });
+      setMenuOpen(false);
     } catch (err) {
       if (request !== translateSeq.current) return;
       setStatus(errorMessage(err));
@@ -235,7 +237,7 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
   if (message.recalled && !message.deleted) {
     return (
       <p className="px-8 py-1 text-center text-[13px] leading-snug text-stone-400">
-        {recallNotice(own, message.author.displayName)}
+        {recallNotice(own, message.author.displayName, tr)}
         <span className="mx-1">·</span>
         {formatMessageTime(message.createdAt)}
       </p>
@@ -268,7 +270,7 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
           onPointerLeave={clearPress}
         >
           {message.deleted ? (
-            <span className="text-sm">消息已删除</span>
+            <span className="text-sm">{tr('消息已删除', 'Message deleted')}</span>
           ) : (
             <>
               {message.imageKey && mediaToken ? (
@@ -281,49 +283,54 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
         {!message.deleted && (canOpen || canDelete || (canModerate && !own)) ? (
           <div className={`mt-1 flex gap-3 text-xs text-stone-400 ${own ? 'flex-row-reverse' : ''}`}>
             {canOpen ? (
-              <button type="button" onClick={() => openMenu()} className="min-h-11 px-1" aria-label="消息操作">
+              <button type="button" onClick={() => openMenu()} className="min-h-11 px-1" aria-label={tr('消息操作', 'Message actions')}>
                 ···
               </button>
             ) : null}
             {canDelete ? (
               <button type="button" onClick={() => void remove()} className="min-h-11 px-1">
-                删除
+                {tr('删除', 'Delete')}
               </button>
             ) : null}
             {canModerate && !own ? (
               <button type="button" onClick={() => onMute(message.author.id)} className="min-h-11 px-1">
-                禁言
+                {tr('禁言', 'Mute')}
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {translation ? (
+          <div className="mt-1 w-full rounded-xl bg-white px-3 py-2 text-left text-[15px] leading-snug text-brand-800 ring-1 ring-stone-200">
+            <div className="mb-1 flex items-center gap-2 text-xs text-stone-500">
+              <span className="min-w-0 flex-1">{translation.label}</span>
+              <button type="button" className="px-1 text-base leading-none" onClick={() => setTranslation(null)} aria-label={tr('关闭译文', 'Hide translation')}>
+                ×
+              </button>
+            </div>
+            <p className="whitespace-pre-wrap break-words">{translation.text}</p>
           </div>
         ) : null}
       </div>
       {menuOpen
         ? createPortal(
-            <Sheet title="消息" closeLabel="关闭" onClose={closeMenu}>
+            <Sheet title={tr('消息', 'Message')} closeLabel={tr('关闭', 'Close')} onClose={closeMenu}>
               <div className="space-y-2">
                 {hasText ? (
                   <Button block variant="secondary" onClick={() => void copyText()}>
-                    复制
+                    {tr('复制', 'Copy')}
                   </Button>
                 ) : null}
                 {hasText ? (
                   <Button block variant="secondary" loading={translating} onClick={() => void translate()}>
-                    翻译
+                    {tr('翻译', 'Translate')}
                   </Button>
                 ) : null}
                 {canRecall ? (
                   <Button block variant="danger" onClick={() => void recall()}>
-                    撤回
+                    {tr('撤回', 'Recall')}
                   </Button>
                 ) : null}
                 {status ? <p className="text-sm text-stone-500">{status}</p> : null}
-                {translation ? (
-                  <div className="rounded-xl bg-brand-50 px-3 py-2 text-[15px] leading-snug text-brand-800">
-                    <p className="mb-1 text-xs text-stone-500">{translation.label}</p>
-                    <p className="whitespace-pre-wrap break-words">{translation.text}</p>
-                  </div>
-                ) : null}
               </div>
             </Sheet>,
             document.body,

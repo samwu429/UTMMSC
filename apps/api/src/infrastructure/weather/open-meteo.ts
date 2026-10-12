@@ -5,9 +5,11 @@ export interface WeatherNow {
   precipitationChance: number | null;
 }
 
-/** WMO weather interpretation codes mapped to short Chinese descriptions. */
-/** WMO 天气代码对应的简短中文描述。 */
-const WMO_DESCRIPTIONS: Record<number, string> = {
+export type WeatherLang = 'zh' | 'en';
+
+/** WMO weather interpretation codes mapped to short descriptions. */
+/** WMO 天气代码对应的简短描述。 */
+const WMO_ZH: Record<number, string> = {
   0: '晴',
   1: '大致晴朗',
   2: '多云',
@@ -38,6 +40,37 @@ const WMO_DESCRIPTIONS: Record<number, string> = {
   99: '雷暴伴冰雹',
 };
 
+const WMO_EN: Record<number, string> = {
+  0: 'Clear',
+  1: 'Mostly clear',
+  2: 'Cloudy',
+  3: 'Overcast',
+  45: 'Fog',
+  48: 'Freezing fog',
+  51: 'Light drizzle',
+  53: 'Drizzle',
+  55: 'Heavy drizzle',
+  56: 'Freezing drizzle',
+  57: 'Freezing drizzle',
+  61: 'Light rain',
+  63: 'Rain',
+  65: 'Heavy rain',
+  66: 'Freezing rain',
+  67: 'Freezing rain',
+  71: 'Light snow',
+  73: 'Snow',
+  75: 'Heavy snow',
+  77: 'Snow grains',
+  80: 'Rain showers',
+  81: 'Rain showers',
+  82: 'Heavy rain showers',
+  85: 'Snow showers',
+  86: 'Heavy snow showers',
+  95: 'Thunderstorm',
+  96: 'Thunderstorm with hail',
+  99: 'Thunderstorm with hail',
+};
+
 interface OpenMeteoResponse {
   current?: { temperature_2m?: number; apparent_temperature?: number; weather_code?: number };
   daily?: { precipitation_probability_max?: number[] };
@@ -48,7 +81,7 @@ interface OpenMeteoResponse {
  * screen does not hammer the upstream.
  * Open-Meteo 无需密钥。响应在边缘缓存三十分钟，避免首页频繁访问上游。
  */
-export async function fetchWeather(latitude: string, longitude: string, timezone: string): Promise<WeatherNow | null> {
+export async function fetchWeather(latitude: string, longitude: string, timezone: string, lang: WeatherLang = 'zh'): Promise<WeatherNow | null> {
   const url = new URL('https://api.open-meteo.com/v1/forecast');
   url.searchParams.set('latitude', latitude);
   url.searchParams.set('longitude', longitude);
@@ -66,7 +99,7 @@ export async function fetchWeather(latitude: string, longitude: string, timezone
     return {
       temperatureC: Math.round(current.temperature_2m),
       apparentC: Math.round(current.apparent_temperature ?? current.temperature_2m),
-      description: WMO_DESCRIPTIONS[code] ?? '未知',
+      description: (lang === 'en' ? WMO_EN : WMO_ZH)[code] ?? (lang === 'en' ? 'Unknown' : '未知'),
       precipitationChance: data.daily?.precipitation_probability_max?.[0] ?? null,
     };
   } catch {

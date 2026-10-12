@@ -6,11 +6,19 @@ const LOGO = `${SITE}brand/logo-horizontal.png`;
 const ORG_ZH = '多伦多大学密西沙加校区国语学者联盟';
 const ORG_EN = 'University of Toronto Mississauga Mandarin Scholars Coalition';
 
+export type LetterLang = 'zh' | 'en';
+
+function caution(lang: LetterLang): string {
+  return lang === 'en'
+    ? 'This letter was sent by the UTMMSC member network. Open only links on utmmsc.com. We never ask for your password by email.'
+    : '此信由 UTMMSC 成员网络发出。请只打开指向 utmmsc.com 的链接。我们不会在邮件里向你索要密码。';
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
 }
 
-function plainLetter(title: string, paragraphs: string[]): string {
+function plainLetter(title: string, paragraphs: string[], lang: LetterLang = 'zh'): string {
   return [
     'UTMMSC',
     ORG_ZH,
@@ -24,7 +32,7 @@ function plainLetter(title: string, paragraphs: string[]): string {
     '—',
     `${ORG_ZH}（${ORG_EN}）`,
     SITE,
-    '此信由 UTMMSC 成员网络发出。请只打开指向 utmmsc.com 的链接。我们不会在邮件里向你索要密码。',
+    caution(lang),
   ].join('\n');
 }
 
@@ -33,11 +41,11 @@ function plainLetter(title: string, paragraphs: string[]): string {
  * on a white sheet. The image is the SVG logo rendered for mail clients, which do not show SVG.
  * 所有邮件共用的信纸：刊头和落款都是正式标志。图片由 SVG 标志导出，因为邮件客户端不显示 SVG。
  */
-function wrap(title: string, bodyHtml: string, preheader: string): string {
+function wrap(title: string, bodyHtml: string, preheader: string, lang: LetterLang = 'zh'): string {
   const safeTitle = escapeHtml(title);
   const safePreheader = escapeHtml(preheader);
   return `<!doctype html>
-<html lang="zh">
+<html lang="${lang === 'en' ? 'en' : 'zh'}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -54,7 +62,7 @@ function wrap(title: string, bodyHtml: string, preheader: string): string {
 <div style="height:1px;line-height:1px;font-size:0;background:#5B2A86;">&nbsp;</div>
 </td></tr>
 <tr><td style="padding:28px 40px 8px;font-family:Georgia,'Times New Roman',serif;color:#2C2140;">
-<p style="margin:0 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:12px;letter-spacing:0.14em;color:#5B2A86;">成员信函</p>
+<p style="margin:0 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:12px;letter-spacing:0.14em;color:#5B2A86;">${lang === 'en' ? 'MEMBER LETTER' : '成员信函'}</p>
 <h1 style="margin:0 0 18px;font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:normal;line-height:1.3;color:#3C165F;">${safeTitle}</h1>
 <div style="font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.7;color:#2C2140;">${bodyHtml}</div>
 </td></tr>
@@ -65,7 +73,7 @@ function wrap(title: string, bodyHtml: string, preheader: string): string {
 <p style="margin:2px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:12px;line-height:1.5;color:#5B2A86;">${ORG_EN}</p>
 <p style="margin:12px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:12px;line-height:1.6;color:#6B6570;">
 <a href="${SITE}" style="color:#5B2A86;text-decoration:underline;">${SITE_LABEL}</a><br>
-此信由 UTMMSC 成员网络发出。请只打开指向 utmmsc.com 的链接。我们不会在邮件里向你索要密码。
+${caution(lang)}
 </p>
 </td></tr>
 </table>
@@ -129,7 +137,29 @@ export function enrollmentYearDecisionMail(to: string, displayName: string, year
   return { to: [{ email: to, name: displayName }], subject: `UTMMSC ${title}`, text, html };
 }
 
-export function advisorInviteMail(to: string, link: string): MailMessage {
+export function advisorInviteMail(to: string, link: string, lang: LetterLang = 'zh'): MailMessage {
+  if (lang === 'en') {
+    const title = 'External honorary advisor invitation';
+    const text = plainLetter(
+      title,
+      [
+        'You are invited to become an external honorary advisor of UTMMSC. Open the page below with the email address that received this letter and finish registration.',
+        link,
+        'That page can only create an external honorary advisor account. The link is valid for 14 days. If you were not expecting this letter, you can ignore it.',
+      ],
+      'en',
+    );
+    const html = wrap(
+      title,
+      `<p style="margin:0 0 12px;">Hello,</p>
+<p style="margin:0;">You are invited to become an external honorary advisor of UTMMSC. Open the page below with the email address that received this letter and finish registration. That page can only create an external honorary advisor account. The link is valid for 14 days.</p>
+${linkParagraph(link)}
+<p style="margin:0;">If you were not expecting this letter, you can ignore it.</p>`,
+      'You are invited to become an external honorary advisor of UTMMSC.',
+      'en',
+    );
+    return { to: [{ email: to }], subject: `UTMMSC ${title}`, text, html };
+  }
   const title = '校外荣誉顾问邀请';
   const text = plainLetter(title, [
     '你被邀请成为 UTMMSC 校外荣誉顾问。请用收到这封邮件的邮箱打开下面的页面完成注册。',

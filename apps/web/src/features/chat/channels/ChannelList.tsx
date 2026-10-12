@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
 import { channelRoomId, type ChannelSummary } from '@utmmsc/shared';
 import { formatRelative } from '../../../shared/format/time';
+import { useTr } from '../../../shared/i18n/locale';
 import { EmptyState, List } from '../../../shared/ui/Card';
 import { UnreadDot } from '../components/UnreadDot';
 
 export function ChannelList({ channels }: { channels: ChannelSummary[] }) {
-  if (channels.length === 0) return <EmptyState>还没有可见的频道</EmptyState>;
+  const tr = useTr();
+  if (channels.length === 0) return <EmptyState>{tr('还没有可见的频道', 'No channels yet')}</EmptyState>;
   return (
     <List>
       {channels.map((ch) => (

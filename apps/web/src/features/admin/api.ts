@@ -37,6 +37,6 @@ export const adminApi = {
   announce: (body: AnnouncementBody) => api<AnnouncementResponse>('/admin/announcements', { method: 'POST', body }),
   advisorInvites: () =>
     api<{ invites: { id: string; email: string; expiresAt: string; createdAt: string }[] }>('/admin/advisor-invites'),
-  sendAdvisorInvite: (email: string) =>
-    api<{ ok: true; email: string; expiresAt: string }>('/admin/advisor-invites', { method: 'POST', body: { email } }),
+  sendAdvisorInvite: (email: string, lang: 'zh' | 'en') =>
+    api<{ ok: true; email: string; expiresAt: string }>('/admin/advisor-invites', { method: 'POST', body: { email, lang } }),
 };

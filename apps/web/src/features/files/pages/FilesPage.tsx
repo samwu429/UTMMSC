@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { FILE_CATEGORIES, FILE_CATEGORY_LABELS, FILE_MAX_BYTES, hasPermission, type FileCategory, type FileRecord } from '@utmmsc/shared';
+import { FILE_CATEGORIES, FILE_MAX_BYTES, hasPermission, type FileCategory, type FileRecord } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useLabels } from '../../../shared/i18n/locale';
 import { formatBytes, formatRelative } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -18,6 +19,7 @@ export function FilesPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const ask = useConfirm();
+  const { tr, fileCategory } = useLabels();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export function FilesPage() {
 
   async function upload(file: File) {
     if (file.size > FILE_MAX_BYTES) {
-      setError('文件不能超过 25MB');
+      setError(tr('文件不能超过 25MB', 'Files must be 25MB or smaller'));
       return;
     }
     setError(null);
@@ -63,7 +65,7 @@ export function FilesPage() {
   }
 
   async function remove(file: FileRecord) {
-    const ok = await ask({ title: '删除这个文件？', body: file.fileName, confirmLabel: '删除', danger: true });
+    const ok = await ask({ title: tr('删除这个文件？', 'Delete this file?'), body: file.fileName, confirmLabel: tr('删除', 'Delete'), danger: true });
     if (!ok) return;
     try {
       await filesApi.remove(file.id);
@@ -77,14 +79,14 @@ export function FilesPage() {
     <div className="space-y-4">
       <BackHeader
         to="/discover"
-        label="发现"
-        title="文件"
+        label={tr('发现', 'Discover')}
+        title={tr('文件', 'Files')}
         trailing={
           canUpload ? (
             <>
               <input ref={inputRef} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
               <Button variant="secondary" onClick={() => inputRef.current?.click()} loading={uploading} className="py-2">
-                上传
+                {tr('上传', 'Upload')}
               </Button>
             </>
           ) : null
@@ -97,12 +99,12 @@ export function FilesPage() {
             onClick={() => setCategory(c)}
             className={`-mb-px shrink-0 border-b-[3px] pb-2 text-[15px] ${category === c ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
-            {FILE_CATEGORY_LABELS[c]}
+            {fileCategory(c)}
           </button>
         ))}
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
-      {files === null ? <Spinner /> : files.length === 0 ? <EmptyState>这个分类还没有文件</EmptyState> : null}
+      {files === null ? <Spinner /> : files.length === 0 ? <EmptyState>{tr('这个分类还没有文件', 'Nothing in this category yet')}</EmptyState> : null}
       {files && files.length > 0 ? (
         <List>
           {files.map((file) => (
@@ -122,7 +124,7 @@ export function FilesPage() {
                 </span>
               </button>
               {canManage || file.uploadedBy.id === member?.id ? (
-                <button onClick={() => remove(file)} aria-label={`删除${file.fileName}`} className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-400">
+                <button onClick={() => remove(file)} aria-label={tr(`删除${file.fileName}`, `Delete ${file.fileName}`)} className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-400">
                   <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
                     <path d="M5 7h14M9 7V5h6v2M8 7l.7 12h6.6L16 7" />
                   </svg>

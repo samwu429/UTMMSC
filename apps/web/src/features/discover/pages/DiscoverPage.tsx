@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { hasPermission } from '@utmmsc/shared';
+import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { List, PageTitle } from '../../../shared/ui/Card';
 import { ChevronIcon } from '../../profile/icons';
@@ -26,6 +27,7 @@ function Row({ to, title, icon }: { to: string; title: string; icon: ReactNode }
 }
 
 export function DiscoverPage() {
+  const tr = useTr();
   const member = useSessionStore((s) => s.member);
   const staff =
     member &&
@@ -35,11 +37,11 @@ export function DiscoverPage() {
 
   return (
     <div>
-      <PageTitle>发现</PageTitle>
+      <PageTitle>{tr('发现', 'Discover')}</PageTitle>
       <List>
         <Row
           to="/discover/feed"
-          title="好友动态"
+          title={tr('好友动态', 'Friend updates')}
           icon={
             <Glyph>
               <path d="M4 8.5h3l1.2-2h7.6L17 8.5h3v9H4v-9Z" />
@@ -49,7 +51,7 @@ export function DiscoverPage() {
         />
         <Row
           to="/files"
-          title="文件"
+          title={tr('文件', 'Files')}
           icon={
             <Glyph>
               <path d="M7 3.5h7l5 5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
@@ -63,7 +65,7 @@ export function DiscoverPage() {
           <List>
             <Row
               to="/admin"
-              title="管理"
+              title={tr('管理', 'Admin')}
               icon={
                 <Glyph>
                   <circle cx="12" cy="12" r="3" />
