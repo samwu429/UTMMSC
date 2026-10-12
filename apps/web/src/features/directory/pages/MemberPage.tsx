@@ -51,20 +51,28 @@ export function MemberPage() {
   const mine = self?.id === detail.member.id;
 
   return (
-    <div className="space-y-4">
-      <Link to="/directory" className="text-sm text-brand-800">
+    <div>
+      <Link to="/directory" className="mb-3 inline-block text-sm text-brand-800">
         ← 返回成员列表
       </Link>
-      <MemberProfileView member={detail.member} experiences={detail.experiences} posts={detail.posts} />
-      {mine ? (
-        <Link to="/settings" className="block text-center text-sm font-medium text-brand-800">
-          编辑我的资料
-        </Link>
-      ) : (
-        <Button block onClick={openDirect} loading={opening}>
-          发私信
-        </Button>
-      )}
+      <div className="-mx-4">
+        <MemberProfileView
+          member={detail.member}
+          experiences={detail.experiences}
+          posts={detail.posts}
+          action={
+            mine ? (
+              <Link to="/settings" className="text-[15px] font-medium text-brand-800">
+                编辑资料
+              </Link>
+            ) : (
+              <Button block onClick={openDirect} loading={opening}>
+                发私信
+              </Button>
+            )
+          }
+        />
+      </div>
     </div>
   );
 }

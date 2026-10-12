@@ -1,5 +1,5 @@
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PageTitle } from '../../../shared/ui/Card';
 import { AccountPanel } from '../panels/AccountPanel';
 import { ActivityPanel } from '../panels/ActivityPanel';
 import { ProfilePanel } from '../panels/ProfilePanel';
@@ -20,34 +20,44 @@ function tabFromQuery(value: string | null): Tab {
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
   const tab = tabFromQuery(params.get('tab'));
+  const [pushed, setPushed] = useState(false);
 
   function select(next: Tab) {
+    setPushed(false);
     setParams(next === 'profile' ? {} : { tab: next }, { replace: true });
   }
 
   return (
-    <div>
-      <PageTitle>我的</PageTitle>
-      <div className="mb-5 flex border-b border-stone-200" role="tablist">
-        {TABS.map((item) => {
-          const on = item.id === tab;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              onClick={() => select(item.id)}
-              className={`-mb-px flex-1 border-b-2 pb-2 text-sm ${on ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-400'}`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="-mx-4 -mt-5">
+      {pushed ? null : (
+        <div className="sticky top-0 z-20 flex border-b border-stone-200 bg-paper" role="tablist">
+          {TABS.map((item) => {
+            const on = item.id === tab;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => select(item.id)}
+                className={`min-h-11 flex-1 text-[15px] ${on ? 'font-medium text-brand-800' : 'text-stone-400'}`}
+              >
+                <span className="inline-flex min-h-11 flex-col items-center justify-center">
+                  {item.label}
+                  <span className={`mt-1 h-[3px] w-8 ${on ? 'bg-gold' : 'bg-transparent'}`} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {tab === 'profile' ? <ProfilePanel onShowActivity={() => select('activity')} /> : null}
-      {tab === 'activity' ? <ActivityPanel /> : null}
-      {tab === 'settings' ? <AccountPanel /> : null}
+      {tab === 'activity' ? <ActivityPanel onOpenProfile={() => select('profile')} onPushed={setPushed} /> : null}
+      {tab === 'settings' ? (
+        <div className="px-4 py-4">
+          <AccountPanel onOpenProfile={() => select('profile')} onPushed={setPushed} />
+        </div>
+      ) : null}
     </div>
   );
 }
