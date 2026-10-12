@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DailyCardResponse } from '@utmmsc/shared';
-import { ENROLLMENT_LABELS, ROLE_LABELS, isStaffRole } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatEventTime } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
 import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
+import { MemberAvatar } from '../../profile/InitialAvatar';
 import { homeApi } from '../api';
 
 export function HomePage() {
@@ -19,23 +20,29 @@ export function HomePage() {
 
   return (
     <div>
-      <img src={`${import.meta.env.BASE_URL}brand/logo-horizontal.svg`} alt="UTMMSC" className="mb-6 h-auto w-56" />
-      <header>
-        <p className="text-[13px] text-brand-700">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-brand-800">{member?.displayName}</h1>
-        {member?.headline ? <p className="mt-1 text-sm text-stone-600">{member.headline}</p> : null}
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <img src={`${import.meta.env.BASE_URL}brand/logo-horizontal.svg`} alt="UTMMSC" className="h-auto w-44" />
+          <p className="mt-5 text-[13px] text-brand-700">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
+          {member?.headline ? <p className="mt-1 truncate text-sm text-stone-600">{member.headline}</p> : null}
+          {member && !member.headline ? (
+            <Link to="/settings" className="mt-1 inline-block text-sm text-brand-800">
+              填写一句话介绍
+            </Link>
+          ) : null}
+          <span className="mt-3 block h-[3px] w-10 bg-gold" />
+        </div>
         {member ? (
-          <p className="mt-1 text-sm text-stone-500">
-            {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]}
-            {isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}
-          </p>
-        ) : null}
-        {member && !member.headline ? (
-          <Link to="/settings" className="mt-2 inline-block text-sm text-brand-800">
-            填写一句话介绍
+          <Link to="/settings" className="flex shrink-0 items-center gap-2 pt-0.5">
+            <span className="max-w-[6.5rem] text-right leading-tight">
+              <span className="block truncate text-[13px] font-medium text-brand-800">{member.displayName}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-stone-500">
+                {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]}
+              </span>
+            </span>
+            <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-11 w-11 text-base" />
           </Link>
         ) : null}
-        <span className="mt-3 block h-[3px] w-10 bg-gold" />
       </header>
 
       {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
