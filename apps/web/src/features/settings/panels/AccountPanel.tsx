@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, ADMIN_ENROLLMENT_YEAR_MIN, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, formatStoredMajor, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, formatStoredMajor, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -95,7 +95,11 @@ function YearScreen({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const years: number[] = [];
-  for (let y = enrollmentYearMax(); y >= ADMIN_ENROLLMENT_YEAR_MIN; y--) years.push(y);
+  for (let y = enrollmentYearMax(); y >= enrollmentYearMin(); y--) years.push(y);
+  if (member && !years.includes(member.graduationYear)) {
+    years.push(member.graduationYear);
+    years.sort((a, b) => b - a);
+  }
 
   useEffect(() => {
     profileApi.enrollmentYearRequest().then((res) => setPendingYear(res.request?.requestedYear ?? null)).catch(() => undefined);

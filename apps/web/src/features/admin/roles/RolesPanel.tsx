@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_LABELS, ENROLLMENT_STATUSES, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, enrollmentYearLabel, enrollmentYearMax, isOfficeRole, roleTier, shouldGraduate, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isOfficeRole, roleTier, shouldGraduate, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Badge, Notice, Spinner } from '../../../shared/ui/Card';
@@ -8,7 +8,7 @@ import { Select, TextInput } from '../../../shared/ui/Field';
 import { adminApi } from '../api';
 
 const YEAR_OPTIONS: number[] = [];
-for (let y = enrollmentYearMax(); y >= ADMIN_ENROLLMENT_YEAR_MIN; y--) YEAR_OPTIONS.push(y);
+for (let y = enrollmentYearMax(); y >= enrollmentYearMin(); y--) YEAR_OPTIONS.push(y);
 
 /** Role picker per member. Options follow the constitution and what this person may appoint. */
 /** 成员身份选择。选项按章程，并且限于当前这个人可以任命的范围。 */

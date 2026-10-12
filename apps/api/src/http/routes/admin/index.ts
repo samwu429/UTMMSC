@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isOfficeRole, isValidAdminEnrollmentYear, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isOfficeRole, isValidEnrollmentYear, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
 import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
@@ -107,7 +107,7 @@ adminRoutes.post('/members/:id/enrollment', async (c) => {
   if (!target) throw notFound('成员不存在');
   const body = await readJson<Record<string, unknown>>(c);
   const year = requireInteger(body.graduationYear, '入学年份');
-  if (!isValidAdminEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
+  if (!isValidEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
   const requested = body.enrollmentStatus === undefined
     ? target.enrollment_status
     : requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
@@ -139,6 +139,7 @@ adminRoutes.post('/enrollment-year-requests/:id/:decision', async (c) => {
   const request = await findYearRequest(c.env.DB, c.req.param('id'));
   if (!request || request.status !== 'pending') throw notFound('申请不存在或已处理');
   if (decision === 'approve') {
+    if (!isValidEnrollmentYear(request.requested_year)) throw badRequest('invalid_year', '入学年份无效');
     const target = await findMemberById(c.env.DB, request.member_id);
     if (!target) throw notFound('成员不存在');
     const status: EnrollmentStatus = shouldGraduate(request.requested_year, 'student') ? 'alumni' : target.enrollment_status;

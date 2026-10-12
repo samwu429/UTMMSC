@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, PROGRAM_MAJOR_MAX, canonicalizeProgramMajor, isPresetAvatarId, isValidAdminEnrollmentYear, presetAvatarKey } from '@utmmsc/shared';
+import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, PROGRAM_MAJOR_MAX, canonicalizeProgramMajor, isPresetAvatarId, isValidEnrollmentYear, presetAvatarKey } from '@utmmsc/shared';
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
 import { avatarObjectKey, coverObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
@@ -148,7 +148,7 @@ profileRoutes.post('/me/enrollment-year-request', async (c) => {
   const member = c.get('member');
   const body = await readJson<Record<string, unknown>>(c);
   const year = requireInteger(body.graduationYear, '入学年份');
-  if (!isValidAdminEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
+  if (!isValidEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
   if (year === member.graduation_year) throw badRequest('same_year', '这就是现在的入学年份');
   const saved = await savePendingYearRequest(c.env.DB, member.id, year);
   return c.json({ request: toYearRequest(saved) });
