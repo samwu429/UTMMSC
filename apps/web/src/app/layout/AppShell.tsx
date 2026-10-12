@@ -71,22 +71,36 @@ function TabIcon({ name }: { name: IconName }) {
   return <svg {...common}>{paths[name]}</svg>;
 }
 
+function tabClass(active: boolean) {
+  return `flex flex-col items-center justify-end px-0.5 pb-1.5 pt-2 text-[11px] ${active ? 'text-brand-800' : 'text-stone-400'}`;
+}
+
+function TabFace({ icon, label, active, raised = false }: { icon: IconName; label: string; active: boolean; raised?: boolean }) {
+  return (
+    <>
+      <span className="relative flex h-6 w-full items-center justify-center">
+        {raised ? (
+          <span
+            className={`absolute bottom-0 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-brand-800 text-white ring-4 ring-paper outline outline-[3px] ${active ? 'outline-gold' : 'outline-gold/70'}`}
+          >
+            <TabIcon name={icon} />
+          </span>
+        ) : (
+          <TabIcon name={icon} />
+        )}
+      </span>
+      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${active ? 'font-medium' : ''} ${raised && !active ? 'text-brand-700' : ''}`}>
+        {label}
+      </span>
+      <span className={`mt-1 h-[3px] w-4 rounded-full ${active ? 'bg-gold' : 'bg-transparent'}`} />
+    </>
+  );
+}
+
 function SideTab({ item }: { item: NavItem }) {
   return (
-    <NavLink
-      to={item.to}
-      end={item.to === '/'}
-      className={({ isActive }) =>
-        `flex min-h-[52px] flex-1 flex-col items-center justify-center text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-400'}`
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <TabIcon name={item.icon} />
-          <span className={isActive ? 'font-medium' : ''}>{item.label}</span>
-          <span className={`mt-0.5 h-[3px] w-4 ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
-        </>
-      )}
+    <NavLink to={item.to} end={item.to === '/'} className={({ isActive }) => tabClass(isActive)}>
+      {({ isActive }) => <TabFace icon={item.icon} label={item.label} active={isActive} />}
     </NavLink>
   );
 }
@@ -95,10 +109,8 @@ function DiscoverTab() {
   const { pathname } = useLocation();
   const isActive = pathname.startsWith('/discover') || pathname.startsWith('/files') || pathname.startsWith('/admin');
   return (
-    <NavLink to="/discover" className={`flex min-h-[52px] flex-1 flex-col items-center justify-center text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-400'}`}>
-      <TabIcon name="discover" />
-      <span className={isActive ? 'font-medium' : ''}>发现</span>
-      <span className={`mt-0.5 h-[3px] w-4 ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
+    <NavLink to="/discover" className={tabClass(isActive)}>
+      <TabFace icon="discover" label="发现" active={isActive} />
     </NavLink>
   );
 }
@@ -107,11 +119,8 @@ function ChatTab() {
   const { pathname } = useLocation();
   const isActive = pathname === '/chat' || pathname.startsWith('/directory');
   return (
-    <NavLink to="/chat" className="flex w-[4.75rem] flex-col items-center justify-end">
-      <span className={`-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-brand-800 text-white ring-4 ring-paper outline outline-[3px] ${isActive ? 'outline-gold' : 'outline-gold/70'}`}>
-        <TabIcon name="chat" />
-      </span>
-      <span className={`mt-1 text-[11px] ${isActive ? 'font-medium text-brand-800' : 'text-brand-700'}`}>聊天</span>
+    <NavLink to="/chat" className={tabClass(isActive)}>
+      <TabFace icon="chat" label="聊天" active={isActive} raised />
     </NavLink>
   );
 }
@@ -138,20 +147,16 @@ export function AppShell() {
       <main className="flex-1 px-4 pb-28 pt-5">
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-stone-200 bg-paper" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="mx-auto flex max-w-2xl items-end">
-          <div className="flex flex-1">
-            {LEFT_NAV.map((item) => (
-              <SideTab key={item.to} item={item} />
-            ))}
-          </div>
+      <nav className="fixed inset-x-0 bottom-0 overflow-visible border-t border-stone-200 bg-paper" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="mx-auto grid max-w-2xl grid-cols-5 items-end">
+          {LEFT_NAV.map((item) => (
+            <SideTab key={item.to} item={item} />
+          ))}
           <ChatTab />
-          <div className="flex flex-1">
-            <DiscoverTab />
-            {right.map((item) => (
-              <SideTab key={item.to} item={item} />
-            ))}
-          </div>
+          <DiscoverTab />
+          {right.map((item) => (
+            <SideTab key={item.to} item={item} />
+          ))}
         </div>
       </nav>
     </div>
