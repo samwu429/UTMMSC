@@ -6,4 +6,5 @@ export * from './identity/friends';
 export * from './chat/protocol';
 export * from './chat/rooms';
 export * from './files/categories';
+export * from './miniapps/catalog';
 export * from './api/contracts';

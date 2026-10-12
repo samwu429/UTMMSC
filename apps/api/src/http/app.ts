@@ -10,6 +10,7 @@ import { fileRoutes } from './routes/files';
 import { friendRoutes } from './routes/friends';
 import { homeRoutes } from './routes/home';
 import { memberRoutes } from './routes/members';
+import { miniappRoutes } from './routes/miniapps';
 import { serveMemberMedia } from './routes/members/media';
 
 /** Composes all route groups under one Hono app with shared CORS and error handling. */
@@ -31,6 +32,7 @@ export function createApp() {
   app.route('/files', fileRoutes);
   app.route('/friends', friendRoutes);
   app.route('/home', homeRoutes);
+  app.route('/miniapps', miniappRoutes);
   app.route('/admin', adminRoutes);
   return app;
 }

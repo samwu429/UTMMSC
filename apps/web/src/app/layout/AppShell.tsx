@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
 
-type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me' | 'discover';
+type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me' | 'discover' | 'apps';
 
 interface NavItem {
   to: string;
@@ -11,7 +11,10 @@ interface NavItem {
   icon: IconName;
 }
 
-const LEFT_NAV: NavItem[] = [{ to: '/', label: '首页', icon: 'home' }];
+const LEFT_NAV: NavItem[] = [
+  { to: '/', label: '首页', icon: 'home' },
+  { to: '/miniapps', label: '小程序', icon: 'apps' },
+];
 
 const RIGHT_NAV: NavItem[] = [{ to: '/settings', label: '我的', icon: 'me' }];
 
@@ -54,6 +57,14 @@ function TabIcon({ name }: { name: IconName }) {
       <>
         <circle cx="12" cy="12" r="7.5" />
         <path d="m14.8 9.2-1.1 4.5-4.5 1.1 1.1-4.5 4.5-1.1Z" />
+      </>
+    ),
+    apps: (
+      <>
+        <rect x="4" y="4" width="7" height="7" rx="1.6" />
+        <rect x="13" y="4" width="7" height="7" rx="1.6" />
+        <rect x="4" y="13" width="7" height="7" rx="1.6" />
+        <rect x="13" y="13" width="7" height="7" rx="1.6" />
       </>
     ),
   };
