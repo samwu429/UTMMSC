@@ -36,7 +36,7 @@ export default defineConfig({
         start_url: BASE,
         scope: BASE,
         display: 'standalone',
-        background_color: '#F2F3F5',
+        background_color: '#F7F4EE',
         theme_color: '#3C165F',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -46,7 +46,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: `${BASE}index.html`,
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,woff2,mp4}'],
       },
     }),
     spaFallback(),

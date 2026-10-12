@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { prepareLatestApp } from './pwa';
 
 type Phase = 'play' | 'leave' | 'done';
 
@@ -7,25 +8,50 @@ type Phase = 'play' | 'leave' | 'done';
 export function SplashScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [phase, setPhase] = useState<Phase>('play');
+  const videoDone = useRef(false);
+  const updateDone = useRef(false);
+  const reloading = useRef(false);
+
+  function finish() {
+    if (reloading.current || !videoDone.current || !updateDone.current) return;
+    setPhase('leave');
+  }
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setPhase('done');
-      return;
-    }
+    let cancel = false;
+    prepareLatestApp().then((result) => {
+      if (cancel || result === 'reload') {
+        reloading.current = result === 'reload';
+        return;
+      }
+      updateDone.current = true;
+      finish();
+    });
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const video = videoRef.current;
-    if (!video) return;
+    if (reduce || !video) {
+      videoDone.current = true;
+      finish();
+      return () => {
+        cancel = true;
+      };
+    }
     if (Number.isFinite(video.duration) && video.duration > 0) video.playbackRate = video.duration;
     const play = video.play();
     if (play) {
       play.catch(() => {
         window.setTimeout(() => {
-          if (video.paused && video.currentTime === 0) setPhase('done');
+          if (video.paused && video.currentTime === 0) {
+            videoDone.current = true;
+            finish();
+          }
         }, 700);
       });
     }
-    const cap = window.setTimeout(() => setPhase((current) => (current === 'play' ? 'leave' : current)), 2500);
-    return () => window.clearTimeout(cap);
+    return () => {
+      cancel = true;
+    };
   }, []);
 
   if (phase === 'done') return null;
@@ -50,8 +76,14 @@ export function SplashScreen() {
           // 成片是两秒。按片长做播放速度，正好一秒播完。
           if (Number.isFinite(video.duration) && video.duration > 0) video.playbackRate = video.duration;
         }}
-        onEnded={() => setPhase('leave')}
-        onError={() => setPhase('done')}
+        onEnded={() => {
+          videoDone.current = true;
+          finish();
+        }}
+        onError={() => {
+          videoDone.current = true;
+          finish();
+        }}
       />
     </div>
   );
