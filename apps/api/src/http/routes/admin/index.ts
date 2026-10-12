@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
-import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isOfficeRole, isValidEnrollmentYear, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
 import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
 import {
   findMemberById,
+  findMemberByEmail,
   listActiveMemberEmails,
   listAllMembersForAdmin,
   toProfile,
@@ -17,8 +18,9 @@ import {
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
-import { announcementMail, applicationApprovedMail, applicationRejectedMail, enrollmentYearDecisionMail } from '../../../infrastructure/email/templates';
+import { announcementMail, applicationApprovedMail, applicationRejectedMail, advisorInviteMail, enrollmentYearDecisionMail } from '../../../infrastructure/email/templates';
 import { findYearRequest, listPendingYearRequests, reviewYearRequest } from '../../../infrastructure/d1/enrollment-requests';
+import { consumeAdvisorInvite, issueAdvisorInvite, listOpenInvites } from '../../../infrastructure/d1/advisor-invites';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
@@ -80,6 +82,7 @@ adminRoutes.post('/members/:id/role', requirePermission('members.assign_role'), 
   const body = await readJson<Record<string, unknown>>(c);
   const role = requireOneOf<Role>(body.role, ROLES, '身份');
   if (target.id === actor.id) throw badRequest('self_role', '不能修改自己的身份');
+  if ((isHonoraryRole(target.role) || isHonoraryRole(role)) && actor.role !== 'superadmin') throw forbidden('只有系统管理员可以指定荣誉顾问');
   if (!canAssignRole(actor.role, role)) throw forbidden('无权分配该身份');
   if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   if (isOfficeRole(role) && (await officeHolderExists(c.env.DB, role, target.id))) throw badRequest('office_taken', '这个职位已经有人担任');
@@ -92,6 +95,7 @@ adminRoutes.post('/members/:id/status', requirePermission('members.assign_role')
   const target = await findMemberById(c.env.DB, c.req.param('id'));
   if (!target) throw notFound('成员不存在');
   if (target.id === actor.id) throw badRequest('self_status', '不能停用自己');
+  if (isHonoraryRole(target.role) && actor.role !== 'superadmin') throw forbidden('只有系统管理员可以修改荣誉顾问');
   if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   const body = await readJson<Record<string, unknown>>(c);
   const status = requireOneOf<MemberStatus>(body.status, MEMBER_STATUSES, '状态');
@@ -105,6 +109,7 @@ adminRoutes.post('/members/:id/enrollment', async (c) => {
   if (actor.role !== 'superadmin') throw forbidden('只有系统管理员可以更正入学年份');
   const target = await findMemberById(c.env.DB, c.req.param('id'));
   if (!target) throw notFound('成员不存在');
+  if (target.role === 'honorary_external') throw badRequest('external_advisor', '校外荣誉顾问没有入学年份');
   const body = await readJson<Record<string, unknown>>(c);
   const year = requireInteger(body.graduationYear, '入学年份');
   if (!isValidEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
@@ -206,4 +211,30 @@ adminRoutes.post('/announcements', requirePermission('announcements.send'), asyn
   await recordAnnouncement(c.env.DB, { title, body: text, sentBy: c.get('member').id, recipientCount: recipients.length, emailed: sendEmail });
   const response: AnnouncementResponse = { recipientCount: recipients.length, emailed: sendEmail };
   return c.json(response, 201);
+});
+
+adminRoutes.get('/advisor-invites', async (c) => {
+  if (c.get('member').role !== 'superadmin') throw forbidden('只有系统管理员可以邀请校外荣誉顾问');
+  const rows = await listOpenInvites(c.env.DB);
+  return c.json({
+    invites: rows.map((row) => ({ id: row.id, email: row.email, expiresAt: row.expires_at, createdAt: row.created_at })),
+  });
+});
+
+adminRoutes.post('/advisor-invites', async (c) => {
+  const actor = c.get('member');
+  if (actor.role !== 'superadmin') throw forbidden('只有系统管理员可以邀请校外荣誉顾问');
+  const body = await readJson<Record<string, unknown>>(c);
+  const email = normalizeEmail(requireString(body.email, '邮箱', 254));
+  if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
+  if (isUniversityEmail(email)) throw badRequest('university_email', '校友荣誉顾问请先用学校邮箱注册，再在成员身份里指定');
+  if (await findMemberByEmail(c.env.DB, email)) throw badRequest('already_registered', '这个邮箱已经注册');
+  const invite = await issueAdvisorInvite(c.env.DB, email, actor.id);
+  const link = `${c.env.APP_BASE_URL}register?invite=${encodeURIComponent(invite.token)}`;
+  const sent = await sendMail(mailConfig(c.env), advisorInviteMail(email, link));
+  if (!sent) {
+    await consumeAdvisorInvite(c.env.DB, invite.id);
+    throw badRequest('mail_failed', '邮件发送失败，请稍后再试');
+  }
+  return c.json({ ok: true, email, expiresAt: invite.expiresAt }, 201);
 });

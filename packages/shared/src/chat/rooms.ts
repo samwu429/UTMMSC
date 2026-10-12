@@ -1,4 +1,5 @@
 import type { EnrollmentStatus } from '../identity/member';
+import type { Role } from '../identity/roles';
 
 /**
  * Channel audience decides who may enter without an explicit membership row.
@@ -41,6 +42,7 @@ export interface DirectConversationSummary {
   peer: {
     id: string;
     displayName: string;
+    role: Role;
     enrollmentStatus: EnrollmentStatus;
     graduationYear: number;
   };

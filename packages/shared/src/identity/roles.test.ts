@@ -31,6 +31,15 @@ describe('canAssignRole', () => {
     expect(canAssignRole('president', 'secretary_general')).toBe(false);
     expect(canAssignRole('president', 'president')).toBe(false);
     expect(canAssignRole('president', 'superadmin')).toBe(false);
+    expect(canAssignRole('president', 'honorary_alumni')).toBe(false);
+    expect(canAssignRole('president', 'honorary_external')).toBe(false);
+  });
+
+  it('lets only the system admin appoint honorary advisors', () => {
+    expect(canAssignRole('superadmin', 'honorary_alumni')).toBe(true);
+    expect(canAssignRole('superadmin', 'honorary_external')).toBe(true);
+    expect(isOfficeRole('honorary_alumni')).toBe(false);
+    expect(isOfficeRole('honorary_external')).toBe(false);
   });
 
   it('allows the system admin to assign any role', () => {

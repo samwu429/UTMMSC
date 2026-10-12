@@ -267,10 +267,12 @@ export async function listDirectory(db: D1Database, filter: DirectoryFilter): Pr
   if (filter.enrollmentStatus) {
     clauses.push('enrollment_status = ?');
     params.push(filter.enrollmentStatus);
+    clauses.push("role != 'honorary_external'");
   }
   if (filter.graduationYear !== null) {
     clauses.push('graduation_year = ?');
     params.push(filter.graduationYear);
+    if (!filter.enrollmentStatus) clauses.push("role != 'honorary_external'");
   }
   if (filter.afterName !== null && filter.afterId !== null) {
     clauses.push('(display_name > ? OR (display_name = ? AND id > ?))');

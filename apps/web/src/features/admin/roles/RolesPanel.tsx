@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isOfficeRole, roleTier, shouldGraduate, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isOfficeRole, roleTier, shouldGraduate, showsEnrollment, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Badge, Notice, Spinner } from '../../../shared/ui/Card';
@@ -96,11 +96,11 @@ export function RolesPanel() {
   return (
     <div className="space-y-3">
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <p className="text-sm leading-relaxed text-stone-500">每个章程职位同时只能有一个人。主席可以任命部长和成员，不能任命其他主席团。入学年份只有系统管理员能改。</p>
+      <p className="text-sm leading-relaxed text-stone-500">每个章程职位同时只能有一个人。荣誉顾问可以有多人，只有系统管理员能指定。主席可以任命部长和成员，不能任命其他主席团。入学年份只有系统管理员能改。</p>
       <TextInput placeholder="搜索姓名或邮箱" value={filter} onChange={(e) => setFilter(e.target.value)} />
       {visible.map((m) => {
         const heldByOthers = new Set(members.filter((other) => other.id !== m.id && isOfficeRole(other.role)).map((other) => other.role));
-        const editable = m.id !== self.id && (self.role === 'superadmin' || roleTier(m.role) < roleTier(self.role));
+        const editable = m.id !== self.id && (self.role === 'superadmin' || (roleTier(m.role) < roleTier(self.role) && !isHonoraryRole(m.role)));
         return (
           <div key={m.id} className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
             <div className="flex items-start justify-between gap-2">
@@ -109,7 +109,8 @@ export function RolesPanel() {
                   {m.displayName} {m.status !== 'active' ? <Badge tone="amber">已停用</Badge> : null}
                 </p>
                 <p className="truncate text-xs text-slate-500">
-                  {m.email} · {enrollmentYearLabel(m.graduationYear)} · {ENROLLMENT_LABELS[m.enrollmentStatus]}
+                  {m.email}
+                  {showsEnrollment(m.role) ? ` · ${enrollmentYearLabel(m.graduationYear)} · ${ENROLLMENT_LABELS[m.enrollmentStatus]}` : ''}
                 </p>
               </div>
               {editable ? (
@@ -140,7 +141,7 @@ export function RolesPanel() {
               )}
               <p className="mt-1 text-xs leading-relaxed text-stone-500">{ROLE_DUTIES[m.role]}</p>
             </div>
-            {self.realRole === 'superadmin' ? (
+            {self.realRole === 'superadmin' && showsEnrollment(m.role) ? (
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Select
                   value={String(m.graduationYear)}

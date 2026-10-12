@@ -46,6 +46,15 @@ export function enrollmentYearDecisionMail(to: string, displayName: string, year
   return { to: [{ email: to, name: displayName }], subject, text, html };
 }
 
+export function advisorInviteMail(to: string, link: string): MailMessage {
+  const text = `你被邀请成为 UTMMSC 校外荣誉顾问。请打开 ${link} 用这个邮箱完成注册。这个链接只能注册成校外荣誉顾问，14 天内有效。如果不是你本人，请忽略这封邮件。`;
+  const html = wrap(
+    '校外荣誉顾问邀请',
+    `<p>你被邀请成为 UTMMSC 校外荣誉顾问。</p><p><a href="${link}">用这个邮箱完成注册</a></p><p>这个链接只能注册成校外荣誉顾问，14 天内有效。如果不是你本人，请忽略这封邮件。</p>`,
+  );
+  return { to: [{ email: to }], subject: 'UTMMSC 校外荣誉顾问邀请', text, html };
+}
+
 export function announcementMail(to: { email: string; name: string }[], title: string, body: string, appBaseUrl: string): MailMessage {
   const html = wrap(
     title,

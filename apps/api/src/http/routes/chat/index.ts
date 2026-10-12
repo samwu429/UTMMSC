@@ -107,7 +107,7 @@ chatRoutes.get('/overview', requireSession, async (c) => {
   const directSummaries: DirectConversationSummary[] = await Promise.all(
     direct.filter((dm) => friends.has(dm.peer_id)).map(async (dm) => ({
       id: dm.id,
-      peer: { id: dm.peer_id, displayName: dm.peer_name, enrollmentStatus: dm.peer_enrollment, graduationYear: dm.peer_graduation_year },
+      peer: { id: dm.peer_id, displayName: dm.peer_name, role: dm.peer_role, enrollmentStatus: dm.peer_enrollment, graduationYear: dm.peer_graduation_year },
       lastMessageAt: dm.last_message_at,
       lastPreview: dm.last_preview,
       unreadCount: dm.last_message_at ? await roomStub(c.env, directRoomId(dm.id)).getUnread(member.id) : 0,

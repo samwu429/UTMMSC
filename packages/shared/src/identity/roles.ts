@@ -7,6 +7,8 @@
 export const ROLES = [
   'student',
   'alumni',
+  'honorary_alumni',
+  'honorary_external',
   'head_technology',
   'head_academic',
   'head_publicity',
@@ -24,6 +26,8 @@ export type Role = (typeof ROLES)[number];
 export const ROLE_LABELS: Record<Role, string> = {
   student: '在校生',
   alumni: '毕业生',
+  honorary_alumni: '校友荣誉顾问',
+  honorary_external: '校外荣誉顾问',
   head_technology: '科技部部长',
   head_academic: '学术部部长',
   head_publicity: '宣传部部长',
@@ -41,6 +45,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_DUTIES: Record<Role, string> = {
   student: '普通成员。',
   alumni: '普通成员。',
+  honorary_alumni: '校友荣誉顾问。权限与普通成员相同。只能由系统管理员指定，可以有多人。',
+  honorary_external: '校外荣誉顾问。权限与普通成员相同。只能通过系统管理员的邀请注册，可以有多人。',
   head_technology: '官网、系统和项目。可上传文件。只属于科技部。',
   head_academic: '学术互助。可上传文件。只属于学术部。',
   head_publicity: '宣传与招新。可上传文件。只属于宣传部。',
@@ -55,6 +61,7 @@ export const ROLE_DUTIES: Record<Role, string> = {
 
 export const ROLE_GROUPS: { label: string; roles: Role[] }[] = [
   { label: '成员', roles: ['student', 'alumni'] },
+  { label: '荣誉顾问', roles: ['honorary_alumni', 'honorary_external'] },
   { label: '部门', roles: ['head_technology', 'head_academic', 'head_publicity', 'head_sponsorship', 'head_events'] },
   { label: '主席团', roles: ['president', 'secretary_general', 'vp_finance', 'vp_audit'] },
   { label: '系统', roles: ['superadmin'] },
@@ -81,6 +88,8 @@ const FILES: Permission[] = [...MEMBER, 'files.upload'];
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   student: MEMBER,
   alumni: MEMBER,
+  honorary_alumni: MEMBER,
+  honorary_external: MEMBER,
   head_technology: FILES,
   head_academic: FILES,
   head_publicity: FILES,
@@ -114,18 +123,29 @@ export function roleTier(role: Role): number {
   return 0;
 }
 
-/** Constitution offices are unique. Member statuses and the system account are not. */
-/** 章程职位同时只能有一人。在校、毕业和系统账号不限人数。 */
+/** Constitution offices are unique. Member statuses, honorary advisors, and the system account are not. */
+/** 章程职位同时只能有一人。在校、毕业、荣誉顾问和系统账号不限人数。 */
 export function isOfficeRole(role: Role): boolean {
   return roleTier(role) === 1 || roleTier(role) === 2;
 }
 
+export function isHonoraryRole(role: Role): boolean {
+  return role === 'honorary_alumni' || role === 'honorary_external';
+}
+
+/** External advisors are not campus members, so year and program are not shown. */
+/** 校外荣誉顾问不是校内成员，不展示入学年份和专业。 */
+export function showsEnrollment(role: Role): boolean {
+  return role !== 'honorary_external';
+}
+
 /**
- * The president appoints department heads and members. Presidium seats and the system
- * account are not assigned from that screen. A department head cannot appoint anyone.
- * 主席可任命部长和普通成员。主席团席位和系统账号不从这里任命。部长不能任命他人。
+ * The president appoints department heads and members. Presidium seats, honorary advisors,
+ * and the system account are not assigned from that screen. A department head cannot appoint anyone.
+ * 主席可任命部长和普通成员。主席团、荣誉顾问和系统账号不从这里任命。部长不能任命他人。
  */
 export function canAssignRole(actor: Role, target: Role): boolean {
+  if (isHonoraryRole(target)) return actor === 'superadmin';
   if (!hasPermission(actor, 'members.assign_role')) return false;
   if (actor === 'superadmin') return true;
   if (actor === 'president') return roleTier(target) <= 1;
@@ -134,4 +154,10 @@ export function canAssignRole(actor: Role, target: Role): boolean {
 
 export function isStaffRole(role: Role): boolean {
   return roleTier(role) >= 1;
+}
+
+/** Title shown beside a name. Ordinary students and alumni have no extra title. */
+/** 显示在姓名旁边的头衔。在校生和毕业生没有额外头衔。 */
+export function roleTitle(role: Role): string | null {
+  return isStaffRole(role) || isHonoraryRole(role) ? ROLE_LABELS[role] : null;
 }

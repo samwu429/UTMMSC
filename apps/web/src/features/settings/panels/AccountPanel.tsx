@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, formatStoredMajor, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, formatStoredMajor, isHonoraryRole, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -281,7 +281,9 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   if (!member) return null;
 
   const alumni = member.enrollmentStatus === 'alumni' || shouldGraduate(member.graduationYear, 'student');
-  const status = `${alumni ? ENROLLMENT_LABELS.alumni : ENROLLMENT_LABELS.student}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
+  const title = isHonoraryRole(member.role) ? ROLE_LABELS[member.role] : null;
+  const status = title ?? `${alumni ? ENROLLMENT_LABELS.alumni : ENROLLMENT_LABELS.student}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
+  const campus = showsEnrollment(member.role);
 
   const real = member.realRole ?? member.role;
 
@@ -320,20 +322,22 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
         </button>
       </Group>
 
-      <Group label="账号" footer="入学年份要改的话，先提交申请，系统管理员同意后才生效。专业可以随时更改。邮箱只有你自己能看到。">
+      <Group label="账号" footer={campus ? '入学年份要改的话，先提交申请，系统管理员同意后才生效。专业可以随时更改。邮箱只有你自己能看到。' : '邮箱只有你自己能看到。'}>
         <Row label="邮箱" value={member.email} />
-        <Row
-          label="入学年份"
-          value={pendingYear !== null ? `${enrollmentYearLabel(member.graduationYear)} · 待同意 ${pendingYear}` : enrollmentYearLabel(member.graduationYear)}
-          onClick={() => setScreen('year')}
-        />
+        {campus ? (
+          <Row
+            label="入学年份"
+            value={pendingYear !== null ? `${enrollmentYearLabel(member.graduationYear)} · 待同意 ${pendingYear}` : enrollmentYearLabel(member.graduationYear)}
+            onClick={() => setScreen('year')}
+          />
+        ) : null}
         <Row label="状态" value={status} />
-        <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} onClick={() => setScreen('programs')} />
-        {alumni ? null : (
+        {campus ? <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} onClick={() => setScreen('programs')} /> : null}
+        {campus && !alumni ? (
           <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
             我已毕业
           </button>
-        )}
+        ) : null}
         {graduateError ? <div className="px-4 py-2"><Notice tone="error">{graduateError}</Notice></div> : null}
         <Row label="修改密码" onClick={() => setScreen('password')} />
       </Group>

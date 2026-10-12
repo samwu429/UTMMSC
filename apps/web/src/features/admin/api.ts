@@ -35,4 +35,8 @@ export const adminApi = {
   createEvent: (body: CreateEventBody) => api<{ event: EventRecord }>('/admin/events', { method: 'POST', body }),
   deleteEvent: (id: string) => api<{ ok: true }>(`/admin/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   announce: (body: AnnouncementBody) => api<AnnouncementResponse>('/admin/announcements', { method: 'POST', body }),
+  advisorInvites: () =>
+    api<{ invites: { id: string; email: string; expiresAt: string; createdAt: string }[] }>('/admin/advisor-invites'),
+  sendAdvisorInvite: (email: string) =>
+    api<{ ok: true; email: string; expiresAt: string }>('/admin/advisor-invites', { method: 'POST', body: { email } }),
 };

@@ -3,6 +3,7 @@ import {
   ENROLLMENT_STATUSES,
   PROGRAM_MAJOR_MAX,
   canonicalizeProgramMajor,
+  enrollmentCalendarYear,
   isUniversityEmail,
   isValidDisplayName,
   isValidEnrollmentYear,
@@ -28,6 +29,7 @@ import {
   findApprovedApplicationByEmail,
   hasPendingApplication,
 } from '../../../infrastructure/d1/applications';
+import { consumeAdvisorInvite, findLiveInviteByEmail, findLiveInviteByToken } from '../../../infrastructure/d1/advisor-invites';
 import {
   countMembers,
   createMember,
@@ -97,8 +99,10 @@ authRoutes.post('/code', rateLimit(10, 60_000), async (c) => {
 
   const existing = await findMemberByEmail(c.env.DB, email);
   if (purpose === 'register') {
-    if (!isUniversityEmail(email)) throw badRequest('not_university_email', '请使用多伦多大学邮箱，或提交人工申请');
     if (existing) throw conflict('already_registered', '该邮箱已注册，请直接登录');
+    if (!isUniversityEmail(email) && !(await findLiveInviteByEmail(c.env.DB, email))) {
+      throw badRequest('not_university_email', '请使用多伦多大学邮箱，或提交人工申请');
+    }
   } else if (!existing) {
     // Do not reveal which addresses are registered.
     // 不透露哪些地址已注册。
@@ -119,20 +123,48 @@ authRoutes.post('/code', rateLimit(10, 60_000), async (c) => {
   return c.json({ ok: true });
 });
 
+authRoutes.get('/invite', rateLimit(30, 60_000), async (c) => {
+  const token = c.req.query('token') ?? '';
+  if (!token || token.length > 128) throw badRequest('invite_invalid', '邀请链接无效或已过期');
+  const invite = await findLiveInviteByToken(c.env.DB, token);
+  if (!invite) throw badRequest('invite_invalid', '邀请链接无效或已过期');
+  return c.json({ email: invite.email });
+});
+
 authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
   const body = await readJson<Record<string, unknown>>(c);
   const email = normalizeEmail(requireString(body.email, '邮箱', 254));
   const password = requireString(body.password, '密码', 128);
   const displayName = requireString(body.displayName, '姓名', 40);
-  const enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
-  const graduationYear = requireInteger(body.graduationYear, '入学年份');
-  const major = programMajor(optionalString(body.major, '专业', PROGRAM_MAJOR_MAX));
+  const inviteToken = optionalString(body.invite, '邀请', 128);
 
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (!isValidPassword(password)) throw badRequest('weak_password', '密码至少 8 位');
   if (!isValidDisplayName(displayName)) throw badRequest('invalid_name', '姓名需 2 到 40 个字符');
-  if (!isValidEnrollmentYear(graduationYear)) throw badRequest('invalid_year', '入学年份无效');
   if (await findMemberByEmail(c.env.DB, email)) throw conflict('already_registered', '该邮箱已注册，请直接登录');
+
+  if (inviteToken) {
+    const invite = await findLiveInviteByToken(c.env.DB, inviteToken);
+    if (!invite || invite.email !== email) throw badRequest('invite_invalid', '邀请链接无效或已过期');
+    if (isUniversityEmail(email)) throw badRequest('university_email', '校友荣誉顾问请使用学校邮箱自行注册');
+    await verifyCodeOrThrow(c.env, email, 'register', requireString(body.code, '验证码', 6));
+    const member = await createMember(c.env.DB, {
+      email,
+      displayName,
+      passwordHash: await hashPassword(password),
+      role: 'honorary_external',
+      enrollmentStatus: 'alumni',
+      graduationYear: enrollmentCalendarYear(),
+      major: null,
+    });
+    await consumeAdvisorInvite(c.env.DB, invite.id);
+    return c.json(await startSession(c.env, member), 201);
+  }
+
+  const enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
+  const graduationYear = requireInteger(body.graduationYear, '入学年份');
+  const major = programMajor(optionalString(body.major, '专业', PROGRAM_MAJOR_MAX));
+  if (!isValidEnrollmentYear(graduationYear)) throw badRequest('invalid_year', '入学年份无效');
 
   if (isUniversityEmail(email)) {
     await verifyCodeOrThrow(c.env, email, 'register', requireString(body.code, '验证码', 6));
@@ -142,7 +174,8 @@ authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
   }
 
   // The first account bootstraps administration; everyone after that starts as a plain member.
-  // 第一个账号作为初始管理员；之后的账号都是普通成员。
+  // Invite registration never uses this path.
+  // 第一个账号作为初始管理员；之后的账号都是普通成员。邀请注册不走这里。
   const role: Role = (await countMembers(c.env.DB)) === 0 ? 'superadmin' : (shouldGraduate(graduationYear, 'student') ? 'alumni' : enrollmentStatus);
   const member = await createMember(c.env.DB, {
     email,

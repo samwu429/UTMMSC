@@ -26,9 +26,12 @@ export interface RegisterBody {
   code: string;
   password: string;
   displayName: string;
-  enrollmentStatus: EnrollmentStatus;
-  graduationYear: number;
+  enrollmentStatus?: EnrollmentStatus;
+  graduationYear?: number;
   major?: string;
+  /** Present only for the external honorary advisor invite link. */
+  /** 仅校外荣誉顾问邀请链接会带上。 */
+  invite?: string;
 }
 
 export interface LoginBody {

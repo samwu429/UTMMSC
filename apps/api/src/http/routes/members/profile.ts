@@ -146,6 +146,7 @@ profileRoutes.get('/me/enrollment-year-request', async (c) => {
 
 profileRoutes.post('/me/enrollment-year-request', async (c) => {
   const member = c.get('member');
+  if (member.role === 'honorary_external') throw badRequest('external_advisor', '校外荣誉顾问没有入学年份');
   const body = await readJson<Record<string, unknown>>(c);
   const year = requireInteger(body.graduationYear, '入学年份');
   if (!isValidEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');

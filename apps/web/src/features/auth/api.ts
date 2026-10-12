@@ -17,6 +17,7 @@ export const authApi = {
   reset: (body: ResetPasswordBody) => api<SessionResponse>('/auth/reset', { method: 'POST', body, auth: false }),
   apply: (body: ManualApplicationBody) => api<{ ok: true }>('/auth/apply', { method: 'POST', body, auth: false }),
   me: () => api<{ member: MemberSelf; mediaToken: string }>('/auth/me'),
+  invite: (token: string) => api<{ email: string }>(`/auth/invite?token=${encodeURIComponent(token)}`, { auth: false }),
   logout: () => api<{ ok: true }>('/auth/logout', { method: 'POST' }),
   changePassword: (body: ChangePasswordBody) => api<{ ok: true }>('/auth/password', { method: 'POST', body }),
 };

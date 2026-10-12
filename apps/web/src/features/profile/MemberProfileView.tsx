@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, enrollmentYearLabel, formatStoredMajor, isStaffRole, type ActivityPost, type Experience, type MemberProfile, type MemberSelf } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, enrollmentYearLabel, formatStoredMajor, isHonoraryRole, roleTitle, showsEnrollment, type ActivityPost, type Experience, type MemberProfile, type MemberSelf } from '@utmmsc/shared';
 import { experiencePeriod, formatPostTime } from './format';
 import { CoverBanner } from './CoverBanner';
 import { MemberAvatar } from './InitialAvatar';
@@ -87,7 +87,12 @@ export function MemberProfileView({
   action?: ReactNode;
 }) {
   const looking = openToLabels(member);
-  const school = [formatStoredMajor(member.major), enrollmentYearLabel(member.graduationYear), ENROLLMENT_LABELS[member.enrollmentStatus]].filter(Boolean).join(' · ');
+  const title = roleTitle(member.role);
+  const school = [
+    showsEnrollment(member.role) ? formatStoredMajor(member.major) : null,
+    showsEnrollment(member.role) ? enrollmentYearLabel(member.graduationYear) : null,
+    showsEnrollment(member.role) && !isHonoraryRole(member.role) ? ENROLLMENT_LABELS[member.enrollmentStatus] : null,
+  ].filter(Boolean).join(' · ');
   const skills = member.skills ?? [];
   const preview = posts.slice(0, 2);
 
@@ -107,13 +112,13 @@ export function MemberProfileView({
           <div className="mt-3 flex items-start justify-between gap-2">
             <h1 className="text-[24px] font-semibold leading-tight text-brand-800">
               {member.displayName}
-              {isStaffRole(member.role) ? <span className="ml-2 align-middle text-sm font-normal text-brand-700">{ROLE_LABELS[member.role]}</span> : null}
+              {title ? <span className="ml-2 align-middle text-sm font-normal text-brand-700">{title}</span> : null}
             </h1>
             {onEditIntro ? <ActionChip label="编辑" onClick={onEditIntro} /> : null}
           </div>
           {member.headline ? <p className="mt-1 text-[15px] leading-snug text-stone-800">{member.headline}</p> : null}
           {member.location ? <p className="mt-1 text-sm text-stone-500">{member.location}</p> : null}
-          <p className="mt-1 text-sm text-stone-500">{school}</p>
+          {school ? <p className="mt-1 text-sm text-stone-500">{school}</p> : null}
           {looking.length > 0 || onEditOpenTo ? (
             onEditOpenTo ? (
               <button type="button" onClick={onEditOpenTo} className="mt-3 w-full rounded-lg bg-brand-50 px-3 py-2.5 text-left active:bg-brand-100">
