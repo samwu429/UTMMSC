@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DailyCardResponse } from '@utmmsc/shared';
-import { ENROLLMENT_LABELS, ROLE_LABELS } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_LABELS, isStaffRole } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatEventTime } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
@@ -23,10 +23,17 @@ export function HomePage() {
       <header>
         <p className="text-[13px] text-brand-700">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
         <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-brand-800">{member?.displayName}</h1>
+        {member?.headline ? <p className="mt-1 text-sm text-stone-600">{member.headline}</p> : null}
         {member ? (
           <p className="mt-1 text-sm text-stone-500">
-            {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]} · {ROLE_LABELS[member.role]}
+            {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]}
+            {isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}
           </p>
+        ) : null}
+        {member && !member.headline ? (
+          <Link to="/settings" className="mt-2 inline-block text-sm text-brand-800">
+            填写一句话介绍
+          </Link>
         ) : null}
         <span className="mt-3 block h-[3px] w-10 bg-gold" />
       </header>

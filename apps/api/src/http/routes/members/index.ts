@@ -1,16 +1,20 @@
 import { Hono } from 'hono';
-import { ENROLLMENT_STATUSES, type DirectoryResponse, type EnrollmentStatus } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, type DirectoryResponse, type EnrollmentStatus, type MemberDetailResponse } from '@utmmsc/shared';
 import { base64UrlToBytes, bytesToBase64Url, bytesToUtf8, utf8ToBytes } from '../../../domain/crypto/encoding';
 import { findMemberById, listDirectory, toProfile } from '../../../infrastructure/d1/members';
+import { listExperiences, listMemberPosts } from '../../../infrastructure/d1/profile';
 import type { AppEnv } from '../../context';
 import { notFound } from '../../errors';
 import { requireSession } from '../../middleware/session';
+import { profileRoutes } from './profile';
 
 export const memberRoutes = new Hono<AppEnv>();
 
 memberRoutes.use('*', requireSession);
+memberRoutes.route('/', profileRoutes);
 
 const PAGE_SIZE = 40;
+const PROFILE_POSTS = 8;
 
 function encodeCursor(name: string, id: string): string {
   return bytesToBase64Url(utf8ToBytes(JSON.stringify([name, id])));
@@ -58,5 +62,10 @@ memberRoutes.get('/', async (c) => {
 memberRoutes.get('/:id', async (c) => {
   const row = await findMemberById(c.env.DB, c.req.param('id'));
   if (!row || row.status !== 'active') throw notFound('成员不存在');
-  return c.json({ member: toProfile(row) });
+  const [experiences, posts] = await Promise.all([
+    listExperiences(c.env.DB, row.id),
+    listMemberPosts(c.env.DB, row.id, PROFILE_POSTS),
+  ]);
+  const response: MemberDetailResponse = { member: toProfile(row), experiences, posts };
+  return c.json(response);
 });

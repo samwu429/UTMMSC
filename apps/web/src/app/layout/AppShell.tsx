@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { hasPermission } from '@utmmsc/shared';
+import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
 
 type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me';
@@ -61,6 +62,11 @@ function TabIcon({ name }: { name: IconName }) {
 /** 手机优先的外壳：内容区在上，固定的底部标签栏在下。 */
 export function AppShell() {
   const member = useSessionStore((s) => s.member);
+  const setMember = useSessionStore((s) => s.setMember);
+
+  useEffect(() => {
+    authApi.me().then((res) => setMember(res.member)).catch(() => undefined);
+  }, [setMember]);
   const staff =
     member &&
     (hasPermission(member.role, 'members.approve') ||

@@ -1,88 +1,53 @@
-import { useState, type FormEvent } from 'react';
-import { ENROLLMENT_LABELS, ROLE_LABELS } from '@utmmsc/shared';
-import { errorMessage } from '../../../shared/api/errors';
-import { useSessionStore } from '../../../shared/session/store';
-import { Button } from '../../../shared/ui/Button';
-import { Card, Notice, PageTitle } from '../../../shared/ui/Card';
-import { Field, TextInput } from '../../../shared/ui/Field';
-import { authApi } from '../../auth/api';
+import { useSearchParams } from 'react-router-dom';
+import { PageTitle } from '../../../shared/ui/Card';
+import { AccountPanel } from '../panels/AccountPanel';
+import { ActivityPanel } from '../panels/ActivityPanel';
+import { ProfilePanel } from '../panels/ProfilePanel';
 
-function isStandalone(): boolean {
-  return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const TABS = [
+  { id: 'profile', label: '资料' },
+  { id: 'activity', label: '动态' },
+  { id: 'settings', label: '设置' },
+] as const;
+
+type Tab = (typeof TABS)[number]['id'];
+
+function tabFromQuery(value: string | null): Tab {
+  if (value === 'activity' || value === 'settings') return value;
+  return 'profile';
 }
 
 export function SettingsPage() {
-  const member = useSessionStore((s) => s.member);
-  const clear = useSessionStore((s) => s.clear);
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const tab = tabFromQuery(params.get('tab'));
 
-  async function changePassword(e: FormEvent) {
-    e.preventDefault();
-    setMessage(null);
-    setBusy(true);
-    try {
-      await authApi.changePassword({ currentPassword: current, newPassword: next });
-      setCurrent('');
-      setNext('');
-      setMessage({ tone: 'success', text: '密码已更新' });
-    } catch (err) {
-      setMessage({ tone: 'error', text: errorMessage(err) });
-    } finally {
-      setBusy(false);
-    }
+  function select(next: Tab) {
+    setParams(next === 'profile' ? {} : { tab: next }, { replace: true });
   }
-
-  async function logout() {
-    try {
-      await authApi.logout();
-    } finally {
-      clear();
-    }
-  }
-
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
   return (
-    <div className="space-y-4">
+    <div>
       <PageTitle>我的</PageTitle>
-      {member ? (
-        <Card>
-          <p className="text-lg font-semibold">{member.displayName}</p>
-          <p className="text-sm text-slate-500">{member.email}</p>
-          <p className="mt-1 text-sm text-slate-500">
-            {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]} · {ROLE_LABELS[member.role]}
-          </p>
-        </Card>
-      ) : null}
-
-      {!isStandalone() ? (
-        <Notice>
-          {ios ? '在 Safari 里点击底部分享按钮，选择「添加到主屏幕」，即可像应用一样打开。' : '在浏览器菜单里选择「添加到主屏幕」或「安装应用」，即可像应用一样打开。'}
-        </Notice>
-      ) : null}
-
-      <Card>
-        <h2 className="mb-3 font-semibold">修改密码</h2>
-        <form onSubmit={changePassword} className="space-y-3">
-          <Field label="当前密码">
-            <TextInput type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
-          </Field>
-          <Field label="新密码" hint="至少 8 位">
-            <TextInput type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
-          </Field>
-          {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}
-          <Button type="submit" variant="secondary" block loading={busy}>
-            更新密码
-          </Button>
-        </form>
-      </Card>
-
-      <Button variant="danger" block onClick={logout}>
-        退出登录
-      </Button>
+      <div className="mb-5 flex border-b border-stone-200" role="tablist">
+        {TABS.map((item) => {
+          const on = item.id === tab;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => select(item.id)}
+              className={`-mb-px flex-1 border-b-2 pb-2 text-sm ${on ? 'border-brand-800 font-medium text-brand-800' : 'border-transparent text-stone-400'}`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+      {tab === 'profile' ? <ProfilePanel onShowActivity={() => select('activity')} /> : null}
+      {tab === 'activity' ? <ActivityPanel /> : null}
+      {tab === 'settings' ? <AccountPanel /> : null}
     </div>
   );
 }

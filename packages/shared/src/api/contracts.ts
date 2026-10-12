@@ -1,6 +1,7 @@
 import type { ChannelSummary, DirectConversationSummary, ChannelAudience, PostPolicy } from '../chat/rooms';
 import type { FileCategory, FileRecord } from '../files/categories';
 import type { EnrollmentStatus, MemberProfile, MemberSelf } from '../identity/member';
+import type { ActivityPost, Experience, OpenTo } from '../identity/profile';
 import type { Role } from '../identity/roles';
 
 /** Error envelope returned by every failing API call. */
@@ -84,6 +85,38 @@ export interface DirectoryQuery {
 export interface DirectoryResponse {
   members: MemberProfile[];
   nextCursor: string | null;
+}
+
+export interface UpdateProfileBody {
+  headline?: string | null;
+  about?: string | null;
+  location?: string | null;
+  major?: string | null;
+  skills?: string[];
+  openTo?: OpenTo[];
+}
+
+export interface CreateExperienceBody {
+  title: string;
+  organization: string;
+  startYear: number;
+  endYear?: number | null;
+  current: boolean;
+  description?: string | null;
+}
+
+export interface CreatePostBody {
+  text: string;
+}
+
+export interface MemberDetailResponse {
+  member: MemberProfile;
+  experiences: Experience[];
+  posts: ActivityPost[];
+}
+
+export interface FeedResponse {
+  posts: ActivityPost[];
 }
 
 /* Chat */

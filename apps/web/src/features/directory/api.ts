@@ -1,4 +1,4 @@
-import type { DirectoryQuery, DirectoryResponse, MemberProfile } from '@utmmsc/shared';
+import type { DirectoryQuery, DirectoryResponse } from '@utmmsc/shared';
 import { api } from '../../shared/api/client';
 
 export const directoryApi = {
@@ -11,5 +11,4 @@ export const directoryApi = {
     const qs = params.toString();
     return api<DirectoryResponse>(`/members${qs ? `?${qs}` : ''}`);
   },
-  get: (id: string) => api<{ member: MemberProfile }>(`/members/${encodeURIComponent(id)}`),
 };

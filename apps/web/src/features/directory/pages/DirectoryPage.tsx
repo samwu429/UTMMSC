@@ -56,7 +56,7 @@ export function DirectoryPage() {
   return (
     <div className="space-y-4">
       <PageTitle>成员</PageTitle>
-      <TextInput placeholder="搜索姓名或专业" value={q} onChange={(e) => setQ(e.target.value)} />
+      <TextInput placeholder="搜索姓名、专业、技能或所在地" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid grid-cols-2 gap-3">
         <Select value={enrollment} onChange={(e) => setEnrollment(e.target.value as EnrollmentStatus | '')}>
           <option value="">全部状态</option>

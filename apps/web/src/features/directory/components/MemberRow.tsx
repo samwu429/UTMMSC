@@ -13,8 +13,8 @@ export function MemberRow({ member }: { member: MemberProfile }) {
           {isStaffRole(member.role) ? <span className="ml-1.5 text-xs font-normal text-brand-800">{ROLE_LABELS[member.role]}</span> : null}
         </p>
         <p className="truncate text-sm text-stone-500">
-          {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]}
-          {member.major ? ` · ${member.major}` : ''}
+          {member.headline ||
+            `${member.graduationYear} 届 · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${member.major ? ` · ${member.major}` : ''}`}
         </p>
       </div>
     </Link>

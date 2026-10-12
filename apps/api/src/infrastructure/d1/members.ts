@@ -1,4 +1,4 @@
-import type { EnrollmentStatus, MemberProfile, MemberSelf, MemberStatus, Role } from '@utmmsc/shared';
+import { OPEN_TO, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
 import { randomId } from '../../domain/crypto/encoding';
 import { nowIso } from './time';
 
@@ -12,8 +12,28 @@ export interface MemberRow {
   enrollment_status: EnrollmentStatus;
   graduation_year: number;
   major: string | null;
+  headline: string | null;
+  about: string | null;
+  location: string | null;
+  skills: string | null;
+  open_to: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function stringList(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is string => typeof item === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function openToList(raw: string | null): OpenTo[] {
+  return stringList(raw).filter((item): item is OpenTo => (OPEN_TO as readonly string[]).includes(item));
 }
 
 export function toProfile(row: MemberRow): MemberProfile {
@@ -24,6 +44,11 @@ export function toProfile(row: MemberRow): MemberProfile {
     enrollmentStatus: row.enrollment_status,
     graduationYear: row.graduation_year,
     major: row.major,
+    headline: row.headline,
+    about: row.about,
+    location: row.location,
+    skills: stringList(row.skills),
+    openTo: openToList(row.open_to),
   };
 }
 
@@ -81,6 +106,46 @@ export async function updateMemberStatus(db: D1Database, memberId: string, statu
   await db.prepare('UPDATE members SET status = ?, updated_at = ? WHERE id = ?').bind(status, nowIso(), memberId).run();
 }
 
+export interface ProfileUpdate {
+  headline?: string | null;
+  about?: string | null;
+  location?: string | null;
+  major?: string | null;
+  skills?: string[];
+  openTo?: OpenTo[];
+}
+
+export async function updateProfile(db: D1Database, memberId: string, patch: ProfileUpdate): Promise<void> {
+  const sets = ['updated_at = ?'];
+  const params: unknown[] = [nowIso()];
+  if (patch.headline !== undefined) {
+    sets.push('headline = ?');
+    params.push(patch.headline);
+  }
+  if (patch.about !== undefined) {
+    sets.push('about = ?');
+    params.push(patch.about);
+  }
+  if (patch.location !== undefined) {
+    sets.push('location = ?');
+    params.push(patch.location);
+  }
+  if (patch.major !== undefined) {
+    sets.push('major = ?');
+    params.push(patch.major);
+  }
+  if (patch.skills !== undefined) {
+    sets.push('skills = ?');
+    params.push(JSON.stringify(patch.skills));
+  }
+  if (patch.openTo !== undefined) {
+    sets.push('open_to = ?');
+    params.push(JSON.stringify(patch.openTo));
+  }
+  params.push(memberId);
+  await db.prepare(`UPDATE members SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run();
+}
+
 export interface DirectoryFilter {
   query: string | null;
   enrollmentStatus: EnrollmentStatus | null;
@@ -99,9 +164,9 @@ export async function listDirectory(db: D1Database, filter: DirectoryFilter): Pr
   const clauses = ["status = 'active'"];
   const params: unknown[] = [];
   if (filter.query) {
-    clauses.push('(display_name LIKE ? OR major LIKE ?)');
+    clauses.push("(display_name LIKE ? OR IFNULL(major, '') LIKE ? OR IFNULL(headline, '') LIKE ? OR IFNULL(location, '') LIKE ? OR IFNULL(skills, '') LIKE ?)");
     const like = `%${filter.query}%`;
-    params.push(like, like);
+    params.push(like, like, like, like, like);
   }
   if (filter.enrollmentStatus) {
     clauses.push('enrollment_status = ?');

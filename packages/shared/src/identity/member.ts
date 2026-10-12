@@ -1,3 +1,4 @@
+import type { OpenTo } from './profile';
 import type { Role } from './roles';
 
 export const ENROLLMENT_STATUSES = ['student', 'alumni'] as const;
@@ -20,6 +21,11 @@ export interface MemberProfile {
   enrollmentStatus: EnrollmentStatus;
   graduationYear: number;
   major: string | null;
+  headline: string | null;
+  about: string | null;
+  location: string | null;
+  skills: string[];
+  openTo: OpenTo[];
 }
 
 /** The signed-in member's own view, including private fields. */
