@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { MOMENT_IMAGE_LIMIT, MOMENT_IMAGE_MAX_BYTES, MOMENT_IMAGE_TYPES, MOMENT_VIDEO_MAX_BYTES, MOMENT_VIDEO_TYPES, POST_MAX, type ActivityPost } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
+import { Button } from '../../../shared/ui/Button';
 import { Notice, Spinner } from '../../../shared/ui/Card';
 import { MemberAvatar } from '../../profile/InitialAvatar';
-import { PencilIcon } from '../../profile/icons';
 import { profileApi } from '../../profile/api';
 import { formatPostTime } from '../../profile/format';
 import { PostMediaView } from '../../profile/PostMediaView';
@@ -146,9 +146,9 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
         <button type="button" onClick={onCancel} className="min-h-11 text-[16px] text-stone-600">
           取消
         </button>
-        <button type="button" disabled={!ready} onClick={() => void publish()} className={`min-h-11 text-[16px] font-medium ${ready ? 'text-brand-800' : 'text-stone-300'}`}>
-          {busy ? '发表中' : '发表'}
-        </button>
+        <Button type="button" disabled={!ready} loading={busy} onClick={() => void publish()} className="min-h-9 px-4 py-1.5">
+          发表
+        </Button>
       </div>
       <textarea
         value={text}
@@ -239,8 +239,8 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
     <div>
       <div className="relative h-48 bg-brand-800">
         <div className="h-1 bg-gold" />
-        <button type="button" aria-label="发表" onClick={() => setComposing(true)} className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center text-white">
-          <PencilIcon />
+        <button type="button" onClick={() => setComposing(true)} className="absolute right-3 top-3 min-h-10 rounded-full border-t-[3px] border-gold bg-white px-4 text-[15px] font-medium text-brand-800">
+          发表
         </button>
         {self ? <p className="absolute bottom-6 right-28 left-4 truncate text-right text-[18px] font-medium text-white">{self.displayName}</p> : null}
         {self ? (
@@ -249,10 +249,21 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
           </button>
         ) : null}
       </div>
-      <div className="h-14" />
-      {error ? <div className="px-4 pb-3"><Notice tone="error">{error}</Notice></div> : null}
+      <div className="h-12" />
+      <button type="button" onClick={() => setComposing(true)} className="mx-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-stone-200 active:bg-stone-50">
+        {self ? <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-10 w-10 text-sm" /> : null}
+        <span className="text-[15px] text-stone-400">这一刻的想法…</span>
+      </button>
+      {error ? <div className="px-4 pb-3 pt-3"><Notice tone="error">{error}</Notice></div> : null}
       {posts === null && !error ? <Spinner /> : null}
-      {posts && posts.length === 0 ? <p className="px-4 py-16 text-center text-sm text-stone-400">还没有动态</p> : null}
+      {posts && posts.length === 0 ? (
+        <div className="px-4 py-10 text-center">
+          <p className="text-sm text-stone-400">还没有动态</p>
+          <Button type="button" className="mt-4" onClick={() => setComposing(true)}>
+            发表第一条
+          </Button>
+        </div>
+      ) : null}
       {posts && posts.length > 0 ? (
         <div>
           {posts.map((post) => (
