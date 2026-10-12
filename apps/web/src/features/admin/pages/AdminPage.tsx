@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { hasPermission, type Permission } from '@utmmsc/shared';
 import { useSessionStore } from '../../../shared/session/store';
-import { PageTitle } from '../../../shared/ui/Card';
+import { BackHeader } from '../../../shared/ui/BackHeader';
 import { AnnouncementsPanel } from '../announcements/AnnouncementsPanel';
 import { ApprovalsPanel } from '../approvals/ApprovalsPanel';
 import { ChannelsPanel } from '../channels/ChannelsPanel';
@@ -34,15 +33,7 @@ export function AdminPage() {
 
   return (
     <div className="space-y-4">
-      <PageTitle
-        action={
-          <Link to="/settings" className="text-sm text-brand-800">
-            我的账号
-          </Link>
-        }
-      >
-        管理
-      </PageTitle>
+      <BackHeader to="/discover" label="发现" title="管理" />
       <div className="flex gap-5 overflow-x-auto border-b border-stone-200">
         {sections.map((s) => (
           <button

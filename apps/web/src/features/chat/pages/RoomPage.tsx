@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hasPermission, parseRoomId } from '@utmmsc/shared';
 import { useSessionStore } from '../../../shared/session/store';
+import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Notice } from '../../../shared/ui/Card';
 import { Composer } from '../components/Composer';
 import { MessageBubble } from '../components/MessageBubble';
@@ -69,17 +70,17 @@ export function RoomPage() {
 
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col bg-paper">
-      <header className="flex items-center gap-2 border-b-[3px] border-brand-700 bg-paper px-2 py-2">
-        <button onClick={() => navigate('/chat')} className="h-10 w-10 rounded-full text-xl text-slate-600" aria-label="返回">
-          ←
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">{title}</p>
-          <p className="text-xs text-slate-500">
-            {socketOpen ? `${room.onlineCount} 人在线` : room.status === 'connecting' ? '连接中…' : room.retrying ? '已断开，正在重连' : '未连接'}
-          </p>
-        </div>
-      </header>
+      <BackHeader
+        flush
+        to="/chat"
+        label="聊天"
+        title={title}
+        trailing={
+          <span className="truncate text-xs text-stone-400">
+            {socketOpen ? `${room.onlineCount} 人在线` : room.status === 'connecting' ? '连接中…' : room.retrying ? '重连中' : '未连接'}
+          </span>
+        }
+      />
 
       <div ref={listRef} onScroll={onScroll} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {room.hasMore ? <p className="text-center text-xs text-slate-400">上拉加载更早的消息</p> : null}

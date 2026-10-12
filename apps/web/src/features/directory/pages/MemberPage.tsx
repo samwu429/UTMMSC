@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { directRoomId, type FriendshipState, type MemberDetailResponse } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
+import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { Notice, Spinner } from '../../../shared/ui/Card';
 import { chatApi } from '../../chat/api';
@@ -67,18 +68,15 @@ export function MemberPage() {
     }
   }
 
-  if (error) return <Notice tone="error">{error}</Notice>;
-  if (!detail) return <Spinner />;
-
-  const mine = self?.id === detail.member.id;
+  const mine = self?.id === detail?.member.id;
 
   return (
     <div>
-      <Link to="/chat?tab=members" className="mb-3 inline-block text-sm text-brand-800">
-        ← 返回成员列表
-      </Link>
+      <BackHeader to="/chat?tab=members" label="成员" />
+      {error && !detail ? <Notice tone="error">{error}</Notice> : null}
+      {!detail && !error ? <Spinner /> : null}
       {notice ? <div className="mb-3"><Notice tone="error">{notice}</Notice></div> : null}
-      <div className="-mx-4">
+      {detail ? <div className="-mx-4">
         <MemberProfileView
           member={detail.member}
           experiences={detail.experiences}
@@ -112,7 +110,7 @@ export function MemberPage() {
             )
           }
         />
-      </div>
+      </div> : null}
     </div>
   );
 }

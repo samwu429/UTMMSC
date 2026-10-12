@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ENROLLMENT_LABELS, ROLE_LABELS, isStaffRole } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
+import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
 import { Field, TextInput } from '../../../shared/ui/Field';
@@ -66,11 +67,8 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="min-h-11 text-[15px] text-brand-800">
-        ← 设置
-      </button>
-      <h1 className="mt-2 text-[22px] font-semibold text-brand-800">修改密码</h1>
-      <form onSubmit={changePassword} className="mt-5 space-y-3">
+      <BackHeader onBack={onBack} label="设置" title="修改密码" />
+      <form onSubmit={changePassword} className="mt-2 space-y-3">
         <Field label="当前密码">
           <TextInput type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} />
         </Field>
@@ -90,10 +88,7 @@ function InstallScreen({ onBack }: { onBack: () => void }) {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   return (
     <div>
-      <button type="button" onClick={onBack} className="min-h-11 text-[15px] text-brand-800">
-        ← 设置
-      </button>
-      <h1 className="mt-2 text-[22px] font-semibold text-brand-800">添加到主屏幕</h1>
+      <BackHeader onBack={onBack} label="设置" title="添加到主屏幕" />
       <p className="mt-4 text-[15px] leading-relaxed text-stone-700">
         {ios ? '用 Safari 打开这个页面，点底部分享按钮，选「添加到主屏幕」。之后可以从主屏幕直接进来。' : '打开浏览器菜单，选「添加到主屏幕」或「安装应用」。之后可以从主屏幕直接进来。'}
       </p>

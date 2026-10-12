@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { BackHeader } from '../../../shared/ui/BackHeader';
 import { ActivityPanel } from '../../settings/panels/ActivityPanel';
 
 export function DiscoverFeedPage() {
@@ -7,13 +8,11 @@ export function DiscoverFeedPage() {
   const [composing, setComposing] = useState(false);
 
   return (
-    <div className="-mx-4 -mt-5">
-      {composing ? null : (
-        <Link to="/discover" className="inline-block px-4 py-3 text-sm text-brand-800">
-          ← 发现
-        </Link>
-      )}
-      <ActivityPanel onOpenProfile={() => navigate('/settings')} onPushed={setComposing} />
+    <div>
+      {composing ? null : <BackHeader to="/discover" label="发现" title="好友动态" />}
+      <div className="-mx-4">
+        <ActivityPanel onOpenProfile={() => navigate('/settings')} onPushed={setComposing} />
+      </div>
     </div>
   );
 }

@@ -3,8 +3,9 @@ import { FILE_CATEGORIES, FILE_CATEGORY_LABELS, FILE_MAX_BYTES, hasPermission, t
 import { errorMessage } from '../../../shared/api/errors';
 import { formatBytes, formatRelative } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
+import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
-import { EmptyState, List, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
+import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
 import { filesApi } from '../api';
 
 export function FilesPage() {
@@ -71,8 +72,11 @@ export function FilesPage() {
 
   return (
     <div className="space-y-4">
-      <PageTitle
-        action={
+      <BackHeader
+        to="/discover"
+        label="发现"
+        title="文件"
+        trailing={
           canUpload ? (
             <>
               <input ref={inputRef} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
@@ -80,11 +84,9 @@ export function FilesPage() {
                 上传
               </Button>
             </>
-          ) : undefined
+          ) : null
         }
-      >
-        文件
-      </PageTitle>
+      />
       <div className="flex gap-5 overflow-x-auto border-b border-stone-200">
         {FILE_CATEGORIES.map((c) => (
           <button
