@@ -7,7 +7,6 @@ import { LoginPage } from '../features/auth/pages/LoginPage';
 import { RegisterPage } from '../features/auth/pages/RegisterPage';
 import { ChatOverviewPage } from '../features/chat/pages/ChatOverviewPage';
 import { RoomPage } from '../features/chat/pages/RoomPage';
-import { DirectoryPage } from '../features/directory/pages/DirectoryPage';
 import { MemberPage } from '../features/directory/pages/MemberPage';
 import { FilesPage } from '../features/files/pages/FilesPage';
 import { HomePage } from '../features/home/pages/HomePage';
@@ -50,7 +49,7 @@ export function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/chat" element={<ChatOverviewPage />} />
-            <Route path="/directory" element={<DirectoryPage />} />
+            <Route path="/directory" element={<Navigate to="/chat?tab=members" replace />} />
             <Route path="/directory/:id" element={<MemberPage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/settings" element={<SettingsPage />} />

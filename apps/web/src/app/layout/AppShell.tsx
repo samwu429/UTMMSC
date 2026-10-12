@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { hasPermission } from '@utmmsc/shared';
 import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
@@ -12,10 +12,7 @@ interface NavItem {
   icon: IconName;
 }
 
-const LEFT_NAV: NavItem[] = [
-  { to: '/', label: '首页', icon: 'home' },
-  { to: '/directory', label: '成员', icon: 'people' },
-];
+const LEFT_NAV: NavItem[] = [{ to: '/', label: '首页', icon: 'home' }];
 
 const RIGHT_NAV: NavItem[] = [{ to: '/files', label: '文件', icon: 'files' }];
 
@@ -79,16 +76,14 @@ function SideTab({ item }: { item: NavItem }) {
 }
 
 function ChatTab() {
+  const { pathname } = useLocation();
+  const isActive = pathname === '/chat' || pathname.startsWith('/directory');
   return (
     <NavLink to="/chat" className="flex w-[4.75rem] flex-col items-center justify-end">
-      {({ isActive }) => (
-        <>
-          <span className={`-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-brand-800 text-white ring-4 ring-paper outline outline-[3px] ${isActive ? 'outline-gold' : 'outline-gold/70'}`}>
-            <TabIcon name="chat" />
-          </span>
-          <span className={`mt-1 text-[11px] ${isActive ? 'font-medium text-brand-800' : 'text-brand-700'}`}>聊天</span>
-        </>
-      )}
+      <span className={`-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-brand-800 text-white ring-4 ring-paper outline outline-[3px] ${isActive ? 'outline-gold' : 'outline-gold/70'}`}>
+        <TabIcon name="chat" />
+      </span>
+      <span className={`mt-1 text-[11px] ${isActive ? 'font-medium text-brand-800' : 'text-brand-700'}`}>聊天</span>
     </NavLink>
   );
 }

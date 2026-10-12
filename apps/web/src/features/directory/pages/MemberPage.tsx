@@ -55,7 +55,7 @@ export function MemberPage() {
 
   return (
     <div>
-      <Link to="/directory" className="mb-3 inline-block text-sm text-brand-800">
+      <Link to="/chat?tab=members" className="mb-3 inline-block text-sm text-brand-800">
         ← 返回成员列表
       </Link>
       <div className="-mx-4">

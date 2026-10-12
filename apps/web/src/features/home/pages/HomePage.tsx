@@ -94,11 +94,11 @@ export function HomePage() {
           <Link to="/chat" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
             <span>
               <span className="block font-medium">聊天</span>
-              <span className="text-sm text-stone-500">频道和私聊</span>
+              <span className="text-sm text-stone-500">频道、私聊和成员</span>
             </span>
             <span className="text-stone-300">›</span>
           </Link>
-          <Link to="/directory" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
+          <Link to="/chat?tab=members" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
             <span>
               <span className="block font-medium">成员</span>
               <span className="text-sm text-stone-500">按届别和专业找人</span>

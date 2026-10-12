@@ -10,7 +10,7 @@ import { MemberRow } from '../components/MemberRow';
 const YEARS: number[] = [];
 for (let y = graduationYearMax(); y >= GRADUATION_YEAR_MIN; y--) YEARS.push(y);
 
-export function DirectoryPage() {
+export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
   const [q, setQ] = useState('');
   const [enrollment, setEnrollment] = useState<EnrollmentStatus | ''>('');
   const [year, setYear] = useState('');
@@ -55,7 +55,7 @@ export function DirectoryPage() {
 
   return (
     <div className="space-y-4">
-      <PageTitle>成员</PageTitle>
+      {embedded ? null : <PageTitle>成员</PageTitle>}
       <TextInput placeholder="搜索姓名、专业、技能或所在地" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid grid-cols-2 gap-3">
         <Select value={enrollment} onChange={(e) => setEnrollment(e.target.value as EnrollmentStatus | '')}>

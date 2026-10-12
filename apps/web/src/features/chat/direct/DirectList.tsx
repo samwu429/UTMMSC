@@ -9,7 +9,7 @@ export function DirectList({ conversations }: { conversations: DirectConversatio
     return (
       <EmptyState>
         还没有私聊。到{' '}
-        <Link to="/directory" className="text-brand-800">
+        <Link to="/chat?tab=members" className="text-brand-800">
           成员
         </Link>{' '}
         里点一个人即可开始。
