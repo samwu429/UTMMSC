@@ -39,7 +39,7 @@ export function SplashScreen() {
       <video
         ref={videoRef}
         src={`${import.meta.env.BASE_URL}splash/open.mp4`}
-        className="h-full w-full object-contain"
+        className="h-full w-full object-cover landscape:object-contain"
         autoPlay
         muted
         playsInline
