@@ -21,6 +21,7 @@ export const SKILL_MAX_LENGTH = 20;
 export const POST_MAX = 500;
 export const EXPERIENCE_LIMIT = 8;
 export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
+export const COVER_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Built-in avatars. Animated is `preset:<id>` (gif). Still is `preset:<id>:still` (png). */
 /** 自带头像。动态版为 `preset:<id>`（gif），静态版为 `preset:<id>:still`（png）。 */

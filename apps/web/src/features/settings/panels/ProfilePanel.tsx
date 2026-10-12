@@ -127,6 +127,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
         onDeleteExperience={removeExperience}
         onShowActivity={onShowActivity}
         onEditAvatar={() => setSheet('avatar')}
+        onCoverSaved={(member) => applyMember(member, false)}
         avatarBusy={avatarBusy}
       />
       {sheet === 'intro' ? (

@@ -38,6 +38,14 @@ export function avatarObjectKey(memberId: string, contentType: string): string {
   return `avatar/${memberId}/${randomId('ava')}.${described.ext}`;
 }
 
+export function coverObjectKey(memberId: string, contentType: string): string {
+  const described = describeContentType(contentType);
+  if (!described || described.kind !== 'image') {
+    throw new FieldError('封面只支持 JPEG、PNG、WebP、GIF');
+  }
+  return `cover/${memberId}/${randomId('cov')}.${described.ext}`;
+}
+
 export function momentObjectKey(memberId: string, contentType: string): string {
   const described = describeContentType(contentType);
   if (!described) throw new FieldError('只支持 JPEG、PNG、WebP、GIF 照片，或 MP4、MOV、WebM 视频');

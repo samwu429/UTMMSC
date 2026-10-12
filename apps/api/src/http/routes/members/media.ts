@@ -11,7 +11,7 @@ export async function serveMemberMedia(c: Context<AppEnv>): Promise<Response> {
   const token = c.req.query('t') ?? '';
   if (!(await readProfileMediaToken(c.env.SESSION_SECRET, token))) throw unauthorized('媒体链接已过期');
   const key = decodeURIComponent(c.req.path.replace(/^\/members\/media\//, ''));
-  if (key.includes('..') || (!key.startsWith('avatar/') && !key.startsWith('moments/'))) throw forbidden();
+  if (key.includes('..') || (!key.startsWith('avatar/') && !key.startsWith('cover/') && !key.startsWith('moments/'))) throw forbidden();
   const response = await mediaObjectResponse(requireBucket(c.env), key, c.req.raw);
   if (!response) throw notFound('文件不存在');
   return response;

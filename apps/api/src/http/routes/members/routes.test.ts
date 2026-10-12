@@ -12,6 +12,8 @@ describe('member routes', () => {
     expect(paths).toContain('POST /me/posts');
     expect(paths).toContain('POST /me/avatar');
     expect(paths).toContain('POST /me/avatar/preset');
+    expect(paths).toContain('POST /me/cover');
+    expect(paths).toContain('DELETE /me/cover');
     expect(paths).toContain('POST /me/media');
   });
 });

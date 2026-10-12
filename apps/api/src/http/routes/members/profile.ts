@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { ABOUT_MAX, AVATAR_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, isPresetAvatarId, presetAvatarKey } from '@utmmsc/shared';
+import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, isPresetAvatarId, presetAvatarKey } from '@utmmsc/shared';
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
-import { avatarObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
+import { avatarObjectKey, coverObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
 import {
   countExperiences,
@@ -11,7 +11,7 @@ import {
   insertPost,
   listFeed,
 } from '../../../infrastructure/d1/profile';
-import { findMemberById, toSelf, updateAvatarKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { findMemberById, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
 import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
@@ -88,6 +88,35 @@ profileRoutes.delete('/me/avatar', async (c) => {
   const member = c.get('member');
   await updateAvatarKey(c.env.DB, member.id, null);
   if (member.avatar_key?.startsWith('avatar/')) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), member.avatar_key));
+  const updated = await findMemberById(c.env.DB, member.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated) });
+});
+
+profileRoutes.post('/me/cover', rateLimit(10, 60_000), async (c) => {
+  const { bytes, contentType } = await readUpload(c, COVER_MAX_BYTES, '封面不能超过 8MB');
+  const member = c.get('member');
+  let key: string;
+  try {
+    key = coverObjectKey(member.id, contentType);
+  } catch (error) {
+    if (error instanceof FieldError) throw badRequest('unsupported_type', error.message);
+    throw error;
+  }
+  const bucket = requireBucket(c.env);
+  await putObject(bucket, key, bytes, contentType);
+  const previous = member.cover_key;
+  await updateCoverKey(c.env.DB, member.id, key);
+  if (previous?.startsWith('cover/') && previous !== key) c.executionCtx.waitUntil(deleteObject(bucket, previous));
+  const updated = await findMemberById(c.env.DB, member.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated), mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
+});
+
+profileRoutes.delete('/me/cover', async (c) => {
+  const member = c.get('member');
+  await updateCoverKey(c.env.DB, member.id, null);
+  if (member.cover_key?.startsWith('cover/')) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), member.cover_key));
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });

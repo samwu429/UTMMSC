@@ -6,6 +6,7 @@ import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
 import { Notice, Spinner } from '../../../shared/ui/Card';
 import { MemberAvatar } from '../../profile/InitialAvatar';
+import { CoverBanner } from '../../profile/CoverBanner';
 import { profileApi } from '../../profile/api';
 import { formatPostTime } from '../../profile/format';
 import { PostMediaView } from '../../profile/PostMediaView';
@@ -246,18 +247,17 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
 
   return (
     <div>
-      <div className="relative h-48 bg-brand-800">
-        <div className="h-1 bg-gold" />
-        <button type="button" onClick={() => setComposing(true)} className="absolute right-3 top-3 min-h-10 rounded-full border-t-[3px] border-gold bg-white px-4 text-[15px] font-medium text-brand-800">
+      <CoverBanner coverKey={self?.coverKey} tall editable={Boolean(self)}>
+        <button type="button" onClick={() => setComposing(true)} className="absolute right-3 top-3 z-10 min-h-10 rounded-full border-t-[3px] border-gold bg-white px-4 text-[15px] font-medium text-brand-800">
           发表
         </button>
-        {self ? <p className="absolute bottom-6 right-28 left-4 truncate text-right text-[18px] font-medium text-white">{self.displayName}</p> : null}
+        {self ? <p className="absolute bottom-6 right-28 left-4 truncate text-right text-[18px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]">{self.displayName}</p> : null}
         {self ? (
-          <button type="button" onClick={onOpenProfile} className="absolute -bottom-8 right-4" aria-label="我的资料">
+          <button type="button" onClick={onOpenProfile} className="absolute -bottom-8 right-4 z-10" aria-label="我的资料">
             <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-16 w-16 text-xl ring-4 ring-paper" />
           </button>
         ) : null}
-      </div>
+      </CoverBanner>
       <div className="h-12" />
       <button type="button" onClick={() => setComposing(true)} className="mx-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-stone-200 active:bg-stone-50">
         {self ? <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-10 w-10 text-sm" /> : null}

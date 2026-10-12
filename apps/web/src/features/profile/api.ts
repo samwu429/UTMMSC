@@ -13,6 +13,13 @@ export const profileApi = {
   removeAvatar: () => api<{ member: MemberSelf }>('/members/me/avatar', { method: 'DELETE' }),
   choosePreset: (id: PresetAvatarId, motion: PresetAvatarMotion) =>
     api<{ member: MemberSelf }>('/members/me/avatar/preset', { method: 'POST', body: { id, motion } }),
+  uploadCover: (file: File) =>
+    api<{ member: MemberSelf; mediaToken: string }>('/members/me/cover', {
+      method: 'POST',
+      rawBody: file,
+      headers: { 'content-type': file.type },
+    }),
+  removeCover: () => api<{ member: MemberSelf }>('/members/me/cover', { method: 'DELETE' }),
   uploadMedia: (file: File) =>
     api<UploadedMedia>('/members/me/media', {
       method: 'POST',

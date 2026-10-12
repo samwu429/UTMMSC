@@ -19,6 +19,11 @@ export function avatarImageSrc(avatarKey: string | null | undefined, token: stri
   return mediaUrl(avatarKey, token);
 }
 
+export function coverImageSrc(coverKey: string | null | undefined, token: string | null): string | null {
+  if (!coverKey || !token) return null;
+  return mediaUrl(coverKey, token);
+}
+
 export function useMediaUrl(key: string | null | undefined): string | null {
   const token = useSessionStore((s) => s.mediaToken);
   if (!key || !token) return null;

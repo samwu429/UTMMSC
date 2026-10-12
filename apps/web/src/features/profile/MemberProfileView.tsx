@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, isStaffRole, type ActivityPost, type Experience, type MemberProfile } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, isStaffRole, type ActivityPost, type Experience, type MemberProfile, type MemberSelf } from '@utmmsc/shared';
 import { experiencePeriod, formatPostTime } from './format';
+import { CoverBanner } from './CoverBanner';
 import { MemberAvatar } from './InitialAvatar';
 import { CameraIcon, ChevronIcon, PlusIcon } from './icons';
 import { PostMediaView } from './PostMediaView';
@@ -66,6 +67,7 @@ export function MemberProfileView({
   onDeleteExperience,
   onShowActivity,
   onEditAvatar,
+  onCoverSaved,
   avatarBusy,
   action,
 }: {
@@ -80,6 +82,7 @@ export function MemberProfileView({
   onDeleteExperience?: (id: string) => void;
   onShowActivity?: () => void;
   onEditAvatar?: () => void;
+  onCoverSaved?: (member: MemberSelf) => void;
   avatarBusy?: boolean;
   action?: ReactNode;
 }) {
@@ -91,9 +94,7 @@ export function MemberProfileView({
   return (
     <div className="space-y-2">
       <header className="bg-white">
-        <div className="h-24 bg-brand-800">
-          <div className="h-1 bg-gold" />
-        </div>
+        <CoverBanner coverKey={member.coverKey} editable={Boolean(onCoverSaved)} onSaved={onCoverSaved} />
         <div className="px-4 pb-4">
           <div className="relative -mt-10 h-20 w-20">
             <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className={`h-20 w-20 text-2xl ring-4 ring-white ${avatarBusy ? 'opacity-50' : ''}`} />
