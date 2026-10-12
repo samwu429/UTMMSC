@@ -3,8 +3,8 @@ import { canPostInChannel, canReadChannel } from './channel-access';
 
 const student = { role: 'student' as const, enrollmentStatus: 'student' as const };
 const alumni = { role: 'alumni' as const, enrollmentStatus: 'alumni' as const };
-const lead = { role: 'department_lead' as const, enrollmentStatus: 'student' as const };
-const executive = { role: 'executive' as const, enrollmentStatus: 'alumni' as const };
+const lead = { role: 'head_technology' as const, enrollmentStatus: 'student' as const };
+const executive = { role: 'president' as const, enrollmentStatus: 'alumni' as const };
 
 describe('canReadChannel', () => {
   it('opens all-audience channels to everyone', () => {
@@ -29,7 +29,7 @@ describe('canReadChannel', () => {
 });
 
 describe('canPostInChannel', () => {
-  it('restricts staff-only channels to department leads and above', () => {
+  it('restricts staff-only channels to department heads and presidium', () => {
     const notices = { audience: 'all' as const, postPolicy: 'staff' as const, isMember: false };
     expect(canPostInChannel(notices, student)).toBe(false);
     expect(canPostInChannel(notices, lead)).toBe(true);

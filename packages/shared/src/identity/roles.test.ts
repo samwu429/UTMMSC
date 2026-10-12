@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAssignRole, hasPermission, isStaffRole, ROLES } from './roles';
+import { canAssignRole, hasPermission, isOfficeRole, isStaffRole, ROLES } from './roles';
 
 describe('role permissions', () => {
   it('gives every role the base member permissions', () => {
@@ -9,44 +9,49 @@ describe('role permissions', () => {
     }
   });
 
-  it('reserves moderation and approvals for executives and above', () => {
-    expect(hasPermission('department_lead', 'chat.moderate')).toBe(false);
-    expect(hasPermission('executive', 'chat.moderate')).toBe(true);
-    expect(hasPermission('executive', 'members.approve')).toBe(true);
+  it('follows the constitution instead of one shared executive bucket', () => {
+    expect(hasPermission('head_events', 'events.manage')).toBe(true);
+    expect(hasPermission('head_technology', 'events.manage')).toBe(false);
+    expect(hasPermission('head_technology', 'files.upload')).toBe(true);
+    expect(hasPermission('secretary_general', 'members.approve')).toBe(true);
+    expect(hasPermission('secretary_general', 'members.assign_role')).toBe(false);
+    expect(hasPermission('vp_finance', 'files.upload')).toBe(true);
+    expect(hasPermission('vp_finance', 'announcements.send')).toBe(false);
+    expect(hasPermission('vp_audit', 'files.upload')).toBe(false);
+    expect(hasPermission('president', 'members.assign_role')).toBe(true);
+    expect(hasPermission('president', 'channels.manage')).toBe(true);
     expect(hasPermission('student', 'members.approve')).toBe(false);
-  });
-
-  it('lets department leads upload files and manage events', () => {
-    expect(hasPermission('department_lead', 'files.upload')).toBe(true);
-    expect(hasPermission('department_lead', 'events.manage')).toBe(true);
-    expect(hasPermission('alumni', 'files.upload')).toBe(false);
   });
 });
 
 describe('canAssignRole', () => {
-  it('allows executives to assign roles strictly below themselves', () => {
-    expect(canAssignRole('executive', 'department_lead')).toBe(true);
-    expect(canAssignRole('executive', 'student')).toBe(true);
-    expect(canAssignRole('executive', 'executive')).toBe(false);
-    expect(canAssignRole('executive', 'superadmin')).toBe(false);
+  it('lets the president appoint members and department heads only', () => {
+    expect(canAssignRole('president', 'head_technology')).toBe(true);
+    expect(canAssignRole('president', 'student')).toBe(true);
+    expect(canAssignRole('president', 'secretary_general')).toBe(false);
+    expect(canAssignRole('president', 'president')).toBe(false);
+    expect(canAssignRole('president', 'superadmin')).toBe(false);
   });
 
-  it('allows superadmin to assign any role', () => {
-    expect(canAssignRole('superadmin', 'executive')).toBe(true);
+  it('allows the system admin to assign any role', () => {
+    expect(canAssignRole('superadmin', 'president')).toBe(true);
     expect(canAssignRole('superadmin', 'superadmin')).toBe(true);
   });
 
-  it('denies roles without the permission', () => {
-    expect(canAssignRole('department_lead', 'student')).toBe(false);
-    expect(canAssignRole('student', 'student')).toBe(false);
+  it('denies department heads and other presidium officers', () => {
+    expect(canAssignRole('head_events', 'student')).toBe(false);
+    expect(canAssignRole('secretary_general', 'student')).toBe(false);
+    expect(canAssignRole('vp_audit', 'student')).toBe(false);
   });
 });
 
-describe('isStaffRole', () => {
-  it('treats department leads and above as staff', () => {
-    expect(isStaffRole('student')).toBe(false);
+describe('offices', () => {
+  it('treats constitution offices as unique and staff', () => {
+    expect(isOfficeRole('president')).toBe(true);
+    expect(isOfficeRole('head_academic')).toBe(true);
+    expect(isOfficeRole('student')).toBe(false);
+    expect(isOfficeRole('superadmin')).toBe(false);
+    expect(isStaffRole('head_publicity')).toBe(true);
     expect(isStaffRole('alumni')).toBe(false);
-    expect(isStaffRole('department_lead')).toBe(true);
-    expect(isStaffRole('superadmin')).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { MEMBER_STATUSES, ROLES, canAssignRole, roleRank, type AdminMemberRow, type AnnouncementResponse, type MemberStatus, type Role } from '@utmmsc/shared';
+import { MEMBER_STATUSES, ROLES, canAssignRole, isOfficeRole, roleTier, type AdminMemberRow, type AnnouncementResponse, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
 import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
@@ -10,6 +10,7 @@ import {
   toProfile,
   updateMemberRole,
   updateMemberStatus,
+  officeHolderExists,
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
@@ -64,7 +65,8 @@ adminRoutes.post('/members/:id/role', requirePermission('members.assign_role'), 
   const role = requireOneOf<Role>(body.role, ROLES, '身份');
   if (target.id === actor.id) throw badRequest('self_role', '不能修改自己的身份');
   if (!canAssignRole(actor.role, role)) throw forbidden('无权分配该身份');
-  if (roleRank(target.role) >= roleRank(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
+  if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
+  if (isOfficeRole(role) && (await officeHolderExists(c.env.DB, role, target.id))) throw badRequest('office_taken', '这个职位已经有人担任');
   await updateMemberRole(c.env.DB, target.id, role);
   return c.json({ ok: true });
 });
@@ -74,7 +76,7 @@ adminRoutes.post('/members/:id/status', requirePermission('members.assign_role')
   const target = await findMemberById(c.env.DB, c.req.param('id'));
   if (!target) throw notFound('成员不存在');
   if (target.id === actor.id) throw badRequest('self_status', '不能停用自己');
-  if (roleRank(target.role) >= roleRank(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
+  if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   const body = await readJson<Record<string, unknown>>(c);
   const status = requireOneOf<MemberStatus>(body.status, MEMBER_STATUSES, '状态');
   await updateMemberStatus(c.env.DB, target.id, status);

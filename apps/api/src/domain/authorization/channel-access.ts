@@ -12,9 +12,9 @@ export interface ActorInput {
 }
 
 /**
- * Reading: implicit audiences match on enrollment status, executives see everything,
+ * Reading: implicit audiences match on enrollment status, channel managers see everything,
  * custom channels require a membership row.
- * 阅读：隐式受众按在校/毕业匹配，主席团可见全部，自定义频道需成员记录。
+ * 阅读：隐式受众按在校或毕业匹配，能管频道的人可见全部，自定义频道需成员记录。
  */
 export function canReadChannel(channel: ChannelAccessInput, actor: ActorInput): boolean {
   if (hasPermission(actor.role, 'channels.manage')) return true;

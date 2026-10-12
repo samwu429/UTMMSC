@@ -110,6 +110,11 @@ export async function updateMemberStatus(db: D1Database, memberId: string, statu
   await db.prepare('UPDATE members SET status = ?, updated_at = ? WHERE id = ?').bind(status, nowIso(), memberId).run();
 }
 
+export async function officeHolderExists(db: D1Database, role: string, exceptId: string): Promise<boolean> {
+  const row = await db.prepare('SELECT id FROM members WHERE role = ? AND id != ? LIMIT 1').bind(role, exceptId).first<{ id: string }>();
+  return Boolean(row);
+}
+
 export interface ProfileUpdate {
   headline?: string | null;
   about?: string | null;
