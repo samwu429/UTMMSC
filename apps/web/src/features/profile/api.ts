@@ -1,4 +1,4 @@
-import type { ActivityPost, CreateExperienceBody, CreatePostBody, Experience, FeedResponse, MemberDetailResponse, MemberSelf, UpdateProfileBody, UploadedMedia } from '@utmmsc/shared';
+import type { ActivityPost, CreateExperienceBody, CreatePostBody, Experience, FeedResponse, MemberDetailResponse, MemberSelf, PresetAvatarId, UpdateProfileBody, UploadedMedia } from '@utmmsc/shared';
 import { api } from '../../shared/api/client';
 
 export const profileApi = {
@@ -11,6 +11,7 @@ export const profileApi = {
       headers: { 'content-type': file.type },
     }),
   removeAvatar: () => api<{ member: MemberSelf }>('/members/me/avatar', { method: 'DELETE' }),
+  choosePreset: (id: PresetAvatarId) => api<{ member: MemberSelf }>('/members/me/avatar/preset', { method: 'POST', body: { id } }),
   uploadMedia: (file: File) =>
     api<UploadedMedia>('/members/me/media', {
       method: 'POST',

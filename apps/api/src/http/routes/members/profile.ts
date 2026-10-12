@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ABOUT_MAX, AVATAR_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX } from '@utmmsc/shared';
+import { ABOUT_MAX, AVATAR_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, isPresetAvatarId, presetAvatarKey } from '@utmmsc/shared';
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
 import { avatarObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
@@ -49,7 +49,7 @@ async function readUpload(c: { req: { header: (name: string) => string | undefin
 }
 
 profileRoutes.post('/me/avatar', rateLimit(10, 60_000), async (c) => {
-  const { bytes, contentType } = await readUpload(c, AVATAR_MAX_BYTES, '头像不能超过 5MB');
+  const { bytes, contentType } = await readUpload(c, AVATAR_MAX_BYTES, '头像不能超过 8MB');
   const member = c.get('member');
   let key: string;
   try {
@@ -62,16 +62,30 @@ profileRoutes.post('/me/avatar', rateLimit(10, 60_000), async (c) => {
   await putObject(bucket, key, bytes, contentType);
   const previous = member.avatar_key;
   await updateAvatarKey(c.env.DB, member.id, key);
-  if (previous && previous !== key) c.executionCtx.waitUntil(deleteObject(bucket, previous));
+  if (previous?.startsWith('avatar/') && previous !== key) c.executionCtx.waitUntil(deleteObject(bucket, previous));
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated), mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
 });
 
+profileRoutes.post('/me/avatar/preset', async (c) => {
+  const body = await readJson<Record<string, unknown>>(c);
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!isPresetAvatarId(id)) throw badRequest('invalid_avatar', '没有这个头像');
+  const member = c.get('member');
+  const key = presetAvatarKey(id);
+  const previous = member.avatar_key;
+  await updateAvatarKey(c.env.DB, member.id, key);
+  if (previous?.startsWith('avatar/') && previous !== key) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), previous));
+  const updated = await findMemberById(c.env.DB, member.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated) });
+});
+
 profileRoutes.delete('/me/avatar', async (c) => {
   const member = c.get('member');
   await updateAvatarKey(c.env.DB, member.id, null);
-  if (member.avatar_key) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), member.avatar_key));
+  if (member.avatar_key?.startsWith('avatar/')) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), member.avatar_key));
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });

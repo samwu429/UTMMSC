@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import type { Experience, MemberDetailResponse, MemberSelf } from '@utmmsc/shared';
+import type { Experience, MemberDetailResponse, MemberSelf, PresetAvatarId } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Notice, Spinner } from '../../../shared/ui/Card';
+import { AvatarChooser } from '../../profile/AvatarChooser';
 import { ExperienceForm } from '../../profile/ExperienceForm';
 import { MemberProfileView } from '../../profile/MemberProfileView';
 import { Sheet } from '../../profile/Sheet';
 import { profileApi } from '../../profile/api';
 import { AboutEditor, IntroEditor, OpenToEditor, SkillsEditor } from './ProfileEditors';
 
-type SheetName = 'intro' | 'about' | 'open' | 'skills' | 'experience';
+type SheetName = 'intro' | 'about' | 'open' | 'skills' | 'experience' | 'avatar';
 
 function sortExperiences(items: Experience[]): Experience[] {
   return [...items].sort((a, b) => {
@@ -62,12 +63,25 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
     }
   }
 
+  async function choosePreset(id: PresetAvatarId) {
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const res = await profileApi.choosePreset(id);
+      applyMember(res.member, true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
   async function pickAvatar(file: File) {
     setAvatarBusy(true);
     setError(null);
     try {
       const res = await profileApi.uploadAvatar(file);
-      applyMember(res.member, false);
+      applyMember(res.member, true);
       setMediaToken(res.mediaToken);
     } catch (err) {
       setError(errorMessage(err));
@@ -81,7 +95,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
     setError(null);
     try {
       const res = await profileApi.removeAvatar();
-      applyMember(res.member, false);
+      applyMember(res.member, true);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -112,8 +126,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
         onAddExperience={() => setSheet('experience')}
         onDeleteExperience={removeExperience}
         onShowActivity={onShowActivity}
-        onPickAvatar={pickAvatar}
-        onRemoveAvatar={removeAvatar}
+        onEditAvatar={() => setSheet('avatar')}
         avatarBusy={avatarBusy}
       />
       {sheet === 'intro' ? (
@@ -134,6 +147,11 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
       {sheet === 'skills' ? (
         <Sheet title="技能" closeLabel="完成" onClose={() => setSheet(null)}>
           <SkillsEditor member={detail.member} onChange={(member) => applyMember(member, false)} />
+        </Sheet>
+      ) : null}
+      {sheet === 'avatar' ? (
+        <Sheet title="选择头像" onClose={() => setSheet(null)}>
+          <AvatarChooser currentKey={detail.member.avatarKey} busy={avatarBusy} onPreset={choosePreset} onUpload={pickAvatar} onRemove={removeAvatar} />
         </Sheet>
       ) : null}
       {sheet === 'experience' ? (

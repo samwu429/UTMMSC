@@ -32,8 +32,8 @@ export function describeContentType(contentType: string): { ext: string; kind: P
 
 export function avatarObjectKey(memberId: string, contentType: string): string {
   const described = describeContentType(contentType);
-  if (!described || described.kind !== 'image' || described.ext === 'gif') {
-    throw new FieldError('头像只支持 JPEG、PNG、WebP');
+  if (!described || described.kind !== 'image') {
+    throw new FieldError('头像只支持 JPEG、PNG、WebP、GIF');
   }
   return `avatar/${memberId}/${randomId('ava')}.${described.ext}`;
 }

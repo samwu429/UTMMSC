@@ -20,7 +20,26 @@ export const SKILL_MAX_COUNT = 12;
 export const SKILL_MAX_LENGTH = 20;
 export const POST_MAX = 500;
 export const EXPERIENCE_LIMIT = 8;
-export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Built-in animated avatars. The id is stored as `preset:<id>` and the file is `avatars/<id>.gif`. */
+/** 自带的动态头像。id 以 `preset:<id>` 保存，文件为 `avatars/<id>.gif`。 */
+export const PRESET_AVATARS = [
+  { id: 'woman-cute-gold', label: '女 · 可爱 · 黄' },
+  { id: 'woman-cool-purple', label: '女 · 帅气 · 紫' },
+  { id: 'man-cute-purple', label: '男 · 可爱 · 紫' },
+  { id: 'man-cool-gold', label: '男 · 帅气 · 黄' },
+] as const;
+
+export type PresetAvatarId = (typeof PRESET_AVATARS)[number]['id'];
+
+export function isPresetAvatarId(id: string): id is PresetAvatarId {
+  return PRESET_AVATARS.some((item) => item.id === id);
+}
+
+export function presetAvatarKey(id: PresetAvatarId): string {
+  return `preset:${id}`;
+}
 export const MOMENT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 export const MOMENT_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 export const MOMENT_IMAGE_LIMIT = 9;

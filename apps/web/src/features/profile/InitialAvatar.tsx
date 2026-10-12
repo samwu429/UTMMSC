@@ -1,4 +1,5 @@
-import { useMediaUrl } from './media';
+import { useSessionStore } from '../../shared/session/store';
+import { avatarImageSrc } from './media';
 
 export function InitialAvatar({ name, className = '' }: { name: string; className?: string }) {
   return (
@@ -9,7 +10,8 @@ export function InitialAvatar({ name, className = '' }: { name: string; classNam
 }
 
 export function MemberAvatar({ name, avatarKey, className = '' }: { name: string; avatarKey?: string | null; className?: string }) {
-  const url = useMediaUrl(avatarKey);
-  if (url) return <img src={url} alt="" className={`shrink-0 rounded-full object-cover ${className}`} />;
+  const token = useSessionStore((s) => s.mediaToken);
+  const src = avatarImageSrc(avatarKey, token);
+  if (src) return <img src={src} alt="" className={`shrink-0 rounded-full object-cover ${className}`} />;
   return <InitialAvatar name={name} className={className} />;
 }
