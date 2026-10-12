@@ -17,6 +17,7 @@ import { SettingsPage } from '../features/settings/pages/SettingsPage';
 import { useSessionStore } from '../shared/session/store';
 import { ConfirmProvider } from '../shared/ui/confirm';
 import { AppShell } from './layout/AppShell';
+import { SplashScreen } from './SplashScreen';
 
 function RequireSession() {
   const token = useSessionStore((s) => s.token);
@@ -68,6 +69,7 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <SplashScreen />
       </ConfirmProvider>
     </BrowserRouter>
   );
