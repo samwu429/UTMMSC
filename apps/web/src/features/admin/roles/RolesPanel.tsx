@@ -3,6 +3,7 @@ import { ENROLLMENT_LABELS, ROLES, ROLE_LABELS, canAssignRole, roleRank, type Ad
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Badge, Notice, Spinner } from '../../../shared/ui/Card';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { Select, TextInput } from '../../../shared/ui/Field';
 import { adminApi } from '../api';
 
@@ -13,6 +14,7 @@ export function RolesPanel() {
   const [members, setMembers] = useState<AdminMemberRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const ask = useConfirm();
 
   useEffect(() => {
     adminApi.members().then((res) => setMembers(res.members)).catch((err) => setError(errorMessage(err)));
@@ -29,8 +31,15 @@ export function RolesPanel() {
   }
 
   async function toggleStatus(member: AdminMemberRow) {
-    const next = member.status === 'active' ? 'disabled' : 'active';
-    if (!window.confirm(`${next === 'disabled' ? '停用' : '恢复'}「${member.displayName}」的账号？`)) return;
+    const disabling = member.status === 'active';
+    const ok = await ask({
+      title: disabling ? '停用这个账号？' : '恢复这个账号？',
+      body: member.displayName,
+      confirmLabel: disabling ? '停用' : '恢复',
+      danger: disabling,
+    });
+    if (!ok) return;
+    const next = disabling ? 'disabled' : 'active';
     try {
       await adminApi.setStatus(member.id, next);
       setMembers((prev) => (prev ?? []).map((m) => (m.id === member.id ? { ...m, status: next } : m)));
@@ -62,7 +71,7 @@ export function RolesPanel() {
                 </p>
               </div>
               {editable ? (
-                <button onClick={() => toggleStatus(m)} className="shrink-0 text-xs text-slate-500 underline">
+                <button type="button" onClick={() => toggleStatus(m)} className="shrink-0 px-1 text-sm font-medium text-red-700">
                   {m.status === 'active' ? '停用' : '恢复'}
                 </button>
               ) : null}

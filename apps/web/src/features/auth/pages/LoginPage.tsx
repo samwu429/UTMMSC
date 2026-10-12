@@ -43,10 +43,10 @@ export function LoginPage() {
           登录
         </Button>
         <div className="flex justify-center gap-8 text-sm">
-          <Link to="/forgot" className="whitespace-nowrap text-brand-800">
+          <Link to="/forgot" className="inline-flex min-h-11 items-center px-2 text-sm text-brand-800">
             忘记密码
           </Link>
-          <Link to="/register" className="whitespace-nowrap text-brand-800">
+          <Link to="/register" className="inline-flex min-h-11 items-center px-2 text-sm text-brand-800">
             注册
           </Link>
         </div>

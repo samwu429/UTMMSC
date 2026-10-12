@@ -15,6 +15,7 @@ import { HomePage } from '../features/home/pages/HomePage';
 import { MiniappsPage } from '../features/miniapps/pages/MiniappsPage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
 import { useSessionStore } from '../shared/session/store';
+import { ConfirmProvider } from '../shared/ui/confirm';
 import { AppShell } from './layout/AppShell';
 
 function RequireSession() {
@@ -40,6 +41,7 @@ function RequireStaff() {
 export function App() {
   return (
     <BrowserRouter basename="/UTMMSC">
+      <ConfirmProvider>
       <Routes>
         <Route element={<RequireGuest />}>
           <Route path="/login" element={<LoginPage />} />
@@ -66,6 +68,7 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </ConfirmProvider>
     </BrowserRouter>
   );
 }

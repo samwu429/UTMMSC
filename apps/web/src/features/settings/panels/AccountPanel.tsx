@@ -5,6 +5,7 @@ import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { Field, TextInput } from '../../../shared/ui/Field';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 import { ChevronIcon } from '../../profile/icons';
@@ -100,6 +101,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const member = useSessionStore((s) => s.member);
   const clear = useSessionStore((s) => s.clear);
   const [screen, setScreen] = useState<Screen>('list');
+  const ask = useConfirm();
   const installed = isStandalone();
 
   useEffect(() => {
@@ -107,7 +109,8 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   }, [screen, onPushed]);
 
   async function logout() {
-    if (!window.confirm('退出登录？')) return;
+    const ok = await ask({ title: '退出登录？', confirmLabel: '退出', danger: true });
+    if (!ok) return;
     try {
       await authApi.logout();
     } finally {

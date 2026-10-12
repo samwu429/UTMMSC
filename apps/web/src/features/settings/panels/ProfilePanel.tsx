@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Experience, MemberDetailResponse, MemberSelf, PresetAvatarId, PresetAvatarMotion } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { Notice, Spinner } from '../../../shared/ui/Card';
 import { AvatarChooser } from '../../profile/AvatarChooser';
 import { ExperienceForm } from '../../profile/ExperienceForm';
@@ -27,6 +28,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const ask = useConfirm();
 
   useEffect(() => {
     if (!selfId) return;
@@ -53,7 +55,8 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
   }
 
   async function removeExperience(id: string) {
-    if (!window.confirm('删除这条经历？')) return;
+    const ok = await ask({ title: '删除这条经历？', confirmLabel: '删除', danger: true });
+    if (!ok) return;
     setError(null);
     try {
       await profileApi.removeExperience(id);

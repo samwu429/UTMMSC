@@ -4,6 +4,7 @@ import { errorMessage } from '../../../shared/api/errors';
 import { formatEventTime } from '../../../shared/format/time';
 import { Button } from '../../../shared/ui/Button';
 import { Card, EmptyState, Notice } from '../../../shared/ui/Card';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { Field, TextArea, TextInput } from '../../../shared/ui/Field';
 import { adminApi } from '../api';
 
@@ -15,6 +16,7 @@ export function EventsPanel() {
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const ask = useConfirm();
 
   useEffect(() => {
     adminApi.events().then((res) => setEvents(res.events)).catch((err) => setError(errorMessage(err)));
@@ -44,7 +46,8 @@ export function EventsPanel() {
   }
 
   async function remove(event: EventRecord) {
-    if (!window.confirm(`删除活动「${event.title}」？`)) return;
+    const ok = await ask({ title: '删除这个活动？', body: event.title, confirmLabel: '删除', danger: true });
+    if (!ok) return;
     try {
       await adminApi.deleteEvent(event.id);
       setEvents((prev) => prev.filter((e) => e.id !== event.id));

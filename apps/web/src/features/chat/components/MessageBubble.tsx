@@ -1,5 +1,6 @@
 import type { ChatMessage } from '@utmmsc/shared';
 import { formatMessageTime } from '../../../shared/format/time';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { chatApi } from '../api';
 
 interface Props {
@@ -14,6 +15,12 @@ interface Props {
 
 export function MessageBubble({ message, own, canModerate, mediaToken, onDelete, onMute, onOpenProfile }: Props) {
   const canDelete = own || canModerate;
+  const ask = useConfirm();
+
+  async function remove() {
+    const ok = await ask({ title: '删除这条消息？', confirmLabel: '删除', danger: true });
+    if (ok) onDelete(message.id);
+  }
   return (
     <div className={`flex gap-2 ${own ? 'flex-row-reverse' : ''}`}>
       {!own ? (
@@ -40,7 +47,11 @@ export function MessageBubble({ message, own, canModerate, mediaToken, onDelete,
         </div>
         {!message.deleted && (canDelete || (canModerate && !own)) ? (
           <div className="mt-1 flex gap-3 text-xs text-stone-400">
-            {canDelete ? <button onClick={() => onDelete(message.id)}>删除</button> : null}
+            {canDelete ? (
+              <button type="button" onClick={() => void remove()} className="min-h-11 px-1">
+                删除
+              </button>
+            ) : null}
             {canModerate && !own ? <button onClick={() => onMute(message.author.id)}>禁言</button> : null}
           </div>
         ) : null}

@@ -6,6 +6,7 @@ import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { filesApi } from '../api';
 
 export function FilesPage() {
@@ -16,6 +17,7 @@ export function FilesPage() {
   const [files, setFiles] = useState<FileRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const ask = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -61,7 +63,8 @@ export function FilesPage() {
   }
 
   async function remove(file: FileRecord) {
-    if (!window.confirm(`删除「${file.fileName}」？`)) return;
+    const ok = await ask({ title: '删除这个文件？', body: file.fileName, confirmLabel: '删除', danger: true });
+    if (!ok) return;
     try {
       await filesApi.remove(file.id);
       setFiles((prev) => (prev ?? []).filter((f) => f.id !== file.id));

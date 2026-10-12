@@ -3,9 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { hasPermission, parseRoomId } from '@utmmsc/shared';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
+import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
 import { Composer } from '../components/Composer';
 import { MessageBubble } from '../components/MessageBubble';
+import { Sheet } from '../../profile/Sheet';
 import { useRoomSocket } from '../transport/useRoomSocket';
 
 /**
@@ -23,6 +25,7 @@ export function RoomPage() {
   const prevHeightRef = useRef(0);
   const prevFirstIdRef = useRef<number | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [muteId, setMuteId] = useState<string | null>(null);
 
   const parsed = parseRoomId(roomId);
   const canModerate = member ? hasPermission(member.role, 'chat.moderate') : false;
@@ -59,10 +62,10 @@ export function RoomPage() {
     }
   }
 
-  function mute(memberId: string) {
-    const input = window.prompt('禁言多少分钟？', '60');
-    const minutes = Number(input);
-    if (Number.isInteger(minutes) && minutes > 0) room.mute(memberId, minutes);
+  function chooseMute(minutes: number) {
+    if (!muteId) return;
+    room.mute(muteId, minutes);
+    setMuteId(null);
   }
 
   const error = room.error ?? localError;
@@ -92,7 +95,7 @@ export function RoomPage() {
             canModerate={canModerate}
             mediaToken={room.mediaToken}
             onDelete={room.remove}
-            onMute={mute}
+            onMute={setMuteId}
             onOpenProfile={(id) => navigate(`/directory/${id}`)}
           />
         ))}
@@ -103,11 +106,12 @@ export function RoomPage() {
           <Notice tone="error">
             {error}{' '}
             <button
+              type="button"
               onClick={() => {
                 room.clearError();
                 setLocalError(null);
               }}
-              className="underline"
+              className="ml-2 inline-flex min-h-11 items-center font-medium"
             >
               关闭
             </button>
@@ -122,6 +126,21 @@ export function RoomPage() {
         onSend={room.send}
         onError={setLocalError}
       />
+      {muteId ? (
+        <Sheet title="禁言时长" onClose={() => setMuteId(null)}>
+          <div className="space-y-2">
+            <Button block variant="secondary" onClick={() => chooseMute(10)}>
+              10 分钟
+            </Button>
+            <Button block variant="secondary" onClick={() => chooseMute(60)}>
+              1 小时
+            </Button>
+            <Button block variant="secondary" onClick={() => chooseMute(1440)}>
+              1 天
+            </Button>
+          </div>
+        </Sheet>
+      ) : null}
     </div>
   );
 }

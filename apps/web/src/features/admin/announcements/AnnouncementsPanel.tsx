@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { errorMessage } from '../../../shared/api/errors';
 import { Button } from '../../../shared/ui/Button';
 import { Card, Notice } from '../../../shared/ui/Card';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { Field, TextArea, TextInput } from '../../../shared/ui/Field';
 import { adminApi } from '../api';
 
@@ -13,10 +14,14 @@ export function AnnouncementsPanel() {
   const [sendEmail, setSendEmail] = useState(true);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const ask = useConfirm();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (sendEmail && !window.confirm('确定给全体成员发送邮件？')) return;
+    if (sendEmail) {
+      const ok = await ask({ title: '给全体成员发邮件？', body: '发出后会送到每位成员的邮箱。', confirmLabel: '发送' });
+      if (!ok) return;
+    }
     setMessage(null);
     setBusy(true);
     try {

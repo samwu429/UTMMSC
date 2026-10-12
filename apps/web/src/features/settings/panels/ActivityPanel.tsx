@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MOMENT_IMAGE_LIMIT, MOMENT_IMAGE_MAX_BYTES, MOMENT_IMAGE_TYPES, MOMENT_VIDEO_MAX_BYTES, MOMENT_VIDEO_TYPES, POST_MAX, type ActivityPost } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
+import { useConfirm } from '../../../shared/ui/confirm';
 import { Button } from '../../../shared/ui/Button';
 import { Notice, Spinner } from '../../../shared/ui/Card';
 import { MemberAvatar } from '../../profile/InitialAvatar';
@@ -201,6 +202,7 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
   const [posts, setPosts] = useState<ActivityPost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const ask = useConfirm();
 
   useEffect(() => {
     onPushed(composing);
@@ -224,6 +226,8 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
   }, [setMediaToken]);
 
   async function remove(id: string) {
+    const ok = await ask({ title: '删除这条动态？', confirmLabel: '删除', danger: true });
+    if (!ok) return;
     setError(null);
     try {
       await profileApi.removePost(id);
