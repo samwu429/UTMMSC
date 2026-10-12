@@ -25,11 +25,6 @@ export function HomePage() {
           <img src={`${import.meta.env.BASE_URL}brand/logo-horizontal.svg`} alt="UTMMSC" className="h-auto w-44" />
           <p className="mt-5 text-[13px] text-brand-700">{card ? `${card.weekday} · 多伦多` : '多伦多'}</p>
           {member?.headline ? <p className="mt-1 truncate text-sm text-stone-600">{member.headline}</p> : null}
-          {member && !member.headline ? (
-            <Link to="/settings" className="mt-1 inline-block text-sm text-brand-800">
-              填写一句话介绍
-            </Link>
-          ) : null}
           <span className="mt-3 block h-[3px] w-10 bg-gold" />
         </div>
         {member ? (
@@ -95,25 +90,6 @@ export function HomePage() {
         )}
       </section>
 
-      <section className="mt-7">
-        <h2 className="mb-2 text-[15px] font-medium text-brand-800">常用</h2>
-        <List>
-          <Link to="/chat" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
-            <span>
-              <span className="block font-medium">聊天</span>
-              <span className="text-sm text-stone-500">频道、私聊和成员</span>
-            </span>
-            <span className="text-stone-300">›</span>
-          </Link>
-          <Link to="/discover" className="flex items-center justify-between px-4 py-3.5 active:bg-stone-50">
-            <span>
-              <span className="block font-medium">发现</span>
-              <span className="text-sm text-stone-500">好友动态和文件</span>
-            </span>
-            <span className="text-stone-300">›</span>
-          </Link>
-        </List>
-      </section>
     </div>
   );
 }

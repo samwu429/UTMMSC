@@ -169,11 +169,20 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
           ))}
         </div>
       ) : null}
-      <div className="flex gap-6 px-4 py-3">
-        <button type="button" disabled={busy} onClick={() => imageRef.current?.click()} className="min-h-11 text-[15px] text-brand-800 disabled:text-stone-300">
+      <div className="flex gap-2 px-4 py-3">
+        <button type="button" disabled={busy} onClick={() => imageRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-paper text-[15px] font-medium text-brand-800 disabled:text-stone-300">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+            <rect x="4" y="5" width="16" height="14" rx="2" />
+            <circle cx="9" cy="10" r="1.4" />
+            <path d="m4 16 4.5-4 3.2 3.2L15 12l5 4" />
+          </svg>
           照片
         </button>
-        <button type="button" disabled={busy} onClick={() => videoRef.current?.click()} className="min-h-11 text-[15px] text-brand-800 disabled:text-stone-300">
+        <button type="button" disabled={busy} onClick={() => videoRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-paper text-[15px] font-medium text-brand-800 disabled:text-stone-300">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+            <rect x="3.5" y="6" width="12" height="12" rx="2" />
+            <path d="m15.5 10.5 5-2.5v8l-5-2.5v-3Z" />
+          </svg>
           视频
         </button>
       </div>

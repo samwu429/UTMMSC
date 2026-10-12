@@ -33,12 +33,12 @@ export function MemberRow({
       {friendship === 'friends' ? <span className="shrink-0 text-xs text-brand-700">好友</span> : null}
       {friendship === 'outgoing' ? <span className="shrink-0 text-xs text-stone-400">等待通过</span> : null}
       {friendship === 'incoming' && onAccept ? (
-        <button type="button" disabled={busy} onClick={onAccept} className="shrink-0 text-sm font-medium text-brand-800 disabled:opacity-40">
+        <button type="button" disabled={busy} onClick={onAccept} className="mr-1 shrink-0 rounded-full bg-brand-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">
           通过
         </button>
       ) : null}
       {friendship === 'none' && onRequest ? (
-        <button type="button" disabled={busy} onClick={onRequest} className="shrink-0 text-sm font-medium text-brand-800 disabled:opacity-40">
+        <button type="button" disabled={busy} onClick={onRequest} className="mr-1 shrink-0 rounded-full bg-brand-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">
           加好友
         </button>
       ) : null}

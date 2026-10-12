@@ -1,19 +1,20 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { directRoomId, type DirectConversationSummary } from '@utmmsc/shared';
 import { formatRelative } from '../../../shared/format/time';
+import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List } from '../../../shared/ui/Card';
 import { UnreadDot } from '../components/UnreadDot';
 
 export function DirectList({ conversations }: { conversations: DirectConversationSummary[] }) {
+  const navigate = useNavigate();
   if (conversations.length === 0) {
     return (
-      <EmptyState>
-        还没有私聊。到{' '}
-        <Link to="/chat?tab=members" className="text-brand-800">
-          成员
-        </Link>{' '}
-        里加好友，对方通过后才能发私信。
-      </EmptyState>
+      <div>
+        <EmptyState>还没有私聊。加了好友之后，才能在这里发私信。</EmptyState>
+        <Button variant="secondary" block onClick={() => navigate('/chat?tab=members')}>
+          去加好友
+        </Button>
+      </div>
     );
   }
   return (

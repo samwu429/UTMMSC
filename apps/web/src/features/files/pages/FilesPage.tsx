@@ -103,16 +103,26 @@ export function FilesPage() {
       {files && files.length > 0 ? (
         <List>
           {files.map((file) => (
-            <div key={file.id} className="flex items-center gap-3 px-4 py-3">
-              <button onClick={() => download(file)} className="min-w-0 flex-1 text-left">
-                <p className="truncate font-medium">{file.fileName}</p>
-                <p className="text-xs text-stone-500">
-                  {formatBytes(file.sizeBytes)} · {file.uploadedBy.displayName} · {formatRelative(file.createdAt)}
-                </p>
+            <div key={file.id} className="flex items-center gap-3 py-2 pl-4 pr-2">
+              <button onClick={() => download(file)} className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-800">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                    <path d="M7 3.5h7l5 5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+                    <path d="M14 3.5v5h5" />
+                  </svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{file.fileName}</span>
+                  <span className="block text-xs text-stone-500">
+                    {formatBytes(file.sizeBytes)} · {file.uploadedBy.displayName} · {formatRelative(file.createdAt)}
+                  </span>
+                </span>
               </button>
               {canManage || file.uploadedBy.id === member?.id ? (
-                <button onClick={() => remove(file)} className="text-sm text-red-600">
-                  删除
+                <button onClick={() => remove(file)} aria-label={`删除${file.fileName}`} className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-400">
+                  <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
+                    <path d="M5 7h14M9 7V5h6v2M8 7l.7 12h6.6L16 7" />
+                  </svg>
                 </button>
               ) : null}
             </div>

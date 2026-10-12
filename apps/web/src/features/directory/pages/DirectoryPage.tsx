@@ -139,12 +139,11 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
       {loading ? <Spinner /> : members.length === 0 ? (
-        <EmptyState>
-          没有匹配的成员
+        <div className="text-center">
+          <EmptyState>没有匹配的成员</EmptyState>
           {q || enrollment || year ? (
-            <button
-              type="button"
-              className="mt-2 font-medium text-brand-800"
+            <Button
+              variant="secondary"
               onClick={() => {
                 setQ('');
                 setEnrollment('');
@@ -152,9 +151,9 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
               }}
             >
               清除筛选
-            </button>
+            </Button>
           ) : null}
-        </EmptyState>
+        </div>
       ) : null}
       {!loading ? (
         <div className="space-y-3">

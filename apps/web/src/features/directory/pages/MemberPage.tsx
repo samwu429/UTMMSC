@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { directRoomId, type FriendshipState, type MemberDetailResponse } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
@@ -83,9 +83,9 @@ export function MemberPage() {
           posts={detail.posts}
           action={
             mine ? (
-              <Link to="/settings" className="text-[15px] font-medium text-brand-800">
+              <Button block variant="secondary" onClick={() => navigate('/settings')}>
                 编辑资料
-              </Link>
+              </Button>
             ) : friendship === 'friends' ? (
               <Button block onClick={openDirect} loading={opening}>
                 发私信

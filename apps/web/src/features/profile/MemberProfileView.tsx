@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, isStaffRole, type ActivityPost, type Experience, type MemberProfile } from '@utmmsc/shared';
 import { experiencePeriod, formatPostTime } from './format';
 import { MemberAvatar } from './InitialAvatar';
-import { CameraIcon, PencilIcon, PlusIcon } from './icons';
+import { CameraIcon, ChevronIcon, PlusIcon } from './icons';
 import { PostMediaView } from './PostMediaView';
 
 function openToLabels(member: MemberProfile): string[] {
@@ -10,10 +10,19 @@ function openToLabels(member: MemberProfile): string[] {
   return OPEN_TO.filter((id) => picked.has(id)).map((id) => OPEN_TO_LABELS[id]);
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function ActionChip({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" aria-label={label} onClick={onClick} className="flex h-11 w-11 items-center justify-center text-brand-800">
-      {children}
+    <button type="button" onClick={onClick} className="min-h-9 rounded-full bg-paper px-3 text-sm font-medium text-brand-800 active:bg-stone-200">
+      {label}
+    </button>
+  );
+}
+
+function AddRow({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-paper text-[15px] font-medium text-brand-800 active:bg-stone-200">
+      <PlusIcon />
+      {label}
     </button>
   );
 }
@@ -99,25 +108,16 @@ export function MemberProfileView({
               {member.displayName}
               {isStaffRole(member.role) ? <span className="ml-2 align-middle text-sm font-normal text-brand-700">{ROLE_LABELS[member.role]}</span> : null}
             </h1>
-            {onEditIntro ? (
-              <IconButton label="编辑资料" onClick={onEditIntro}>
-                <PencilIcon />
-              </IconButton>
-            ) : null}
+            {onEditIntro ? <ActionChip label="编辑" onClick={onEditIntro} /> : null}
           </div>
           {member.headline ? <p className="mt-1 text-[15px] leading-snug text-stone-800">{member.headline}</p> : null}
-          {onEditIntro && !member.headline ? (
-            <button type="button" onClick={onEditIntro} className="mt-1 text-[15px] text-brand-800">
-              添加标题
-            </button>
-          ) : null}
           {member.location ? <p className="mt-1 text-sm text-stone-500">{member.location}</p> : null}
           <p className="mt-1 text-sm text-stone-500">{school}</p>
           {looking.length > 0 || onEditOpenTo ? (
             onEditOpenTo ? (
               <button type="button" onClick={onEditOpenTo} className="mt-3 w-full rounded-lg bg-brand-50 px-3 py-2.5 text-left active:bg-brand-100">
                 <span className="block text-[13px] text-brand-700">正在寻找</span>
-                <span className="mt-0.5 block text-[15px] text-brand-800">{looking.length > 0 ? looking.join('、') : '添加'}</span>
+                <span className="mt-0.5 block text-[15px] text-brand-800">{looking.length > 0 ? looking.join('、') : '还没有'}</span>
               </button>
             ) : (
               <div className="mt-3 rounded-lg bg-brand-50 px-3 py-2.5">
@@ -133,33 +133,17 @@ export function MemberProfileView({
       {member.about || onEditAbout ? (
         <Block
           title="简介"
-          action={
-            onEditAbout ? (
-              <IconButton label={member.about ? '编辑简介' : '添加简介'} onClick={onEditAbout}>
-                {member.about ? <PencilIcon /> : <PlusIcon />}
-              </IconButton>
-            ) : null
-          }
+          action={onEditAbout && member.about ? <ActionChip label="编辑" onClick={onEditAbout} /> : null}
         >
           {member.about ? <AboutText text={member.about} /> : null}
-          {!member.about && onEditAbout ? (
-            <button type="button" onClick={onEditAbout} className="text-[15px] text-brand-800">
-              添加简介
-            </button>
-          ) : null}
+          {!member.about && onEditAbout ? <AddRow label="添加简介" onClick={onEditAbout} /> : null}
         </Block>
       ) : null}
 
       {experiences.length > 0 || onAddExperience ? (
         <Block
           title="经历"
-          action={
-            onAddExperience ? (
-              <IconButton label="添加经历" onClick={onAddExperience}>
-                <PlusIcon />
-              </IconButton>
-            ) : null
-          }
+          action={onAddExperience && experiences.length > 0 ? <ActionChip label="添加" onClick={onAddExperience} /> : null}
         >
           {experiences.length > 0 ? (
             <div className="divide-y divide-stone-200">
@@ -168,8 +152,10 @@ export function MemberProfileView({
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold text-brand-800">{item.title}</p>
                     {onDeleteExperience ? (
-                      <button type="button" onClick={() => onDeleteExperience(item.id)} className="shrink-0 text-sm text-stone-400">
-                        删除
+                      <button type="button" aria-label="删除这条经历" onClick={() => onDeleteExperience(item.id)} className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-400">
+                        <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
+                          <path d="M5 7h14M9 7V5h6v2M8 7l.7 12h6.6L16 7" />
+                        </svg>
                       </button>
                     ) : null}
                   </div>
@@ -180,9 +166,7 @@ export function MemberProfileView({
               ))}
             </div>
           ) : (
-            <button type="button" onClick={() => onAddExperience?.()} className="text-[15px] text-brand-800">
-              添加经历
-            </button>
+            <AddRow label="添加经历" onClick={() => onAddExperience?.()} />
           )}
         </Block>
       ) : null}
@@ -190,36 +174,27 @@ export function MemberProfileView({
       {skills.length > 0 || onEditSkills ? (
         <Block
           title="技能"
-          action={
-            onEditSkills ? (
-              <IconButton label={skills.length > 0 ? '编辑技能' : '添加技能'} onClick={onEditSkills}>
-                {skills.length > 0 ? <PencilIcon /> : <PlusIcon />}
-              </IconButton>
-            ) : null
-          }
+          action={onEditSkills && skills.length > 0 ? <ActionChip label="编辑" onClick={onEditSkills} /> : null}
         >
           {skills.length > 0 ? <p className="text-[15px] leading-relaxed text-stone-800">{skills.join(' · ')}</p> : null}
-          {skills.length === 0 && onEditSkills ? (
-            <button type="button" onClick={onEditSkills} className="text-[15px] text-brand-800">
-              添加技能
-            </button>
-          ) : null}
+          {skills.length === 0 && onEditSkills ? <AddRow label="添加技能" onClick={onEditSkills} /> : null}
         </Block>
       ) : null}
 
       {preview.length > 0 || onShowActivity ? (
-        <Block
-          title="动态"
-          action={
-            onShowActivity && preview.length > 0 ? (
-              <button type="button" onClick={onShowActivity} className="min-h-11 px-1 text-[15px] text-brand-800">
-                全部
-              </button>
-            ) : null
-          }
-        >
+        <section className="bg-white px-4 py-4">
+          {onShowActivity && preview.length > 0 ? (
+            <button type="button" onClick={onShowActivity} className="flex min-h-11 w-full items-center justify-between">
+              <h2 className="text-[17px] font-semibold text-brand-800">动态</h2>
+              <span className="text-stone-300">
+                <ChevronIcon />
+              </span>
+            </button>
+          ) : (
+            <h2 className="text-[17px] font-semibold text-brand-800">动态</h2>
+          )}
           {preview.length > 0 ? (
-            <div className="divide-y divide-stone-200">
+            <div className="mt-1 divide-y divide-stone-200">
               {preview.map((post) => (
                 <div key={post.id} className="py-3 first:pt-0 last:pb-0">
                   {post.body ? <p className="line-clamp-4 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800">{post.body}</p> : null}
@@ -228,12 +203,12 @@ export function MemberProfileView({
                 </div>
               ))}
             </div>
-          ) : (
-            <button type="button" onClick={onShowActivity} className="text-[15px] text-brand-800">
-              去发表
-            </button>
-          )}
-        </Block>
+          ) : onShowActivity ? (
+            <div className="mt-3">
+              <AddRow label="发表动态" onClick={onShowActivity} />
+            </div>
+          ) : null}
+        </section>
       ) : null}
     </div>
   );
