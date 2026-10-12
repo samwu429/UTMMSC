@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, enrollmentYearLabel, isStaffRole, shouldGraduate, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, enrollmentYearLabel, formatStoredMajor, isStaffRole, shouldGraduate, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -197,6 +197,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
         <Row label="邮箱" value={member.email} />
         <Row label="入学年份" value={enrollmentYearLabel(member.graduationYear)} />
         <Row label="状态" value={status} />
+        <Row label="专业" value={formatStoredMajor(member.major) ?? '尚未选择专业'} />
         {alumni ? null : (
           <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
             我已毕业

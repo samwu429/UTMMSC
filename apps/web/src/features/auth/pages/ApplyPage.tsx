@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { normalizeEmail } from '@utmmsc/shared';
+import { encodeProgramSelection, normalizeEmail, programChoiceState } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
@@ -20,6 +20,7 @@ export function ApplyPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!profile.programs || !programChoiceState(profile.programs).ready) return;
     setError(null);
     setBusy(true);
     try {
@@ -28,7 +29,7 @@ export function ApplyPage() {
         displayName: profile.displayName,
         enrollmentStatus: profile.enrollmentStatus,
         graduationYear: Number(profile.graduationYear),
-        major: profile.major || undefined,
+        major: encodeProgramSelection(profile.programs) ?? undefined,
         note: note || undefined,
       });
       setDone(true);
@@ -61,7 +62,7 @@ export function ApplyPage() {
           <TextArea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
         </Field>
         {error ? <Notice tone="error">{error}</Notice> : null}
-        <Button type="submit" block loading={busy}>
+        <Button type="submit" block loading={busy} disabled={!programChoiceState(profile.programs).ready}>
           提交申请
         </Button>
         <p className="text-center text-sm">

@@ -1,18 +1,20 @@
 import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, enrollmentCalendarYear, enrollmentYearMax, enrollmentYearMin, shouldGraduate, type EnrollmentStatus } from '@utmmsc/shared';
 import { Field, Select, TextInput } from '../../../shared/ui/Field';
+import { ProgramPicker } from './ProgramPicker';
 
 export interface ProfileValues {
   displayName: string;
   enrollmentStatus: EnrollmentStatus;
   graduationYear: string;
-  major: string;
+  /** Null until the person chooses. An empty list is 尚未选择专业. */
+  programs: string[] | null;
 }
 
 export const EMPTY_PROFILE: ProfileValues = {
   displayName: '',
   enrollmentStatus: 'student',
   graduationYear: String(enrollmentCalendarYear()),
-  major: '',
+  programs: null,
 };
 
 const YEARS: number[] = [];
@@ -61,9 +63,7 @@ export function ProfileFields({ value, onChange }: { value: ProfileValues; onCha
           </Select>
         </Field>
       </div>
-      <Field label="专业（选填）">
-        <TextInput placeholder="例如 Computer Science" value={value.major} onChange={(e) => onChange({ ...value, major: e.target.value })} />
-      </Field>
+      <ProgramPicker programs={value.programs} onChange={(programs) => onChange({ ...value, programs })} />
     </>
   );
 }

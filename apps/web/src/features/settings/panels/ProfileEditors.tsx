@@ -1,27 +1,31 @@
 import { useState, type FormEvent } from 'react';
-import { ABOUT_MAX, HEADLINE_MAX, LOCATION_MAX, OPEN_TO, OPEN_TO_LABELS, SKILL_MAX_COUNT, SKILL_MAX_LENGTH, type MemberProfile, type MemberSelf, type OpenTo } from '@utmmsc/shared';
+import { ABOUT_MAX, HEADLINE_MAX, LOCATION_MAX, OPEN_TO, OPEN_TO_LABELS, SKILL_MAX_COUNT, SKILL_MAX_LENGTH, encodeProgramSelection, programChoiceState, readStoredProgramCodes, type MemberProfile, type MemberSelf, type OpenTo } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
 import { Field, TextArea, TextInput } from '../../../shared/ui/Field';
+import { ProgramPicker } from '../../auth/components/ProgramPicker';
 import { profileApi } from '../../profile/api';
 
 export function IntroEditor({ member, onSaved }: { member: MemberProfile; onSaved: (member: MemberSelf) => void }) {
+  const stored = readStoredProgramCodes(member.major);
   const [headline, setHeadline] = useState(member.headline ?? '');
   const [location, setLocation] = useState(member.location ?? '');
-  const [major, setMajor] = useState(member.major ?? '');
+  const [programs, setPrograms] = useState<string[] | null>(stored.kind === 'programs' ? stored.codes : stored.kind === 'empty' ? [] : null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const choice = programChoiceState(programs);
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (programs !== null && !choice.ready) return;
     setBusy(true);
     setError(null);
     try {
       const res = await profileApi.update({
         headline: headline.trim() || null,
         location: location.trim() || null,
-        major: major.trim() || null,
+        ...(programs === null ? {} : { major: encodeProgramSelection(programs) }),
       });
       onSaved(res.member);
     } catch (err) {
@@ -39,11 +43,9 @@ export function IntroEditor({ member, onSaved }: { member: MemberProfile; onSave
       <Field label="所在地">
         <TextInput value={location} maxLength={LOCATION_MAX} placeholder="多伦多" onChange={(event) => setLocation(event.target.value)} />
       </Field>
-      <Field label="专业">
-        <TextInput value={major} maxLength={80} placeholder="计算机科学" onChange={(event) => setMajor(event.target.value)} />
-      </Field>
+      <ProgramPicker programs={programs} onChange={setPrograms} legacyMajor={stored.kind === 'legacy' ? stored.text : null} />
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <Button type="submit" block loading={busy}>
+      <Button type="submit" block loading={busy} disabled={programs !== null && !choice.ready}>
         保存
       </Button>
     </form>

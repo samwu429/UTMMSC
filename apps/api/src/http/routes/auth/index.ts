@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import {
   ENROLLMENT_STATUSES,
+  PROGRAM_MAJOR_MAX,
+  canonicalizeProgramMajor,
   isUniversityEmail,
   isValidDisplayName,
   isValidEnrollmentYear,
@@ -52,6 +54,12 @@ import { rateLimit } from '../../middleware/rate-limit';
 import { requireSession } from '../../middleware/session';
 import { optionalString, readJson, requireInteger, requireOneOf, requireString } from '../../validation';
 import type { Env } from '../../../env';
+
+function programMajor(value: string | null): string | null {
+  const result = canonicalizeProgramMajor(value);
+  if (!result.ok) throw badRequest('invalid_program', result.message);
+  return result.major;
+}
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -118,7 +126,7 @@ authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
   const displayName = requireString(body.displayName, '姓名', 40);
   const enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
   const graduationYear = requireInteger(body.graduationYear, '入学年份');
-  const major = optionalString(body.major, '专业', 80);
+  const major = programMajor(optionalString(body.major, '专业', PROGRAM_MAJOR_MAX));
 
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (!isValidPassword(password)) throw badRequest('weak_password', '密码至少 8 位');
@@ -179,7 +187,7 @@ authRoutes.post('/apply', rateLimit(5, 60_000), async (c) => {
   const displayName = requireString(body.displayName, '姓名', 40);
   const enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
   const graduationYear = requireInteger(body.graduationYear, '入学年份');
-  const major = optionalString(body.major, '专业', 80);
+  const major = programMajor(optionalString(body.major, '专业', PROGRAM_MAJOR_MAX));
   const note = optionalString(body.note, '备注', 500);
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (!isValidDisplayName(displayName)) throw badRequest('invalid_name', '姓名需 2 到 40 个字符');

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, enrollmentYearLabel, isStaffRole, type ActivityPost, type Experience, type MemberProfile, type MemberSelf } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, ROLE_LABELS, enrollmentYearLabel, formatStoredMajor, isStaffRole, type ActivityPost, type Experience, type MemberProfile, type MemberSelf } from '@utmmsc/shared';
 import { experiencePeriod, formatPostTime } from './format';
 import { CoverBanner } from './CoverBanner';
 import { MemberAvatar } from './InitialAvatar';
@@ -87,7 +87,7 @@ export function MemberProfileView({
   action?: ReactNode;
 }) {
   const looking = openToLabels(member);
-  const school = [member.major, enrollmentYearLabel(member.graduationYear), ENROLLMENT_LABELS[member.enrollmentStatus]].filter(Boolean).join(' · ');
+  const school = [formatStoredMajor(member.major), enrollmentYearLabel(member.graduationYear), ENROLLMENT_LABELS[member.enrollmentStatus]].filter(Boolean).join(' · ');
   const skills = member.skills ?? [];
   const preview = posts.slice(0, 2);
 

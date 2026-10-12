@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { isUniversityEmail, normalizeEmail } from '@utmmsc/shared';
+import { encodeProgramSelection, isUniversityEmail, normalizeEmail, programChoiceState } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
@@ -30,9 +30,11 @@ export function RegisterPage() {
   const university = isUniversityEmail(email);
   const needsCode = !approvedFlow && university;
   const showManualHint = email.includes('@') && !university && !approvedFlow;
+  const programsReady = programChoiceState(profile.programs).ready;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!profile.programs || !programChoiceState(profile.programs).ready) return;
     setError(null);
     setBusy(true);
     try {
@@ -43,7 +45,7 @@ export function RegisterPage() {
         displayName: profile.displayName,
         enrollmentStatus: profile.enrollmentStatus,
         graduationYear: Number(profile.graduationYear),
-        major: profile.major || undefined,
+        major: encodeProgramSelection(profile.programs) ?? undefined,
       });
       setSession(session.token, session.member, session.mediaToken);
     } catch (err) {
@@ -74,7 +76,7 @@ export function RegisterPage() {
         </Field>
         <ProfileFields value={profile} onChange={setProfile} />
         {error ? <Notice tone="error">{error}</Notice> : null}
-        <Button type="submit" block loading={busy} disabled={showManualHint}>
+        <Button type="submit" block loading={busy} disabled={showManualHint || !programsReady}>
           完成注册
         </Button>
         <p className="text-center text-sm">

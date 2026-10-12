@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, enrollmentYearLabel, type ManualApplication } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, enrollmentYearLabel, formatStoredMajor, type ManualApplication } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatRelative } from '../../../shared/format/time';
 import { Button } from '../../../shared/ui/Button';
@@ -34,13 +34,15 @@ export function ApprovalsPanel() {
 
   return (
     <div className="space-y-3">
-      {items.map((a) => (
+      {items.map((a) => {
+        const programs = formatStoredMajor(a.major);
+        return (
         <Card key={a.id}>
           <p className="font-medium">
             {a.displayName} <span className="text-sm font-normal text-slate-500">· {enrollmentYearLabel(a.graduationYear)} · {ENROLLMENT_LABELS[a.enrollmentStatus]}</span>
           </p>
           <p className="text-sm text-slate-600">{a.email}</p>
-          {a.major ? <p className="text-sm text-slate-600">{a.major}</p> : null}
+          {programs ? <p className="text-sm text-slate-600">{programs}</p> : null}
           {a.note ? <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-sm">{a.note}</p> : null}
           <p className="mt-1 text-xs text-slate-400">{formatRelative(a.createdAt)} 提交</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -52,7 +54,8 @@ export function ApprovalsPanel() {
             </Button>
           </div>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

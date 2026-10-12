@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, isPresetAvatarId, presetAvatarKey } from '@utmmsc/shared';
+import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLINE_MAX, LOCATION_MAX, MOMENT_IMAGE_MAX_BYTES, MOMENT_VIDEO_MAX_BYTES, POST_MAX, PROGRAM_MAJOR_MAX, canonicalizeProgramMajor, isPresetAvatarId, presetAvatarKey } from '@utmmsc/shared';
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
 import { avatarObjectKey, coverObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
@@ -19,7 +19,6 @@ import { badRequest, notFound } from '../../errors';
 import { rateLimit } from '../../middleware/rate-limit';
 import { optionalString, readJson } from '../../validation';
 
-const MAJOR_MAX = 80;
 const FEED_LIMIT = 40;
 
 function readField<T>(read: () => T): T {
@@ -161,7 +160,9 @@ profileRoutes.patch('/me', async (c) => {
     any = true;
   }
   if ('major' in body) {
-    patch.major = optionalString(body.major, '专业', MAJOR_MAX);
+    const result = canonicalizeProgramMajor(optionalString(body.major, '专业', PROGRAM_MAJOR_MAX));
+    if (!result.ok) throw badRequest('invalid_program', result.message);
+    patch.major = result.major;
     any = true;
   }
   if ('skills' in body) {

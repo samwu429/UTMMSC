@@ -9,4 +9,6 @@ export * from './chat/translate';
 export * from './chat/rooms';
 export * from './files/categories';
 export * from './miniapps/catalog';
+export * from './programs/catalog';
+export * from './programs/rules';
 export * from './api/contracts';

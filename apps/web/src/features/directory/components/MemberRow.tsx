@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ENROLLMENT_LABELS, ROLE_LABELS, enrollmentYearLabel, isStaffRole, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_LABELS, enrollmentYearLabel, formatStoredMajor, isStaffRole, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 
 export function MemberRow({
@@ -24,10 +24,7 @@ export function MemberRow({
             {member.displayName}
             {isStaffRole(member.role) ? <span className="ml-1.5 text-xs font-normal text-brand-800">{ROLE_LABELS[member.role]}</span> : null}
           </p>
-          <p className="truncate text-sm text-stone-500">
-            {member.headline ||
-              `${enrollmentYearLabel(member.graduationYear)} · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${member.major ? ` · ${member.major}` : ''}`}
-          </p>
+          <p className="truncate text-sm text-stone-500">{memberLine(member)}</p>
         </div>
       </Link>
       {friendship === 'friends' ? <span className="shrink-0 text-xs text-brand-700">好友</span> : null}
@@ -44,4 +41,10 @@ export function MemberRow({
       ) : null}
     </div>
   );
+}
+
+function memberLine(member: MemberProfile): string {
+  const programs = formatStoredMajor(member.major);
+  if (member.headline) return [member.headline, programs].filter(Boolean).join(' · ');
+  return [enrollmentYearLabel(member.graduationYear), ENROLLMENT_LABELS[member.enrollmentStatus], programs].filter(Boolean).join(' · ');
 }
