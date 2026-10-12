@@ -4,12 +4,17 @@ Member network for UTMMSC: a members-only web app with large chat channels, dire
 
 UTMMSC 成员网络：面向成员的网页应用，提供大频道聊天、私聊、在校生与毕业生目录、给主席团使用的身份管理、分类文件库，以及显示日期、多伦多天气和近期活动的每日卡片。
 
-Live site: https://topphi.com/UTMMSC/ (https://samwu429.github.io/UTMMSC/ redirects here)
+Public site: https://utmmsc.com/ (official site; a holding page until the public pages are written)
+
+Member network: https://utmmsc.com/UTMMSC/
+
+The older address https://topphi.com/UTMMSC/ still serves the same build and sends visitors to utmmsc.com.
 
 ## Structure
 
 ```
-apps/web         Front end (Vite, React, Tailwind, PWA) deployed to GitHub Pages
+apps/web         Front end (Vite, React, Tailwind, PWA) built for GitHub Pages
+apps/site        Cloudflare Worker for utmmsc.com: public home at `/`, member app at `/UTMMSC/`
 apps/api         Cloudflare Worker, Durable Objects, D1 migrations
 packages/shared  Shared types and rules
 ```
@@ -34,7 +39,8 @@ Create `apps/api/.dev.vars` (ignored by git) with the keys listed in `apps/api/.
 
 ## Deployment
 
-- Web: push to `main`. The workflow in `.github/workflows/deploy-pages.yml` builds `apps/web` and publishes it to GitHub Pages. The repository variable `API_BASE_URL` holds the Worker origin.
+- Web: push to `main`. The workflow in `.github/workflows/deploy-pages.yml` builds `apps/web` and publishes it to GitHub Pages. `https://utmmsc.com/UTMMSC/` reads that build. The repository variable `API_BASE_URL` holds the API Worker origin.
+- Public site: `npm run deploy --workspace apps/site` after `npx wrangler login`. This Worker owns `utmmsc.com`. `/` is the public site. `/UTMMSC/` is the member network. Do not attach the member app to the apex.
 - API: `npm run deploy:api` after `npx wrangler login`. Secrets are set with `npx wrangler secret put <NAME>` inside `apps/api`. The Worker runs at `https://utmmsc-api.utmmsc.workers.dev`.
 - Files: the R2 bucket `utmmsc-files` is bound as `FILES`. Chat images and the file library are stored there.
 

@@ -1,6 +1,7 @@
 import type { MailMessage } from './brevo';
 
-const SITE = 'https://topphi.com/UTMMSC/';
+const SITE = 'https://utmmsc.com/UTMMSC/';
+const SITE_LABEL = 'utmmsc.com/UTMMSC';
 const LOGO = `${SITE}brand/logo-horizontal.png`;
 const ORG_ZH = '多伦多大学密西沙加校区国语学者联盟';
 const ORG_EN = 'University of Toronto Mississauga Mandarin Scholars Coalition';
@@ -23,7 +24,7 @@ function plainLetter(title: string, paragraphs: string[]): string {
     '—',
     `${ORG_ZH}（${ORG_EN}）`,
     SITE,
-    '此信由 UTMMSC 成员网络发出。请只打开指向 topphi.com 的链接。我们不会在邮件里向你索要密码。',
+    '此信由 UTMMSC 成员网络发出。请只打开指向 utmmsc.com 的链接。我们不会在邮件里向你索要密码。',
   ].join('\n');
 }
 
@@ -63,8 +64,8 @@ function wrap(title: string, bodyHtml: string, preheader: string): string {
 <p style="margin:14px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.5;color:#3C165F;">${ORG_ZH}</p>
 <p style="margin:2px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:12px;line-height:1.5;color:#5B2A86;">${ORG_EN}</p>
 <p style="margin:12px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:12px;line-height:1.6;color:#6B6570;">
-<a href="${SITE}" style="color:#5B2A86;text-decoration:underline;">topphi.com/UTMMSC</a><br>
-此信由 UTMMSC 成员网络发出。请只打开指向 topphi.com 的链接。我们不会在邮件里向你索要密码。
+<a href="${SITE}" style="color:#5B2A86;text-decoration:underline;">${SITE_LABEL}</a><br>
+此信由 UTMMSC 成员网络发出。请只打开指向 utmmsc.com 的链接。我们不会在邮件里向你索要密码。
 </p>
 </td></tr>
 </table>

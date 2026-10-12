@@ -10,10 +10,10 @@
   // `wrangler secret put` and never written here.
   // 非密钥配置。密钥通过 `wrangler secret put` 设置，不写在此处。
   "vars": {
-    // GitHub Pages serves this project under the account's custom domain; the github.io URL redirects there.
-    // GitHub Pages 在账号自定义域名下提供本项目；github.io 地址会跳转过去。
-    "APP_ORIGIN": "https://topphi.com,https://samwu429.github.io",
-    "APP_BASE_URL": "https://topphi.com/UTMMSC/",
+    // The member app is served at /UTMMSC/ on utmmsc.com. Older hosts stay allowed so existing sessions keep working.
+    // 成员网络在 utmmsc.com 的 /UTMMSC/。旧地址仍允许，已打开的会话可以继续用。
+    "APP_ORIGIN": "https://utmmsc.com,https://topphi.com,https://samwu429.github.io",
+    "APP_BASE_URL": "https://utmmsc.com/UTMMSC/",
     "MAIL_FROM_EMAIL": "wuyihang429@gmail.com",
     "MAIL_FROM_NAME": "UTMMSC 国语学者联盟",
     "WEATHER_LATITUDE": "43.6532",

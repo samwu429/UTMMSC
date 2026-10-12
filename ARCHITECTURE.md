@@ -8,7 +8,8 @@ UTMMSC 是一个学生社团的成员网络。产品核心是聊天：全员可�
 
 | Part | Runs on | Why |
 | --- | --- | --- |
-| `apps/web` | GitHub Pages (static) | Zero cost, one URL for everyone, installable to the home screen. |
+| `apps/web` | GitHub Pages, published at `utmmsc.com/UTMMSC/` | The member app stays on a path so the apex can be the public site. |
+| `apps/site` | Cloudflare Worker on `utmmsc.com` | Public home page at `/`. Forwards `/UTMMSC/` to the Pages build. |
 | `apps/api` | Cloudflare Workers | Request handlers, session checks, D1, R2, email, weather. |
 | `ChatRoom` | Cloudflare Durable Objects | One object per channel or direct conversation; hibernating WebSockets. |
 | Relational data | Cloudflare D1 | Members, roles, channels, memberships, files, events. |
@@ -16,12 +17,13 @@ UTMMSC 是一个学生社团的成员网络。产品核心是聊天：全员可�
 | Binary files | Cloudflare R2 | Chat images and governance documents, by category prefix. |
 | Email | Brevo (free tier) | Verification codes, manual-approval results, executive announcements. |
 
-The browser talks to GitHub Pages for static assets, to the Worker over HTTPS for API calls, and to the Worker over WebSocket for rooms. The Worker is the only component that reads or writes D1, R2, email, or room objects.
+The browser opens `utmmsc.com` for the public site and `utmmsc.com/UTMMSC/` for the member app. That path is forwarded to GitHub Pages. API calls and room WebSockets go to the API Worker. The API Worker is the only component that reads or writes D1, R2, email, or room objects.
 
 ## Repository layout
 
 ```
 apps/web        Vite + React single-page app (PWA)
+apps/site       Public-site Worker for utmmsc.com
 apps/api        Cloudflare Worker (Hono) + Durable Objects + D1 migrations
 packages/shared Types, role/permission table, email rules, chat protocol shared by both apps
 ```

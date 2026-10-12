@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "utmmsc-site",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  // Apex is the public site. The member app stays on /UTMMSC/ and is not this Worker's root.
+  // 根域名是官网。成员网络留在 /UTMMSC/，不是这个 Worker 的根路径。
+  "routes": [
+    { "pattern": "utmmsc.com", "custom_domain": true },
+    { "pattern": "www.utmmsc.com", "custom_domain": true }
+  ]
+}
