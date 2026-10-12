@@ -1,4 +1,4 @@
-name: Deploy web to GitHub Pages
+name: Keep the old address empty
 
 on:
   push:
@@ -15,31 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run test
-      - run: npm run build:web
-        env:
-          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: apps/web/dist
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Write a blank page
+        run: |
+          mkdir site
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title></title><script>navigator.serviceWorker&&navigator.serviceWorker.getRegistrations&&navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})});window.caches&&caches.keys().then(function(keys){keys.forEach(function(k){caches.delete(k)})})</script>' > site/index.html
+          cp site/index.html site/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4

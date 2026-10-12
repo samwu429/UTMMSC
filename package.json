@@ -12,6 +12,7 @@
     "dev:api": "npm run dev --workspace apps/api",
     "build:web": "npm run build --workspace apps/web",
     "deploy:api": "npm run deploy --workspace apps/api",
+    "deploy:site": "npm run deploy --workspace apps/site",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"

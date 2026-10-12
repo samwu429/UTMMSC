@@ -5,6 +5,13 @@
   "compatibility_date": "2025-06-01",
   "workers_dev": true,
   "observability": { "enabled": true },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
 
   // Apex is the public site. The member app stays on /UTMMSC/ and is not this Worker's root.
   // 根域名是官网。成员网络留在 /UTMMSC/，不是这个 Worker 的根路径。

@@ -8,12 +8,12 @@ Public site: https://utmmsc.com/ (official site; a holding page until the public
 
 Member network: https://utmmsc.com/UTMMSC/
 
-The older address https://topphi.com/UTMMSC/ still serves the same build and sends visitors to utmmsc.com.
+https://topphi.com/UTMMSC/ is blank. The member network is only at the address above.
 
 ## Structure
 
 ```
-apps/web         Front end (Vite, React, Tailwind, PWA) built for GitHub Pages
+apps/web         Front end (Vite, React, Tailwind, PWA)
 apps/site        Cloudflare Worker for utmmsc.com: public home at `/`, member app at `/UTMMSC/`
 apps/api         Cloudflare Worker, Durable Objects, D1 migrations
 packages/shared  Shared types and rules
@@ -39,8 +39,8 @@ Create `apps/api/.dev.vars` (ignored by git) with the keys listed in `apps/api/.
 
 ## Deployment
 
-- Web: push to `main`. The workflow in `.github/workflows/deploy-pages.yml` builds `apps/web` and publishes it to GitHub Pages. `https://utmmsc.com/UTMMSC/` reads that build. The repository variable `API_BASE_URL` holds the API Worker origin.
-- Public site: `npm run deploy --workspace apps/site` after `npx wrangler login`. This Worker owns `utmmsc.com`. `/` is the public site. `/UTMMSC/` is the member network. Do not attach the member app to the apex.
+- Member network and public home: `npm run deploy:site` after `npx wrangler login`. This builds `apps/web` and publishes it with the `utmmsc.com` Worker. `/` is the public site. `/UTMMSC/` is the member network. Do not attach the member app to the apex.
+- The old address `https://topphi.com/UTMMSC/` stays blank. Pushing to `main` publishes that empty page and does not put the member app back there.
 - API: `npm run deploy:api` after `npx wrangler login`. Secrets are set with `npx wrangler secret put <NAME>` inside `apps/api`. The Worker runs at `https://utmmsc-api.utmmsc.workers.dev`.
 - Files: the R2 bucket `utmmsc-files` is bound as `FILES`. Chat images and the file library are stored there.
 

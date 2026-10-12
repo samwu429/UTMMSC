@@ -1,5 +1,8 @@
-const UPSTREAM = 'https://topphi.com';
 const MEMBER_PREFIX = '/UTMMSC';
+
+interface Env {
+  ASSETS: Fetcher;
+}
 
 const HOME = `<!doctype html>
 <html lang="zh-CN">
@@ -41,12 +44,8 @@ const HOME = `<!doctype html>
 </body>
 </html>`;
 
-export function rewriteUpstreamLocation(location: string): string {
-  return location.replace(/^https:\/\/(?:topphi\.com|samwu429\.github\.io)/, 'https://utmmsc.com');
-}
-
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.hostname === 'www.utmmsc.com') {
       url.hostname = 'utmmsc.com';
@@ -60,7 +59,7 @@ export default {
     if (url.pathname === MEMBER_PREFIX) {
       return Response.redirect(`${url.origin}${MEMBER_PREFIX}/${url.search}`, 301);
     }
-    if (url.pathname.startsWith(`${MEMBER_PREFIX}/`)) return proxyMemberApp(request, url);
+    if (url.pathname.startsWith(`${MEMBER_PREFIX}/`)) return memberAsset(request, env, url);
     return new Response('未找到', {
       status: 404,
       headers: { 'content-type': 'text/plain; charset=utf-8' },
@@ -68,23 +67,24 @@ export default {
   },
 };
 
-async function proxyMemberApp(request: Request, url: URL): Promise<Response> {
+async function memberAsset(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });
   }
-  const upstream = new URL(`${url.pathname}${url.search}`, UPSTREAM);
-  const headers = new Headers();
-  for (const name of ['accept', 'accept-language', 'range', 'if-none-match', 'if-modified-since']) {
-    const value = request.headers.get(name);
-    if (value) headers.set(name, value);
-  }
-  const upstreamResponse = await fetch(upstream, { method: request.method, headers, redirect: 'manual' });
-  const responseHeaders = new Headers(upstreamResponse.headers);
-  const location = responseHeaders.get('location');
-  if (location) responseHeaders.set('location', rewriteUpstreamLocation(location));
-  return new Response(upstreamResponse.body, {
-    status: upstreamResponse.status,
-    statusText: upstreamResponse.statusText,
-    headers: responseHeaders,
-  });
+  const pathname = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
+  const asset = await fetchAsset(request, env, pathname);
+  if (asset.status !== 404 || pathHasExtension(pathname)) return asset;
+  const index = await fetchAsset(request, env, `${MEMBER_PREFIX}/index.html`);
+  return new Response(index.body, { status: index.status === 200 ? 200 : index.status, headers: index.headers });
+}
+
+function fetchAsset(request: Request, env: Env, pathname: string): Promise<Response> {
+  const assetUrl = new URL(request.url);
+  assetUrl.pathname = pathname;
+  return env.ASSETS.fetch(new Request(assetUrl, request));
+}
+
+function pathHasExtension(pathname: string): boolean {
+  const last = pathname.split('/').pop() ?? '';
+  return last.includes('.');
 }
