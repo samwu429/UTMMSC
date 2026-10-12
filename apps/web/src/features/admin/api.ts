@@ -18,6 +18,11 @@ export const adminApi = {
   members: () => api<{ members: AdminMemberRow[] }>('/admin/members'),
   setRole: (id: string, role: Role) => api<{ ok: true }>(`/admin/members/${encodeURIComponent(id)}/role`, { method: 'POST', body: { role } }),
   setStatus: (id: string, status: MemberStatus) => api<{ ok: true }>(`/admin/members/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
+  setEnrollment: (id: string, graduationYear: number, enrollmentStatus: 'student' | 'alumni') =>
+    api<{ ok: true; graduationYear: number; enrollmentStatus: 'student' | 'alumni' }>(`/admin/members/${encodeURIComponent(id)}/enrollment`, {
+      method: 'POST',
+      body: { graduationYear, enrollmentStatus },
+    }),
   setActingRole: (role: Role | null) => api<{ member: MemberSelf }>('/admin/acting-role', { method: 'POST', body: { role } }),
   createChannel: (body: CreateChannelBody) => api<{ channel: unknown }>('/channels', { method: 'POST', body }),
   events: () => api<{ events: EventRecord[] }>('/admin/events'),

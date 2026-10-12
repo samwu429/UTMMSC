@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ENROLLMENT_LABELS, ROLE_LABELS, isStaffRole, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_LABELS, enrollmentYearLabel, isStaffRole, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 
 export function MemberRow({
@@ -26,7 +26,7 @@ export function MemberRow({
           </p>
           <p className="truncate text-sm text-stone-500">
             {member.headline ||
-              `${member.graduationYear} 届 · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${member.major ? ` · ${member.major}` : ''}`}
+              `${enrollmentYearLabel(member.graduationYear)} · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${member.major ? ` · ${member.major}` : ''}`}
           </p>
         </div>
       </Link>

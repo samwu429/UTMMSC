@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, type ManualApplication } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, enrollmentYearLabel, type ManualApplication } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatRelative } from '../../../shared/format/time';
 import { Button } from '../../../shared/ui/Button';
@@ -37,7 +37,7 @@ export function ApprovalsPanel() {
       {items.map((a) => (
         <Card key={a.id}>
           <p className="font-medium">
-            {a.displayName} <span className="text-sm font-normal text-slate-500">· {a.graduationYear} 届 · {ENROLLMENT_LABELS[a.enrollmentStatus]}</span>
+            {a.displayName} <span className="text-sm font-normal text-slate-500">· {enrollmentYearLabel(a.graduationYear)} · {ENROLLMENT_LABELS[a.enrollmentStatus]}</span>
           </p>
           <p className="text-sm text-slate-600">{a.email}</p>
           {a.major ? <p className="text-sm text-slate-600">{a.major}</p> : null}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DailyCardResponse } from '@utmmsc/shared';
-import { ENROLLMENT_LABELS } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, enrollmentYearLabel } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatEventTime } from '../../../shared/format/time';
 import { useSessionStore } from '../../../shared/session/store';
@@ -32,7 +32,7 @@ export function HomePage() {
             <span className="max-w-[6.5rem] text-right leading-tight">
               <span className="block truncate text-[13px] font-medium text-brand-800">{member.displayName}</span>
               <span className="mt-0.5 block truncate text-[11px] text-stone-500">
-                {member.graduationYear} 届 · {ENROLLMENT_LABELS[member.enrollmentStatus]}
+                {enrollmentYearLabel(member.graduationYear)} · {ENROLLMENT_LABELS[member.enrollmentStatus]}
               </span>
             </span>
             <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-11 w-11 text-base" />

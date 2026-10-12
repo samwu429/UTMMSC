@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, GRADUATION_YEAR_MIN, graduationYearMax, type EnrollmentStatus, type FriendSummary, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
+import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_LABELS, ENROLLMENT_STATUSES, enrollmentYearMax, type EnrollmentStatus, type FriendSummary, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
@@ -10,7 +10,7 @@ import { directoryApi } from '../api';
 import { MemberRow } from '../components/MemberRow';
 
 const YEARS: number[] = [];
-for (let y = graduationYearMax(); y >= GRADUATION_YEAR_MIN; y--) YEARS.push(y);
+for (let y = enrollmentYearMax(); y >= ADMIN_ENROLLMENT_YEAR_MIN; y--) YEARS.push(y);
 
 export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
   const [q, setQ] = useState('');
@@ -129,10 +129,10 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
           ))}
         </Select>
         <Select value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="">全部届别</option>
+          <option value="">全部入学年份</option>
           {YEARS.map((y) => (
             <option key={y} value={y}>
-              {y} 届
+              {y} 年入学
             </option>
           ))}
         </Select>

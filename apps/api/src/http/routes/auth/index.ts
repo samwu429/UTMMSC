@@ -3,7 +3,8 @@ import {
   ENROLLMENT_STATUSES,
   isUniversityEmail,
   isValidDisplayName,
-  isValidGraduationYear,
+  isValidEnrollmentYear,
+  shouldGraduate,
   isValidPassword,
   isWellFormedEmail,
   normalizeEmail,
@@ -29,6 +30,7 @@ import {
   countMembers,
   createMember,
   findMemberByEmail,
+  settleEnrollment,
   toSelf,
   updatePasswordHash,
   type MemberRow,
@@ -115,13 +117,13 @@ authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
   const password = requireString(body.password, '密码', 128);
   const displayName = requireString(body.displayName, '姓名', 40);
   const enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
-  const graduationYear = requireInteger(body.graduationYear, '毕业年份');
+  const graduationYear = requireInteger(body.graduationYear, '入学年份');
   const major = optionalString(body.major, '专业', 80);
 
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (!isValidPassword(password)) throw badRequest('weak_password', '密码至少 8 位');
   if (!isValidDisplayName(displayName)) throw badRequest('invalid_name', '姓名需 2 到 40 个字符');
-  if (!isValidGraduationYear(graduationYear)) throw badRequest('invalid_year', '毕业年份无效');
+  if (!isValidEnrollmentYear(graduationYear)) throw badRequest('invalid_year', '入学年份无效');
   if (await findMemberByEmail(c.env.DB, email)) throw conflict('already_registered', '该邮箱已注册，请直接登录');
 
   if (isUniversityEmail(email)) {
@@ -133,13 +135,13 @@ authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
 
   // The first account bootstraps administration; everyone after that starts as a plain member.
   // 第一个账号作为初始管理员；之后的账号都是普通成员。
-  const role: Role = (await countMembers(c.env.DB)) === 0 ? 'superadmin' : enrollmentStatus;
+  const role: Role = (await countMembers(c.env.DB)) === 0 ? 'superadmin' : (shouldGraduate(graduationYear, 'student') ? 'alumni' : enrollmentStatus);
   const member = await createMember(c.env.DB, {
     email,
     displayName,
     passwordHash: await hashPassword(password),
     role,
-    enrollmentStatus,
+    enrollmentStatus: shouldGraduate(graduationYear, enrollmentStatus) ? 'alumni' : enrollmentStatus,
     graduationYear,
     major,
   });
@@ -154,7 +156,7 @@ authRoutes.post('/login', rateLimit(20, 60_000), async (c) => {
   const valid = member ? await verifyPassword(password, member.password_hash) : false;
   if (!member || !valid) throw unauthorized('邮箱或密码不正确');
   if (member.status !== 'active') throw forbidden('账号已停用，请联系主席团');
-  return c.json(await startSession(c.env, member));
+  return c.json(await startSession(c.env, await settleEnrollment(c.env.DB, member)));
 });
 
 authRoutes.post('/reset', rateLimit(10, 60_000), async (c) => {
@@ -168,7 +170,7 @@ authRoutes.post('/reset', rateLimit(10, 60_000), async (c) => {
   await verifyCodeOrThrow(c.env, email, 'reset', code);
   await updatePasswordHash(c.env.DB, member.id, await hashPassword(password));
   await revokeAllSessions(c.env.DB, member.id);
-  return c.json(await startSession(c.env, member));
+  return c.json(await startSession(c.env, await settleEnrollment(c.env.DB, member)));
 });
 
 authRoutes.post('/apply', rateLimit(5, 60_000), async (c) => {
@@ -176,15 +178,22 @@ authRoutes.post('/apply', rateLimit(5, 60_000), async (c) => {
   const email = normalizeEmail(requireString(body.email, '邮箱', 254));
   const displayName = requireString(body.displayName, '姓名', 40);
   const enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
-  const graduationYear = requireInteger(body.graduationYear, '毕业年份');
+  const graduationYear = requireInteger(body.graduationYear, '入学年份');
   const major = optionalString(body.major, '专业', 80);
   const note = optionalString(body.note, '备注', 500);
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (!isValidDisplayName(displayName)) throw badRequest('invalid_name', '姓名需 2 到 40 个字符');
-  if (!isValidGraduationYear(graduationYear)) throw badRequest('invalid_year', '毕业年份无效');
+  if (!isValidEnrollmentYear(graduationYear)) throw badRequest('invalid_year', '入学年份无效');
   if (await findMemberByEmail(c.env.DB, email)) throw conflict('already_registered', '该邮箱已注册，请直接登录');
   if (await hasPendingApplication(c.env.DB, email)) throw conflict('already_applied', '申请已提交，请等待审核');
-  await createApplication(c.env.DB, { email, displayName, enrollmentStatus, graduationYear, major, note });
+  await createApplication(c.env.DB, {
+    email,
+    displayName,
+    enrollmentStatus: shouldGraduate(graduationYear, enrollmentStatus) ? 'alumni' : enrollmentStatus,
+    graduationYear,
+    major,
+    note,
+  });
   return c.json({ ok: true }, 201);
 });
 

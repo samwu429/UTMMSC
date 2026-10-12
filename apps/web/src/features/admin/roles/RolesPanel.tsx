@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, isOfficeRole, roleTier, type AdminMemberRow, type Role } from '@utmmsc/shared';
+import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_LABELS, ENROLLMENT_STATUSES, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, enrollmentYearLabel, enrollmentYearMax, isOfficeRole, roleTier, shouldGraduate, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Badge, Notice, Spinner } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
 import { Select, TextInput } from '../../../shared/ui/Field';
 import { adminApi } from '../api';
+
+const YEAR_OPTIONS: number[] = [];
+for (let y = enrollmentYearMax(); y >= ADMIN_ENROLLMENT_YEAR_MIN; y--) YEAR_OPTIONS.push(y);
 
 /** Role picker per member. Options follow the constitution and what this person may appoint. */
 /** 成员身份选择。选项按章程，并且限于当前这个人可以任命的范围。 */
@@ -55,6 +58,36 @@ export function RolesPanel() {
     }
   }
 
+  async function setEnrollment(member: AdminMemberRow, year: number, status: EnrollmentStatus) {
+    if (year === member.graduationYear && status === member.enrollmentStatus) return;
+    const due = shouldGraduate(year, 'student');
+    const nextStatus: EnrollmentStatus = due ? 'alumni' : status;
+    const ok = await ask({
+      title: `把入学年份改为 ${year}？`,
+      body: due ? '入学已满五年，会记为毕业生。成员自己不能改这个数字。' : '成员自己不能改这个数字。',
+      confirmLabel: '更正',
+    });
+    if (!ok) return;
+    setError(null);
+    try {
+      const res = await adminApi.setEnrollment(member.id, year, nextStatus);
+      setMembers((prev) =>
+        (prev ?? []).map((m) =>
+          m.id === member.id
+            ? {
+                ...m,
+                graduationYear: res.graduationYear,
+                enrollmentStatus: res.enrollmentStatus,
+                role: m.role === 'student' && res.enrollmentStatus === 'alumni' ? 'alumni' : m.role === 'alumni' && res.enrollmentStatus === 'student' ? 'student' : m.role,
+              }
+            : m,
+        ),
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   if (!self) return null;
   if (!members) return error ? <Notice tone="error">{error}</Notice> : <Spinner />;
 
@@ -63,7 +96,7 @@ export function RolesPanel() {
   return (
     <div className="space-y-3">
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <p className="text-sm leading-relaxed text-stone-500">每个章程职位同时只能有一个人。主席可以任命部长和成员，不能任命其他主席团。</p>
+      <p className="text-sm leading-relaxed text-stone-500">每个章程职位同时只能有一个人。主席可以任命部长和成员，不能任命其他主席团。入学年份只有系统管理员能改。</p>
       <TextInput placeholder="搜索姓名或邮箱" value={filter} onChange={(e) => setFilter(e.target.value)} />
       {visible.map((m) => {
         const heldByOthers = new Set(members.filter((other) => other.id !== m.id && isOfficeRole(other.role)).map((other) => other.role));
@@ -76,7 +109,7 @@ export function RolesPanel() {
                   {m.displayName} {m.status !== 'active' ? <Badge tone="amber">已停用</Badge> : null}
                 </p>
                 <p className="truncate text-xs text-slate-500">
-                  {m.email} · {m.graduationYear} 届 · {ENROLLMENT_LABELS[m.enrollmentStatus]}
+                  {m.email} · {enrollmentYearLabel(m.graduationYear)} · {ENROLLMENT_LABELS[m.enrollmentStatus]}
                 </p>
               </div>
               {editable ? (
@@ -107,6 +140,33 @@ export function RolesPanel() {
               )}
               <p className="mt-1 text-xs leading-relaxed text-stone-500">{ROLE_DUTIES[m.role]}</p>
             </div>
+            {self.realRole === 'superadmin' ? (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Select
+                  value={String(m.graduationYear)}
+                  onChange={(e) => void setEnrollment(m, Number(e.target.value), m.enrollmentStatus)}
+                  className="py-2"
+                >
+                  {(YEAR_OPTIONS.includes(m.graduationYear) ? YEAR_OPTIONS : [m.graduationYear, ...YEAR_OPTIONS]).map((y) => (
+                    <option key={y} value={y}>
+                      {y} 年入学
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  value={shouldGraduate(m.graduationYear, 'student') ? 'alumni' : m.enrollmentStatus}
+                  disabled={shouldGraduate(m.graduationYear, 'student')}
+                  onChange={(e) => void setEnrollment(m, m.graduationYear, e.target.value as EnrollmentStatus)}
+                  className="py-2"
+                >
+                  {ENROLLMENT_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {ENROLLMENT_LABELS[status]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
           </div>
         );
       })}

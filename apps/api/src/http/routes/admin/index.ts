@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { MEMBER_STATUSES, ROLES, canAssignRole, isOfficeRole, roleTier, type AdminMemberRow, type AnnouncementResponse, type MemberStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isOfficeRole, isValidAdminEnrollmentYear, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
 import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
@@ -13,6 +13,7 @@ import {
   updateMemberStatus,
   updateActingRole,
   officeHolderExists,
+  correctEnrollment,
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
@@ -20,7 +21,7 @@ import { announcementMail, applicationApprovedMail, applicationRejectedMail } fr
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
-import { optionalString, readJson, requireOneOf, requireString } from '../../validation';
+import { optionalString, readJson, requireInteger, requireOneOf, requireString } from '../../validation';
 
 export const adminRoutes = new Hono<AppEnv>();
 
@@ -96,6 +97,22 @@ adminRoutes.post('/members/:id/status', requirePermission('members.assign_role')
   await updateMemberStatus(c.env.DB, target.id, status);
   if (status !== 'active') await revokeAllSessions(c.env.DB, target.id);
   return c.json({ ok: true });
+});
+
+adminRoutes.post('/members/:id/enrollment', async (c) => {
+  const actor = c.get('member');
+  if (actor.role !== 'superadmin') throw forbidden('只有系统管理员可以更正入学年份');
+  const target = await findMemberById(c.env.DB, c.req.param('id'));
+  if (!target) throw notFound('成员不存在');
+  const body = await readJson<Record<string, unknown>>(c);
+  const year = requireInteger(body.graduationYear, '入学年份');
+  if (!isValidAdminEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
+  const requested = body.enrollmentStatus === undefined
+    ? target.enrollment_status
+    : requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
+  const status: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : requested;
+  await correctEnrollment(c.env.DB, target, year, status);
+  return c.json({ ok: true, graduationYear: year, enrollmentStatus: status });
 });
 
 /* Events */

@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { hasPermission, type Permission } from '@utmmsc/shared';
 import { readSessionToken } from '../../domain/identity/session-token';
-import { findMemberById, viewedRole } from '../../infrastructure/d1/members';
+import { findMemberById, graduateDueMembers, viewedRole } from '../../infrastructure/d1/members';
 import { isSessionLive } from '../../infrastructure/d1/sessions';
 import type { AppEnv } from '../context';
 import { forbidden, unauthorized } from '../errors';
@@ -19,6 +19,7 @@ export const requireSession: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!claims) throw unauthorized('登录已过期，请重新登录');
   const live = await isSessionLive(c.env.DB, claims.sid, claims.mid);
   if (!live) throw unauthorized('登录已失效，请重新登录');
+  await graduateDueMembers(c.env.DB);
   const member = await findMemberById(c.env.DB, claims.mid);
   if (!member || member.status !== 'active') throw unauthorized('账号不可用');
   c.set('member', member);

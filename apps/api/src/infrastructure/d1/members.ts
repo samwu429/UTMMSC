@@ -1,4 +1,4 @@
-import { OPEN_TO, ROLES, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
+import { OPEN_TO, ROLES, enrollmentCalendarYear, shouldGraduate, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
 import { randomId } from '../../domain/crypto/encoding';
 import { nowIso } from './time';
 
@@ -130,6 +130,63 @@ export async function updateMemberStatus(db: D1Database, memberId: string, statu
 
 export async function updateActingRole(db: D1Database, memberId: string, actingRole: Role | null): Promise<void> {
   await db.prepare('UPDATE members SET acting_role = ?, updated_at = ? WHERE id = ?').bind(actingRole, nowIso(), memberId).run();
+}
+
+/** Writes alumni for every student whose enrollment year is five or more years ago. */
+/** 把入学已满五年的在校生写成毕业生。 */
+export async function graduateDueMembers(db: D1Database, now: Date = new Date()): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE members
+       SET enrollment_status = 'alumni',
+           role = CASE WHEN role = 'student' THEN 'alumni' ELSE role END,
+           updated_at = ?
+       WHERE enrollment_status = 'student'
+         AND graduation_year <= ?`,
+    )
+    .bind(nowIso(), enrollmentCalendarYear(now) - 5)
+    .run();
+}
+
+/** Refreshes due alumni, then returns this member with that change applied. */
+/** 先处理已满五年的成员，再返回这个人更新后的状态。 */
+export async function settleEnrollment(db: D1Database, member: MemberRow, now: Date = new Date()): Promise<MemberRow> {
+  await graduateDueMembers(db, now);
+  if (!shouldGraduate(member.graduation_year, member.enrollment_status, now)) return member;
+  return {
+    ...member,
+    enrollment_status: 'alumni',
+    role: member.role === 'student' ? 'alumni' : member.role,
+  };
+}
+
+export async function markGraduated(db: D1Database, memberId: string): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE members
+       SET enrollment_status = 'alumni',
+           role = CASE WHEN role = 'student' THEN 'alumni' ELSE role END,
+           updated_at = ?
+       WHERE id = ? AND enrollment_status = 'student'`,
+    )
+    .bind(nowIso(), memberId)
+    .run();
+}
+
+/** System admin correction. A year that is already five years old forces alumni. */
+/** 系统管理员更正。入学已满五年时，状态固定为毕业生。 */
+export async function correctEnrollment(db: D1Database, member: MemberRow, year: number, status: EnrollmentStatus): Promise<void> {
+  const nextStatus: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : status;
+  const nextRole: Role =
+    member.role === 'student' && nextStatus === 'alumni'
+      ? 'alumni'
+      : member.role === 'alumni' && nextStatus === 'student'
+        ? 'student'
+        : member.role;
+  await db
+    .prepare('UPDATE members SET graduation_year = ?, enrollment_status = ?, role = ?, updated_at = ? WHERE id = ?')
+    .bind(year, nextStatus, nextRole, nowIso(), member.id)
+    .run();
 }
 
 export async function officeHolderExists(db: D1Database, role: string, exceptId: string): Promise<boolean> {

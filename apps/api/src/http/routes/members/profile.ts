@@ -11,7 +11,7 @@ import {
   insertPost,
   listFeed,
 } from '../../../infrastructure/d1/profile';
-import { findMemberById, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { findMemberById, markGraduated, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
 import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
@@ -133,6 +133,15 @@ profileRoutes.post('/me/media', rateLimit(30, 60_000), async (c) => {
   const key = momentObjectKey(member.id, contentType);
   await putObject(requireBucket(c.env), key, bytes, contentType);
   return c.json({ key, contentType, kind: described.kind }, 201);
+});
+
+profileRoutes.post('/me/graduate', async (c) => {
+  const member = c.get('member');
+  if (member.enrollment_status !== 'student') throw badRequest('already_alumni', '已经是毕业生');
+  await markGraduated(c.env.DB, member.id);
+  const updated = await findMemberById(c.env.DB, member.id);
+  if (!updated) throw notFound('成员不存在');
+  return c.json({ member: toSelf(updated) });
 });
 
 profileRoutes.patch('/me', async (c) => {

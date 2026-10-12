@@ -31,4 +31,5 @@ export const profileApi = {
   feed: () => api<FeedResponse>('/members/feed'),
   addPost: (body: CreatePostBody) => api<{ post: ActivityPost }>('/members/me/posts', { method: 'POST', body }),
   removePost: (id: string) => api<{ ok: true }>(`/members/me/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  graduate: () => api<{ member: MemberSelf }>('/members/me/graduate', { method: 'POST' }),
 };

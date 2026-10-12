@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, isStaffRole, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_LABELS, ROLE_GROUPS, ROLE_LABELS, enrollmentYearLabel, isStaffRole, shouldGraduate, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
@@ -11,6 +11,7 @@ import { MemberAvatar } from '../../profile/InitialAvatar';
 import { ChevronIcon } from '../../profile/icons';
 import { authApi } from '../../auth/api';
 import { adminApi } from '../../admin/api';
+import { profileApi } from '../../profile/api';
 
 type Screen = 'list' | 'password' | 'install';
 
@@ -104,6 +105,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const clear = useSessionStore((s) => s.clear);
   const [screen, setScreen] = useState<Screen>('list');
   const [actingError, setActingError] = useState<string | null>(null);
+  const [graduateError, setGraduateError] = useState<string | null>(null);
   const ask = useConfirm();
   const installed = isStandalone();
 
@@ -121,6 +123,22 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
     }
   }
 
+  async function graduate() {
+    const ok = await ask({
+      title: '改为毕业生？',
+      body: '之后不能自己改回在校生。入学年份仍然不能修改。',
+      confirmLabel: '确认毕业',
+    });
+    if (!ok) return;
+    setGraduateError(null);
+    try {
+      const res = await profileApi.graduate();
+      setMember(res.member);
+    } catch (err) {
+      setGraduateError(errorMessage(err));
+    }
+  }
+
   async function logout() {
     const ok = await ask({ title: '退出登录？', confirmLabel: '退出', danger: true });
     if (!ok) return;
@@ -135,7 +153,8 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   if (screen === 'install') return <InstallScreen onBack={() => setScreen('list')} />;
   if (!member) return null;
 
-  const year = `${member.graduationYear} 届 · ${ENROLLMENT_LABELS[member.enrollmentStatus]}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
+  const alumni = member.enrollmentStatus === 'alumni' || shouldGraduate(member.graduationYear, 'student');
+  const status = `${alumni ? ENROLLMENT_LABELS.alumni : ENROLLMENT_LABELS.student}${isStaffRole(member.role) ? ` · ${ROLE_LABELS[member.role]}` : ''}`;
 
   const real = member.realRole ?? member.role;
 
@@ -174,9 +193,16 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
         </button>
       </Group>
 
-      <Group label="账号" footer="邮箱只有你自己能看到。">
+      <Group label="账号" footer="入学年份登记后不能自行修改，如需更正请联系系统管理员。邮箱只有你自己能看到。">
         <Row label="邮箱" value={member.email} />
-        <Row label="届别" value={year} />
+        <Row label="入学年份" value={enrollmentYearLabel(member.graduationYear)} />
+        <Row label="状态" value={status} />
+        {alumni ? null : (
+          <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
+            我已毕业
+          </button>
+        )}
+        {graduateError ? <div className="px-4 py-2"><Notice tone="error">{graduateError}</Notice></div> : null}
         <Row label="修改密码" onClick={() => setScreen('password')} />
       </Group>
 

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { directRoomId, type DirectConversationSummary } from '@utmmsc/shared';
+import { directRoomId, enrollmentYearLabel, type DirectConversationSummary } from '@utmmsc/shared';
 import { formatRelative } from '../../../shared/format/time';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List } from '../../../shared/ui/Card';
@@ -27,7 +27,7 @@ export function DirectList({ conversations }: { conversations: DirectConversatio
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">
               {dm.peer.displayName}
-              <span className="ml-1.5 text-xs font-normal text-stone-400">{dm.peer.graduationYear} 届</span>
+              <span className="ml-1.5 text-xs font-normal text-stone-400">{enrollmentYearLabel(dm.peer.graduationYear)}</span>
             </p>
             <p className="truncate text-sm text-stone-500">{dm.lastPreview ?? '开始聊天'}</p>
           </div>
