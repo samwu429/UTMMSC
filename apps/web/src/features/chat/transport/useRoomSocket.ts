@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { parseServerFrame, type ChatMessage, type ClientFrame, type ServerFrame } from '@utmmsc/shared';
+import { parseServerFrame, redactChatBody, type ChatMessage, type ClientFrame, type ServerFrame } from '@utmmsc/shared';
 import { ApiClientError, errorMessage } from '../../../shared/api/errors';
 import { chatApi } from '../api';
 
@@ -25,9 +25,18 @@ const HEARTBEAT_MS = 25_000;
 
 /**
  * Owns one WebSocket per room: fetches a ticket, connects, reconnects with backoff, keeps the
- * message list ordered by id, and exposes send/history/read/delete actions.
- * 每个房间一条 WebSocket：领取票据、连接、指数退避重连、按 id 维护消息列表，并暴露发送/历史/已读/删除操作。
+ * message list ordered by id, and exposes send/history/read/delete/recall actions.
+ * 每个房间一条 WebSocket：领取票据、连接、指数退避重连、按 id 维护消息列表，并暴露发送/历史/已读/删除/撤回操作。
  */
+
+function sanitize(message: ChatMessage): ChatMessage {
+  return redactChatBody({
+    ...message,
+    deleted: message.deleted === true,
+    recalled: message.recalled === true,
+    imageKey: message.imageKey ?? null,
+  });
+}
 export function useRoomSocket(roomId: string) {
   const [state, setState] = useState<RoomState>({
     status: 'connecting',
@@ -44,6 +53,15 @@ export function useRoomSocket(roomId: string) {
   const attemptRef = useRef(0);
   const closedByUserRef = useRef(false);
   const pendingRef = useRef(new Map<string, ChatMessage>());
+  const hiddenRef = useRef(new Map<number, { deleted: boolean; recalled: boolean }>());
+
+  const rememberHidden = useCallback((id: number, patch: { deleted?: boolean; recalled?: boolean }) => {
+    const prev = hiddenRef.current.get(id) ?? { deleted: false, recalled: false };
+    hiddenRef.current.set(id, {
+      deleted: prev.deleted || patch.deleted === true,
+      recalled: prev.recalled || patch.recalled === true,
+    });
+  }, []);
 
   const sendFrame = useCallback((frame: ClientFrame) => {
     const socket = socketRef.current;
@@ -51,24 +69,47 @@ export function useRoomSocket(roomId: string) {
   }, []);
 
   const handleFrame = useCallback((frame: ServerFrame) => {
+    if (frame.type === 'deleted') rememberHidden(frame.messageId, { deleted: true });
+    if (frame.type === 'recalled') rememberHidden(frame.messageId, { recalled: true });
+    if (frame.type === 'history_result') {
+      for (const message of frame.messages) {
+        if (message.deleted || message.recalled) rememberHidden(message.id, { deleted: message.deleted === true, recalled: message.recalled === true });
+      }
+    }
     setState((prev) => {
       switch (frame.type) {
         case 'ready':
           return { ...prev, status: 'open', onlineCount: frame.onlineCount, lastReadId: frame.lastReadId, error: null };
         case 'history_result': {
-          const known = new Set(prev.messages.map((m) => m.id));
-          const merged = [...frame.messages.filter((m) => !known.has(m.id)), ...prev.messages].sort((a, b) => a.id - b.id);
+          const byId = new Map(prev.messages.map((m) => [m.id, m]));
+          for (const message of frame.messages) {
+            const hidden = hiddenRef.current.get(message.id);
+            const next = hidden ? sanitize({ ...message, deleted: message.deleted || hidden.deleted, recalled: message.recalled || hidden.recalled, text: '', imageKey: null }) : sanitize(message);
+            byId.set(message.id, next);
+          }
+          const merged = [...byId.values()].sort((a, b) => a.id - b.id);
           return { ...prev, messages: merged, hasMore: frame.hasMore };
         }
         case 'message': {
           if (frame.clientId) pendingRef.current.delete(frame.clientId);
-          if (prev.messages.some((m) => m.id === frame.message.id)) return prev;
-          return { ...prev, messages: [...prev.messages, frame.message] };
+          const hidden = hiddenRef.current.get(frame.message.id);
+          const incoming = hidden
+            ? sanitize({ ...frame.message, deleted: frame.message.deleted || hidden.deleted, recalled: frame.message.recalled || hidden.recalled, text: '', imageKey: null })
+            : sanitize(frame.message);
+          const existing = prev.messages.find((m) => m.id === incoming.id);
+          if (existing?.recalled || existing?.deleted) return prev;
+          if (existing) return prev;
+          return { ...prev, messages: [...prev.messages, incoming] };
         }
         case 'deleted':
           return {
             ...prev,
-            messages: prev.messages.map((m) => (m.id === frame.messageId ? { ...m, deleted: true, text: '', imageKey: null } : m)),
+            messages: prev.messages.map((m) => (m.id === frame.messageId ? sanitize({ ...m, deleted: true, text: '', imageKey: null }) : m)),
+          };
+        case 'recalled':
+          return {
+            ...prev,
+            messages: prev.messages.map((m) => (m.id === frame.messageId ? sanitize({ ...m, recalled: true, text: '', imageKey: null }) : m)),
           };
         case 'presence':
           return { ...prev, onlineCount: frame.onlineCount };
@@ -78,11 +119,13 @@ export function useRoomSocket(roomId: string) {
           return prev;
       }
     });
-  }, []);
+  }, [rememberHidden]);
 
   useEffect(() => {
     closedByUserRef.current = false;
     attemptRef.current = 0;
+    hiddenRef.current.clear();
+    pendingRef.current.clear();
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
@@ -167,8 +210,9 @@ export function useRoomSocket(roomId: string) {
 
   const markRead = useCallback((messageId: number) => sendFrame({ type: 'read', messageId }), [sendFrame]);
   const remove = useCallback((messageId: number) => sendFrame({ type: 'delete', messageId }), [sendFrame]);
+  const recall = useCallback((messageId: number) => sendFrame({ type: 'recall', messageId }), [sendFrame]);
   const mute = useCallback((memberId: string, minutes: number) => sendFrame({ type: 'mute', memberId, minutes }), [sendFrame]);
   const clearError = useCallback(() => setState((prev) => ({ ...prev, error: null })), []);
 
-  return { ...state, send, loadOlder, markRead, remove, mute, clearError };
+  return { ...state, send, loadOlder, markRead, remove, recall, mute, clearError };
 }

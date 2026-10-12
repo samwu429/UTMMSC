@@ -95,6 +95,7 @@ export function RoomPage() {
             canModerate={canModerate}
             mediaToken={room.mediaToken}
             onDelete={room.remove}
+            onRecall={room.recall}
             onMute={setMuteId}
             onOpenProfile={(id) => navigate(`/directory/${id}`)}
           />

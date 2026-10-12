@@ -178,6 +178,12 @@ export interface OpenDirectResponse {
   conversationId: string;
 }
 
+export interface TranslateMessageResponse {
+  text: string;
+  sourceLang: 'zh-CN' | 'en';
+  targetLang: 'zh-CN' | 'en';
+}
+
 /* Files */
 
 export interface FileListResponse {

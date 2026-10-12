@@ -2,13 +2,16 @@ import { Hono } from 'hono';
 import {
   CHAT_IMAGE_MAX_BYTES,
   CHAT_IMAGE_TYPES,
+  MESSAGE_TEXT_MAX,
   channelRoomId,
   directRoomId,
   parseRoomId,
+  planTranslation,
   type ChannelSummary,
   type ChatOverviewResponse,
   type DirectConversationSummary,
   type RoomTicketResponse,
+  type TranslateMessageResponse,
 } from '@utmmsc/shared';
 import { canPostInChannel, canReadChannel } from '../../../domain/authorization/channel-access';
 import { signPayload, verifyPayload } from '../../../domain/crypto/hmac';
@@ -17,12 +20,14 @@ import { findChannel, listChannels, listMembershipChannelIds } from '../../../in
 import { findDirect, listDirectForMember, openDirect } from '../../../infrastructure/d1/direct';
 import { areFriends, listFriendIds } from '../../../infrastructure/d1/friends';
 import { findMemberById, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
+import { fetchMyMemoryTranslation, takeTranslateSlot } from '../../../domain/messaging/translate';
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
 import type { ChatRoom } from '../../../realtime/rooms/chat-room';
 import type { Env } from '../../../env';
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
-import { badRequest, forbidden, notFound, unauthorized } from '../../errors';
+import { badRequest, forbidden, notFound, serviceUnavailable, tooMany, unauthorized } from '../../errors';
+import { rateLimit } from '../../middleware/rate-limit';
 import { requireSession } from '../../middleware/session';
 import { readJson, requireString } from '../../validation';
 
@@ -125,6 +130,24 @@ chatRoutes.post('/direct', requireSession, async (c) => {
   return c.json({ conversationId: conversation.id });
 });
 
+/* Short zh/en translation. The worker calls MyMemory; message text is not logged. */
+/* 中英短翻译。由 Worker 调用 MyMemory，不记录消息正文。 */
+
+chatRoutes.post('/translate', rateLimit(15, 60_000), requireSession, async (c) => {
+  if (!takeTranslateSlot(Date.now())) throw tooMany();
+  const body = await readJson<Record<string, unknown>>(c);
+  const text = requireString(body.text, '文本', MESSAGE_TEXT_MAX);
+  const plan = planTranslation(text);
+  if (!plan.ok) {
+    if (plan.error === 'too_long') throw badRequest('text_too_long', '这段内容较长，暂时只能翻译较短的文字');
+    throw badRequest('missing_field', '缺少 文本');
+  }
+  const translated = await fetchMyMemoryTranslation(plan.text, plan.pair);
+  if (!translated) throw serviceUnavailable('translate_unavailable', '翻译服务暂时不可用，请稍后再试');
+  const response: TranslateMessageResponse = { text: translated, sourceLang: plan.source, targetLang: plan.target };
+  return c.json(response);
+});
+
 /* Tickets and sockets */
 
 chatRoutes.post('/rooms/:roomId/ticket', requireSession, async (c) => {
@@ -137,6 +160,7 @@ chatRoutes.post('/rooms/:roomId/ticket', requireSession, async (c) => {
     displayName: member.display_name,
     role: viewedRole(member),
     canPost: grant.canPost,
+    avatarKey: member.avatar_key,
   });
   const mediaToken = await signPayload(c.env.SESSION_SECRET, {
     kind: 'media',
@@ -165,7 +189,13 @@ chatRoutes.get('/rooms/:roomId/socket', async (c) => {
   headers.set('x-room-id', roomId);
   headers.set(
     'x-room-identity',
-    JSON.stringify({ memberId: claims.memberId, displayName: claims.displayName, role: claims.role, canPost: claims.canPost }),
+    JSON.stringify({
+      memberId: claims.memberId,
+      displayName: claims.displayName,
+      role: claims.role,
+      canPost: claims.canPost,
+      avatarKey: typeof claims.avatarKey === 'string' ? claims.avatarKey : null,
+    }),
   );
   return roomStub(c.env, roomId).fetch(new Request(c.req.raw.url, { headers }));
 });

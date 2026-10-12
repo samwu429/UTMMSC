@@ -10,6 +10,9 @@ export const HISTORY_PAGE_SIZE = 50;
 export interface ChatAuthor {
   id: string;
   displayName: string;
+  /** Avatar at send time. Null when the sender had none. */
+  /** 发送当时的头像。发送者没有头像时为 null。 */
+  avatarKey?: string | null;
 }
 
 export interface ChatMessage {
@@ -20,6 +23,9 @@ export interface ChatMessage {
   imageKey: string | null;
   createdAt: string;
   deleted: boolean;
+  /** Author withdrew it. Clients must treat text and imageKey as empty. */
+  /** 作者已撤回。客户端必须把正文和图片视为已清空。 */
+  recalled: boolean;
 }
 
 /* Client -> server */
@@ -46,6 +52,11 @@ export interface DeleteFrame {
   messageId: number;
 }
 
+export interface RecallFrame {
+  type: 'recall';
+  messageId: number;
+}
+
 export interface MuteFrame {
   type: 'mute';
   memberId: string;
@@ -61,6 +72,7 @@ export type ClientFrame =
   | HistoryFrame
   | ReadFrame
   | DeleteFrame
+  | RecallFrame
   | MuteFrame
   | PingFrame;
 
@@ -91,6 +103,13 @@ export interface DeletedFrame {
   messageId: number;
 }
 
+/** Recall notice. Carries no body, so a live client cannot keep the original text. */
+/** 撤回通知。不带正文，在线客户端因此无法留下原文。 */
+export interface RecalledFrame {
+  type: 'recalled';
+  messageId: number;
+}
+
 export interface PresenceFrame {
   type: 'presence';
   onlineCount: number;
@@ -104,7 +123,8 @@ export interface ErrorFrame {
     | 'forbidden'
     | 'muted'
     | 'not_found'
-    | 'rate_limited';
+    | 'rate_limited'
+    | 'recall_expired';
   message: string;
 }
 
@@ -117,6 +137,7 @@ export type ServerFrame =
   | MessageFrame
   | HistoryResultFrame
   | DeletedFrame
+  | RecalledFrame
   | PresenceFrame
   | ErrorFrame
   | PongFrame;
@@ -157,6 +178,8 @@ export function parseClientFrame(raw: unknown): ClientFrame | null {
       return isPositiveInt(raw.messageId) ? { type: 'read', messageId: raw.messageId } : null;
     case 'delete':
       return isPositiveInt(raw.messageId) ? { type: 'delete', messageId: raw.messageId } : null;
+    case 'recall':
+      return isPositiveInt(raw.messageId) ? { type: 'recall', messageId: raw.messageId } : null;
     case 'mute':
       if (typeof raw.memberId !== 'string' || !isPositiveInt(raw.minutes) || raw.minutes > 60 * 24 * 30) {
         return null;
@@ -176,6 +199,7 @@ export function parseServerFrame(raw: unknown): ServerFrame | null {
     case 'message':
     case 'history_result':
     case 'deleted':
+    case 'recalled':
     case 'presence':
     case 'error':
     case 'pong':

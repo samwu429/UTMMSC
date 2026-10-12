@@ -31,11 +31,11 @@ describe('room tickets', () => {
     const now = new Date();
     const ticket = await issueRoomTicket(
       SECRET,
-      { roomId: 'channel:ch_all', memberId: 'mem_1', displayName: 'Sam', role: 'student', canPost: true },
+      { roomId: 'channel:ch_all', memberId: 'mem_1', displayName: 'Sam', role: 'student', canPost: true, avatarKey: 'preset:man-cute-purple' },
       now,
     );
     const claims = await readRoomTicket(SECRET, ticket, now);
-    expect(claims).toMatchObject({ roomId: 'channel:ch_all', memberId: 'mem_1', canPost: true });
+    expect(claims).toMatchObject({ roomId: 'channel:ch_all', memberId: 'mem_1', canPost: true, avatarKey: 'preset:man-cute-purple' });
     const later = new Date(now.getTime() + 61_000);
     expect(await readRoomTicket(SECRET, ticket, later)).toBeNull();
   });

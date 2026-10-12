@@ -15,6 +15,7 @@ export interface RoomTicketClaims {
   displayName: string;
   role: Role;
   canPost: boolean;
+  avatarKey?: string | null;
   exp: number;
 }
 

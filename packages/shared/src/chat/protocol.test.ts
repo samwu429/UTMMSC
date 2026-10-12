@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseClientFrame } from './protocol';
+import { parseClientFrame, parseServerFrame } from './protocol';
 
 describe('parseClientFrame', () => {
   it('parses a valid send frame and drops unknown fields', () => {
@@ -30,10 +30,17 @@ describe('parseClientFrame', () => {
     expect(parseClientFrame({ type: 'history', beforeId: '10' })).toBeNull();
   });
 
-  it('requires positive integer ids for read and delete', () => {
+  it('requires positive integer ids for read, delete, and recall', () => {
     expect(parseClientFrame({ type: 'read', messageId: 3 })).toEqual({ type: 'read', messageId: 3 });
     expect(parseClientFrame({ type: 'delete', messageId: -1 })).toBeNull();
     expect(parseClientFrame({ type: 'read', messageId: 1.5 })).toBeNull();
+    expect(parseClientFrame({ type: 'recall', messageId: 4 })).toEqual({ type: 'recall', messageId: 4 });
+    expect(parseClientFrame({ type: 'recall', messageId: 0 })).toBeNull();
+    expect(parseClientFrame({ type: 'recall' })).toBeNull();
+  });
+
+  it('accepts a recall notice that carries no message body', () => {
+    expect(parseServerFrame({ type: 'recalled', messageId: 4 })).toMatchObject({ type: 'recalled', messageId: 4 });
   });
 
   it('bounds mute duration to thirty days', () => {

@@ -2,16 +2,18 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   HISTORY_PAGE_SIZE,
   MESSAGE_TEXT_MAX,
+  decideRecall,
   hasPermission,
   parseClientFrame,
   parseRoomId,
+  redactChatBody,
   type ChatMessage,
   type ClientFrame,
   type Role,
   type ServerFrame,
 } from '@utmmsc/shared';
 import type { Env } from '../../env';
-import { previewOf } from '../../domain/messaging/preview';
+import { conversationPreview } from '../../domain/messaging/preview';
 import { touchChannel } from '../../infrastructure/d1/channels';
 import { touchDirect } from '../../infrastructure/d1/direct';
 
@@ -22,6 +24,7 @@ export interface SocketIdentity {
   displayName: string;
   role: Role;
   canPost: boolean;
+  avatarKey?: string | null;
 }
 
 /** Row shape of the `messages` table; the index signature satisfies SqlStorage's generic bound. */
@@ -34,6 +37,8 @@ interface MessageRow extends Record<string, SqlStorageValue> {
   image_key: string | null;
   created_at: string;
   deleted: number;
+  recalled: number;
+  avatar_key: string | null;
 }
 
 const SEND_WINDOW_MS = 10_000;
@@ -67,7 +72,9 @@ export class ChatRoom extends DurableObject<Env> {
         text TEXT NOT NULL,
         image_key TEXT,
         created_at TEXT NOT NULL,
-        deleted INTEGER NOT NULL DEFAULT 0
+        deleted INTEGER NOT NULL DEFAULT 0,
+        recalled INTEGER NOT NULL DEFAULT 0,
+        avatar_key TEXT
       );
       CREATE TABLE IF NOT EXISTS read_cursors (
         member_id TEXT PRIMARY KEY,
@@ -78,6 +85,20 @@ export class ChatRoom extends DurableObject<Env> {
         until TEXT NOT NULL
       );
     `);
+    this.addColumn('ALTER TABLE messages ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0');
+    this.addColumn('ALTER TABLE messages ADD COLUMN avatar_key TEXT');
+  }
+
+  /** Existing rooms were created before recall. Adding a column twice is expected. */
+  /** 已有房间在撤回功能之前创建。列已存在时再添加是正常情况。 */
+  private addColumn(statement: string): void {
+    try {
+      this.sql.exec(statement);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/duplicate column/i.test(message)) return;
+      throw err;
+    }
   }
 
   /* RPC used by the Worker */
@@ -172,6 +193,9 @@ export class ChatRoom extends DurableObject<Env> {
       case 'delete':
         await this.handleDelete(ws, identity, frame.messageId);
         return;
+      case 'recall':
+        await this.handleRecall(ws, identity, frame.messageId);
+        return;
       case 'mute':
         this.handleMute(ws, identity, frame.memberId, frame.minutes);
         return;
@@ -206,29 +230,68 @@ export class ChatRoom extends DurableObject<Env> {
     }
 
     const createdAt = new Date().toISOString();
+    const avatarKey = typeof identity.avatarKey === 'string' && identity.avatarKey.length > 0 && identity.avatarKey.length <= 300 ? identity.avatarKey : null;
     const inserted = this.sql
       .exec<{ id: number }>(
-        'INSERT INTO messages (author_id, author_name, text, image_key, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id',
+        'INSERT INTO messages (author_id, author_name, text, image_key, created_at, avatar_key) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
         identity.memberId,
         identity.displayName,
         trimmed,
         imageKey,
         createdAt,
+        avatarKey,
       )
       .one();
 
     const message: ChatMessage = {
       id: inserted.id,
       roomId: this.roomId ?? '',
-      author: { id: identity.memberId, displayName: identity.displayName },
+      author: { id: identity.memberId, displayName: identity.displayName, avatarKey },
       text: trimmed,
       imageKey,
       createdAt,
       deleted: false,
+      recalled: false,
     };
     this.markRead(identity.memberId, message.id);
     this.broadcast({ type: 'message', message, clientId });
-    this.ctx.waitUntil(this.recordActivity(createdAt, previewOf(trimmed, imageKey !== null)));
+    this.ctx.waitUntil(this.recordActivity());
+  }
+
+  /**
+   * Withdrawal uses the row's stored timestamp and Date.now() on this object, never a client clock.
+   * The broadcast and later history omit the original text.
+   * 撤回只用本对象上的当前时间和行里存的时间，不信客户端时钟。广播和之后的历史都不再带原文。
+   */
+  private async handleRecall(ws: WebSocket, identity: SocketIdentity, messageId: number): Promise<void> {
+    const row = this.sql.exec<MessageRow>('SELECT * FROM messages WHERE id = ?', messageId).toArray()[0];
+    if (!row) {
+      this.sendError(ws, 'not_found', '消息不存在');
+      return;
+    }
+    const decision = decideRecall({
+      authorId: row.author_id,
+      actorId: identity.memberId,
+      createdAtMs: Date.parse(row.created_at),
+      nowMs: Date.now(),
+      deleted: row.deleted === 1,
+      recalled: row.recalled === 1,
+    });
+    if (decision === 'not_author') {
+      this.sendError(ws, 'forbidden', '只能撤回自己的消息');
+      return;
+    }
+    if (decision === 'expired') {
+      this.sendError(ws, 'recall_expired', '已超过 3 分钟，无法撤回');
+      return;
+    }
+    if (decision !== 'ok') {
+      this.sendError(ws, 'forbidden', '这条消息不能撤回');
+      return;
+    }
+    this.sql.exec("UPDATE messages SET recalled = 1, text = '', image_key = NULL WHERE id = ?", messageId);
+    this.broadcast({ type: 'recalled', messageId });
+    this.ctx.waitUntil(this.recordActivity());
   }
 
   private async handleDelete(ws: WebSocket, identity: SocketIdentity, messageId: number): Promise<void> {
@@ -272,15 +335,22 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   private toMessage(row: MessageRow): ChatMessage {
-    return {
+    const recalled = row.recalled === 1;
+    const deleted = row.deleted === 1;
+    return redactChatBody({
       id: row.id,
       roomId: this.roomId ?? '',
-      author: { id: row.author_id, displayName: row.author_name },
-      text: row.text,
-      imageKey: row.image_key,
+      author: {
+        id: row.author_id,
+        displayName: row.author_name,
+        avatarKey: typeof row.avatar_key === 'string' ? row.avatar_key : null,
+      },
+      text: recalled || deleted ? '' : row.text,
+      imageKey: recalled || deleted ? null : row.image_key,
       createdAt: row.created_at,
-      deleted: row.deleted === 1,
-    };
+      deleted,
+      recalled,
+    });
   }
 
   private lastReadOf(memberId: string): number {
@@ -319,11 +389,38 @@ export class ChatRoom extends DurableObject<Env> {
     return true;
   }
 
-  private async recordActivity(at: string, preview: string): Promise<void> {
+  /** Preview is read from the latest row so a withdrawn message cannot republish its text. */
+  /** 摘要从最新一行读取，已撤回的消息不会把原文再次写进会话列表。 */
+  private latestActivity(): { at: string; preview: string } | null {
+    const latest = this.sql.exec<MessageRow>('SELECT * FROM messages ORDER BY id DESC LIMIT 1').toArray()[0];
+    if (!latest) return null;
+    const hidden = latest.recalled === 1 || latest.deleted === 1;
+    return {
+      at: latest.created_at,
+      preview: conversationPreview({
+        text: hidden ? '' : latest.text,
+        hasImage: !hidden && latest.image_key !== null,
+        deleted: latest.deleted === 1,
+        recalled: latest.recalled === 1,
+      }),
+    };
+  }
+
+  private async recordActivity(): Promise<void> {
     const parsed = this.roomId ? parseRoomId(this.roomId) : null;
     if (!parsed) return;
-    if (parsed.kind === 'channel') await touchChannel(this.env.DB, parsed.id, at);
-    else await touchDirect(this.env.DB, parsed.id, at, preview);
+    const current = this.latestActivity();
+    if (!current) return;
+    if (parsed.kind === 'channel') {
+      await touchChannel(this.env.DB, parsed.id, current.at);
+      return;
+    }
+    await touchDirect(this.env.DB, parsed.id, current.at, current.preview);
+    const again = this.latestActivity();
+    if (!again) return;
+    if (again.at !== current.at || again.preview !== current.preview) {
+      await touchDirect(this.env.DB, parsed.id, again.at, again.preview);
+    }
   }
 
   /* Fan-out */

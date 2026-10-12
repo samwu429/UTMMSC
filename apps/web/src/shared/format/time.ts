@@ -13,6 +13,19 @@ export function formatMessageTime(iso: string): string {
   return sameDay(date, new Date()) ? TIME.format(date) : DATE_TIME.format(date);
 }
 
+const CHAT_GROUP_GAP_MS = 5 * 60 * 1000;
+
+/** WeChat-style separator: first message, a new day, or a gap of at least five minutes. */
+/** 微信式时间条：第一条、跨天，或间隔至少五分钟。 */
+export function showChatTimeDivider(currentIso: string, previousIso?: string): boolean {
+  if (!previousIso) return true;
+  const current = new Date(currentIso);
+  const previous = new Date(previousIso);
+  if (Number.isNaN(current.getTime()) || Number.isNaN(previous.getTime())) return true;
+  if (!sameDay(current, previous)) return true;
+  return current.getTime() - previous.getTime() >= CHAT_GROUP_GAP_MS;
+}
+
 export function formatEventTime(iso: string): string {
   return FULL.format(new Date(iso));
 }

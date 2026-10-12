@@ -1,4 +1,4 @@
-import type { ChatImageUploadResponse, ChatOverviewResponse, OpenDirectResponse, RoomTicketResponse } from '@utmmsc/shared';
+import type { ChatImageUploadResponse, ChatOverviewResponse, OpenDirectResponse, RoomTicketResponse, TranslateMessageResponse } from '@utmmsc/shared';
 import { api } from '../../shared/api/client';
 import { API_BASE_URL } from '../../shared/api/config';
 
@@ -17,4 +17,5 @@ export const chatApi = {
       headers: { 'content-type': file.type },
     }),
   mediaUrl: (imageKey: string, mediaToken: string) => `${API_BASE_URL}/chat/media/${encodeURIComponent(imageKey)}?t=${encodeURIComponent(mediaToken)}`,
+  translate: (text: string) => api<TranslateMessageResponse>('/chat/translate', { method: 'POST', body: { text } }),
 };
