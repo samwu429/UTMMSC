@@ -72,8 +72,10 @@ profileRoutes.post('/me/avatar/preset', async (c) => {
   const body = await readJson<Record<string, unknown>>(c);
   const id = typeof body.id === 'string' ? body.id : '';
   if (!isPresetAvatarId(id)) throw badRequest('invalid_avatar', '没有这个头像');
+  const motion = body.motion === 'still' ? 'still' : body.motion === 'animated' || body.motion === undefined ? 'animated' : null;
+  if (!motion) throw badRequest('invalid_avatar', '请选择动态版或静态版');
   const member = c.get('member');
-  const key = presetAvatarKey(id);
+  const key = presetAvatarKey(id, motion);
   const previous = member.avatar_key;
   await updateAvatarKey(c.env.DB, member.id, key);
   if (previous?.startsWith('avatar/') && previous !== key) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), previous));

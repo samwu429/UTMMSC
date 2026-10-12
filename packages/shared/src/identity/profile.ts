@@ -22,8 +22,8 @@ export const POST_MAX = 500;
 export const EXPERIENCE_LIMIT = 8;
 export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
 
-/** Built-in animated avatars. The id is stored as `preset:<id>` and the file is `avatars/<id>.gif`. */
-/** 自带的动态头像。id 以 `preset:<id>` 保存，文件为 `avatars/<id>.gif`。 */
+/** Built-in avatars. Animated is `preset:<id>` (gif). Still is `preset:<id>:still` (png). */
+/** 自带头像。动态版为 `preset:<id>`（gif），静态版为 `preset:<id>:still`（png）。 */
 export const PRESET_AVATARS = [
   { id: 'woman-cute-gold', label: '女 · 可爱 · 黄' },
   { id: 'woman-cool-purple', label: '女 · 帅气 · 紫' },
@@ -32,13 +32,23 @@ export const PRESET_AVATARS = [
 ] as const;
 
 export type PresetAvatarId = (typeof PRESET_AVATARS)[number]['id'];
+export type PresetAvatarMotion = 'animated' | 'still';
 
 export function isPresetAvatarId(id: string): id is PresetAvatarId {
   return PRESET_AVATARS.some((item) => item.id === id);
 }
 
-export function presetAvatarKey(id: PresetAvatarId): string {
-  return `preset:${id}`;
+export function presetAvatarKey(id: PresetAvatarId, motion: PresetAvatarMotion = 'animated'): string {
+  return motion === 'still' ? `preset:${id}:still` : `preset:${id}`;
+}
+
+export function presetAvatarFile(avatarKey: string): { id: PresetAvatarId; ext: 'gif' | 'png' } | null {
+  if (!avatarKey.startsWith('preset:')) return null;
+  const rest = avatarKey.slice('preset:'.length);
+  const still = rest.endsWith(':still');
+  const id = still ? rest.slice(0, -':still'.length) : rest;
+  if (!isPresetAvatarId(id)) return null;
+  return { id, ext: still ? 'png' : 'gif' };
 }
 export const MOMENT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 export const MOMENT_VIDEO_MAX_BYTES = 25 * 1024 * 1024;

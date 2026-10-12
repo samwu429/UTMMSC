@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { PRESET_AVATARS, presetAvatarKey, type PresetAvatarId } from '@utmmsc/shared';
+import { PRESET_AVATARS, presetAvatarKey, type PresetAvatarId, type PresetAvatarMotion } from '@utmmsc/shared';
 import { Button } from '../../shared/ui/Button';
 
 export function AvatarChooser({
@@ -11,7 +11,7 @@ export function AvatarChooser({
 }: {
   currentKey: string | null;
   busy: boolean;
-  onPreset: (id: PresetAvatarId) => void;
+  onPreset: (id: PresetAvatarId, motion: PresetAvatarMotion) => void;
   onUpload: (file: File) => void;
   onRemove: () => void;
 }) {
@@ -19,20 +19,28 @@ export function AvatarChooser({
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-        {PRESET_AVATARS.map((item) => {
-          const selected = currentKey === presetAvatarKey(item.id);
-          return (
-            <button key={item.id} type="button" disabled={busy} onClick={() => onPreset(item.id)} className="flex flex-col items-center gap-2 disabled:opacity-50">
-              <img
-                src={`${import.meta.env.BASE_URL}avatars/${item.id}.gif`}
-                alt=""
-                className={`h-28 w-28 rounded-full object-cover ring-2 ${selected ? 'ring-gold' : 'ring-stone-200'}`}
-              />
-              <span className={`text-sm ${selected ? 'font-medium text-brand-800' : 'text-stone-600'}`}>{item.label}</span>
-            </button>
-          );
-        })}
+      <div className="space-y-4">
+        {PRESET_AVATARS.map((item) => (
+          <div key={item.id}>
+            <p className="mb-2 text-sm font-medium text-brand-800">{item.label}</p>
+            <div className="grid grid-cols-2 gap-3">
+              {(['animated', 'still'] as const).map((motion) => {
+                const selected = currentKey === presetAvatarKey(item.id, motion);
+                const ext = motion === 'animated' ? 'gif' : 'png';
+                return (
+                  <button key={motion} type="button" disabled={busy} onClick={() => onPreset(item.id, motion)} className="flex flex-col items-center gap-1.5 disabled:opacity-50">
+                    <img
+                      src={`${import.meta.env.BASE_URL}avatars/${item.id}.${ext}`}
+                      alt=""
+                      className={`h-24 w-24 rounded-full object-cover ring-2 ${selected ? 'ring-gold' : 'ring-stone-200'}`}
+                    />
+                    <span className={`text-sm ${selected ? 'font-medium text-brand-800' : 'text-stone-500'}`}>{motion === 'animated' ? '动态' : '静态'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
       <Button type="button" variant="secondary" block className="mt-5" disabled={busy} onClick={() => fileRef.current?.click()}>
         从相册上传

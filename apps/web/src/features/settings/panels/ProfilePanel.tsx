@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Experience, MemberDetailResponse, MemberSelf, PresetAvatarId } from '@utmmsc/shared';
+import type { Experience, MemberDetailResponse, MemberSelf, PresetAvatarId, PresetAvatarMotion } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useSessionStore } from '../../../shared/session/store';
 import { Notice, Spinner } from '../../../shared/ui/Card';
@@ -63,11 +63,11 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
     }
   }
 
-  async function choosePreset(id: PresetAvatarId) {
+  async function choosePreset(id: PresetAvatarId, motion: PresetAvatarMotion) {
     setAvatarBusy(true);
     setError(null);
     try {
-      const res = await profileApi.choosePreset(id);
+      const res = await profileApi.choosePreset(id, motion);
       applyMember(res.member, true);
     } catch (err) {
       setError(errorMessage(err));
