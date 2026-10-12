@@ -12,7 +12,7 @@ export function DirectList({ conversations }: { conversations: DirectConversatio
         <Link to="/chat?tab=members" className="text-brand-800">
           成员
         </Link>{' '}
-        里点一个人即可开始。
+        里加好友，对方通过后才能发私信。
       </EmptyState>
     );
   }

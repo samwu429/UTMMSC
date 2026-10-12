@@ -1,23 +1,22 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AccountPanel } from '../panels/AccountPanel';
-import { ActivityPanel } from '../panels/ActivityPanel';
 import { ProfilePanel } from '../panels/ProfilePanel';
 
 const TABS = [
   { id: 'profile', label: '资料' },
-  { id: 'activity', label: '动态' },
   { id: 'settings', label: '设置' },
 ] as const;
 
 type Tab = (typeof TABS)[number]['id'];
 
 function tabFromQuery(value: string | null): Tab {
-  if (value === 'activity' || value === 'settings') return value;
+  if (value === 'settings') return value;
   return 'profile';
 }
 
 export function SettingsPage() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = tabFromQuery(params.get('tab'));
   const [pushed, setPushed] = useState(false);
@@ -51,8 +50,7 @@ export function SettingsPage() {
           })}
         </div>
       )}
-      {tab === 'profile' ? <ProfilePanel onShowActivity={() => select('activity')} /> : null}
-      {tab === 'activity' ? <ActivityPanel onOpenProfile={() => select('profile')} onPushed={setPushed} /> : null}
+      {tab === 'profile' ? <ProfilePanel onShowActivity={() => navigate('/discover/feed')} /> : null}
       {tab === 'settings' ? (
         <div className="px-4 py-4">
           <AccountPanel onOpenProfile={() => select('profile')} onPushed={setPushed} />

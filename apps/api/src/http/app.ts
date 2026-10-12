@@ -7,6 +7,7 @@ import { authRoutes } from './routes/auth';
 import { channelRoutes } from './routes/channels';
 import { chatRoutes } from './routes/chat';
 import { fileRoutes } from './routes/files';
+import { friendRoutes } from './routes/friends';
 import { homeRoutes } from './routes/home';
 import { memberRoutes } from './routes/members';
 import { serveMemberMedia } from './routes/members/media';
@@ -28,6 +29,7 @@ export function createApp() {
   app.route('/chat', chatRoutes);
   app.route('/channels', channelRoutes);
   app.route('/files', fileRoutes);
+  app.route('/friends', friendRoutes);
   app.route('/home', homeRoutes);
   app.route('/admin', adminRoutes);
   return app;

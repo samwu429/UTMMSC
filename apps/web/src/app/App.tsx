@@ -8,6 +8,8 @@ import { RegisterPage } from '../features/auth/pages/RegisterPage';
 import { ChatOverviewPage } from '../features/chat/pages/ChatOverviewPage';
 import { RoomPage } from '../features/chat/pages/RoomPage';
 import { MemberPage } from '../features/directory/pages/MemberPage';
+import { DiscoverFeedPage } from '../features/discover/pages/DiscoverFeedPage';
+import { DiscoverPage } from '../features/discover/pages/DiscoverPage';
 import { FilesPage } from '../features/files/pages/FilesPage';
 import { HomePage } from '../features/home/pages/HomePage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
@@ -51,6 +53,8 @@ export function App() {
             <Route path="/chat" element={<ChatOverviewPage />} />
             <Route path="/directory" element={<Navigate to="/chat?tab=members" replace />} />
             <Route path="/directory/:id" element={<MemberPage />} />
+            <Route path="/discover" element={<DiscoverPage />} />
+            <Route path="/discover/feed" element={<DiscoverFeedPage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route element={<RequireStaff />}>

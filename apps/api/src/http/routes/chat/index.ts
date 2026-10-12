@@ -15,6 +15,7 @@ import { signPayload, verifyPayload } from '../../../domain/crypto/hmac';
 import { issueRoomTicket, readRoomTicket } from '../../../domain/identity/room-ticket';
 import { findChannel, listChannels, listMembershipChannelIds } from '../../../infrastructure/d1/channels';
 import { findDirect, listDirectForMember, openDirect } from '../../../infrastructure/d1/direct';
+import { areFriends, listFriendIds } from '../../../infrastructure/d1/friends';
 import { findMemberById, type MemberRow } from '../../../infrastructure/d1/members';
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
 import type { ChatRoom } from '../../../realtime/rooms/chat-room';
@@ -63,6 +64,8 @@ async function resolveRoomAccess(env: Env, member: MemberRow, roomId: string): P
   const conversation = await findDirect(env.DB, parsed.id);
   if (!conversation) throw notFound('会话不存在');
   if (conversation.member_low !== member.id && conversation.member_high !== member.id) throw forbidden('你不在这个会话里');
+  const peerId = conversation.member_low === member.id ? conversation.member_high : conversation.member_low;
+  if (!(await areFriends(env.DB, member.id, peerId))) throw forbidden('先加好友才能私聊');
   return { roomId, canPost: true };
 }
 
@@ -71,11 +74,13 @@ async function resolveRoomAccess(env: Env, member: MemberRow, roomId: string): P
 chatRoutes.get('/overview', requireSession, async (c) => {
   const member = c.get('member');
   const actor = { role: member.role, enrollmentStatus: member.enrollment_status };
-  const [channels, memberships, direct] = await Promise.all([
+  const [channels, memberships, direct, friendIds] = await Promise.all([
     listChannels(c.env.DB),
     listMembershipChannelIds(c.env.DB, member.id),
     listDirectForMember(c.env.DB, member.id),
+    listFriendIds(c.env.DB, member.id),
   ]);
+  const friends = new Set(friendIds);
 
   const visibleChannels = channels.filter((ch) =>
     canReadChannel({ audience: ch.audience, postPolicy: ch.post_policy, isMember: memberships.has(ch.id) }, actor),
@@ -95,7 +100,7 @@ chatRoutes.get('/overview', requireSession, async (c) => {
   );
 
   const directSummaries: DirectConversationSummary[] = await Promise.all(
-    direct.map(async (dm) => ({
+    direct.filter((dm) => friends.has(dm.peer_id)).map(async (dm) => ({
       id: dm.id,
       peer: { id: dm.peer_id, displayName: dm.peer_name, enrollmentStatus: dm.peer_enrollment, graduationYear: dm.peer_graduation_year },
       lastMessageAt: dm.last_message_at,
@@ -115,6 +120,7 @@ chatRoutes.post('/direct', requireSession, async (c) => {
   if (peerId === member.id) throw badRequest('self_direct', '不能和自己私聊');
   const peer = await findMemberById(c.env.DB, peerId);
   if (!peer || peer.status !== 'active') throw notFound('成员不存在');
+  if (!(await areFriends(c.env.DB, member.id, peer.id))) throw forbidden('先加好友才能私聊');
   const conversation = await openDirect(c.env.DB, member.id, peer.id);
   return c.json({ conversationId: conversation.id });
 });

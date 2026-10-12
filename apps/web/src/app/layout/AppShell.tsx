@@ -1,10 +1,9 @@
 import { useEffect, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { hasPermission } from '@utmmsc/shared';
 import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
 
-type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me';
+type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me' | 'discover';
 
 interface NavItem {
   to: string;
@@ -14,7 +13,7 @@ interface NavItem {
 
 const LEFT_NAV: NavItem[] = [{ to: '/', label: '首页', icon: 'home' }];
 
-const RIGHT_NAV: NavItem[] = [{ to: '/files', label: '文件', icon: 'files' }];
+const RIGHT_NAV: NavItem[] = [{ to: '/settings', label: '我的', icon: 'me' }];
 
 function TabIcon({ name }: { name: IconName }) {
   const common = {
@@ -51,6 +50,12 @@ function TabIcon({ name }: { name: IconName }) {
         <path d="M6 19.5c.9-2.6 3-4 6-4s5.1 1.4 6 4" />
       </>
     ),
+    discover: (
+      <>
+        <circle cx="12" cy="12" r="7.5" />
+        <path d="m14.8 9.2-1.1 4.5-4.5 1.1 1.1-4.5 4.5-1.1Z" />
+      </>
+    ),
   };
   return <svg {...common}>{paths[name]}</svg>;
 }
@@ -75,6 +80,18 @@ function SideTab({ item }: { item: NavItem }) {
   );
 }
 
+function DiscoverTab() {
+  const { pathname } = useLocation();
+  const isActive = pathname.startsWith('/discover') || pathname.startsWith('/files') || pathname.startsWith('/admin');
+  return (
+    <NavLink to="/discover" className={`flex min-h-[52px] flex-1 flex-col items-center justify-center text-[11px] ${isActive ? 'text-brand-800' : 'text-stone-400'}`}>
+      <TabIcon name="discover" />
+      <span className={isActive ? 'font-medium' : ''}>发现</span>
+      <span className={`mt-0.5 h-[3px] w-4 ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
+    </NavLink>
+  );
+}
+
 function ChatTab() {
   const { pathname } = useLocation();
   const isActive = pathname === '/chat' || pathname.startsWith('/directory');
@@ -91,7 +108,6 @@ function ChatTab() {
 /** Mobile-first shell: scrolling content above a fixed bottom tab bar. */
 /** 手机优先的外壳：内容区在上，固定的底部标签栏在下。 */
 export function AppShell() {
-  const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
   const setMediaToken = useSessionStore((s) => s.setMediaToken);
 
@@ -104,14 +120,7 @@ export function AppShell() {
       })
       .catch(() => undefined);
   }, [setMember, setMediaToken]);
-  const staff =
-    member &&
-    (hasPermission(member.role, 'members.approve') ||
-      hasPermission(member.role, 'channels.manage') ||
-      hasPermission(member.role, 'events.manage'));
-  const right = staff
-    ? [...RIGHT_NAV, { to: '/admin', label: '管理', icon: 'admin' as const }, { to: '/settings', label: '我的', icon: 'me' as const }]
-    : [...RIGHT_NAV, { to: '/settings', label: '我的', icon: 'me' as const }];
+  const right = RIGHT_NAV;
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">
@@ -127,6 +136,7 @@ export function AppShell() {
           </div>
           <ChatTab />
           <div className="flex flex-1">
+            <DiscoverTab />
             {right.map((item) => (
               <SideTab key={item.to} item={item} />
             ))}

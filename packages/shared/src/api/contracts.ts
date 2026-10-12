@@ -1,5 +1,6 @@
 import type { ChannelSummary, DirectConversationSummary, ChannelAudience, PostPolicy } from '../chat/rooms';
 import type { FileCategory, FileRecord } from '../files/categories';
+import type { FriendshipState } from '../identity/friends';
 import type { EnrollmentStatus, MemberProfile, MemberSelf } from '../identity/member';
 import type { ActivityPost, Experience, OpenTo, PostMedia } from '../identity/profile';
 import type { Role } from '../identity/roles';
@@ -124,6 +125,18 @@ export interface MemberDetailResponse {
   experiences: Experience[];
   posts: ActivityPost[];
   mediaToken: string;
+  friendship: FriendshipState;
+}
+
+export interface FriendCard {
+  member: MemberProfile;
+  requestedAt: string;
+}
+
+export interface FriendSummary {
+  incoming: FriendCard[];
+  outgoingIds: string[];
+  friendIds: string[];
 }
 
 export interface FeedResponse {
