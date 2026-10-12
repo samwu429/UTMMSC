@@ -14,7 +14,8 @@ export function SplashScreen() {
       return;
     }
     const video = videoRef.current;
-    const play = video?.play();
+    if (!video) return;
+    const play = video.play();
     if (play) {
       play.catch(() => {
         window.setTimeout(() => {
