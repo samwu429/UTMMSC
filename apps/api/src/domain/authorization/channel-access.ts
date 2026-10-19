@@ -1,4 +1,13 @@
-import { hasPermission, isStaffRole, type ChannelAudience, type EnrollmentStatus, type PostPolicy, type Role } from '@utmmsc/shared';
+import {
+  hasPermission,
+  isHonoraryRole,
+  isStaffRole,
+  roleTier,
+  type ChannelAudience,
+  type EnrollmentStatus,
+  type PostPolicy,
+  type Role,
+} from '@utmmsc/shared';
 
 export interface ChannelAccessInput {
   audience: ChannelAudience;
@@ -12,9 +21,9 @@ export interface ActorInput {
 }
 
 /**
- * Reading: implicit audiences match on enrollment status, channel managers see everything,
+ * Reading: implicit audiences match enrollment or office group, channel managers see everything,
  * custom channels require a membership row.
- * 阅读：隐式受众按在校或毕业匹配，能管频道的人可见全部，自定义频道需成员记录。
+ * 阅读：隐式受众按在校状态或职位分组匹配，能管频道的人可见全部，自定义频道需成员记录。
  */
 export function canReadChannel(channel: ChannelAccessInput, actor: ActorInput): boolean {
   if (hasPermission(actor.role, 'channels.manage')) return true;
@@ -24,6 +33,14 @@ export function canReadChannel(channel: ChannelAccessInput, actor: ActorInput): 
     case 'student':
     case 'alumni':
       return channel.audience === actor.enrollmentStatus;
+    case 'honorary':
+      return isHonoraryRole(actor.role);
+    case 'heads':
+      return roleTier(actor.role) === 1;
+    case 'officers':
+      return roleTier(actor.role) === 2;
+    case 'staff':
+      return isStaffRole(actor.role);
     case 'custom':
       return channel.isMember;
   }

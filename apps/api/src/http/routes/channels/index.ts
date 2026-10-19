@@ -5,9 +5,12 @@ import {
   createChannel,
   deleteChannel,
   findChannel,
+  listChannelMemberIds,
   listChannels,
   removeChannelMember,
+  replaceChannelMembers,
   updateChannel,
+  type ChannelRow,
 } from '../../../infrastructure/d1/channels';
 import type { AppEnv } from '../../context';
 import { badRequest, notFound } from '../../errors';
@@ -26,8 +29,7 @@ function memberIdList(value: unknown): string[] {
   return value as string[];
 }
 
-function toAdminChannel(row: Awaited<ReturnType<typeof findChannel>>) {
-  if (!row) return null;
+function toAdminChannel(row: ChannelRow, memberIds: string[]) {
   return {
     id: row.id,
     slug: row.slug,
@@ -37,12 +39,32 @@ function toAdminChannel(row: Awaited<ReturnType<typeof findChannel>>) {
     postPolicy: row.post_policy,
     createdAt: row.created_at,
     lastMessageAt: row.last_message_at,
+    memberIds,
   };
+}
+
+async function loadAdminChannel(db: D1Database, id: string) {
+  const row = await findChannel(db, id);
+  if (!row) return null;
+  const memberIds = row.audience === 'custom' ? await listChannelMemberIds(db, id) : [];
+  return toAdminChannel(row, memberIds);
 }
 
 channelRoutes.get('/', async (c) => {
   const channels = await listChannels(c.env.DB);
-  return c.json({ channels: channels.map((row) => toAdminChannel(row)) });
+  const withMembers = await Promise.all(
+    channels.map(async (row) => {
+      const memberIds = row.audience === 'custom' ? await listChannelMemberIds(c.env.DB, row.id) : [];
+      return toAdminChannel(row, memberIds);
+    }),
+  );
+  return c.json({ channels: withMembers });
+});
+
+channelRoutes.get('/:id', async (c) => {
+  const channel = await loadAdminChannel(c.env.DB, c.req.param('id'));
+  if (!channel) throw notFound('频道不存在');
+  return c.json({ channel });
 });
 
 channelRoutes.post('/', async (c) => {
@@ -51,27 +73,53 @@ channelRoutes.post('/', async (c) => {
   const description = optionalString(body.description, '频道简介', 200);
   const audience = requireOneOf<ChannelAudience>(body.audience, CHANNEL_AUDIENCES, '受众');
   const postPolicy = requireOneOf<PostPolicy>(body.postPolicy, POST_POLICIES, '发言规则');
+  const requestedMembers = memberIdList(body.memberIds);
+  const memberIds =
+    audience === 'custom'
+      ? requestedMembers.length > 0
+        ? requestedMembers
+        : [c.get('member').id]
+      : [];
   const channel = await createChannel(c.env.DB, {
     name,
     description,
     audience,
     postPolicy,
     createdBy: c.get('member').id,
-    memberIds: memberIdList(body.memberIds),
+    memberIds,
   });
-  return c.json({ channel }, 201);
+  return c.json({ channel: await loadAdminChannel(c.env.DB, channel.id) }, 201);
 });
 
 channelRoutes.patch('/:id', async (c) => {
   const id = c.req.param('id');
-  if (!(await findChannel(c.env.DB, id))) throw notFound('频道不存在');
+  const existing = await findChannel(c.env.DB, id);
+  if (!existing) throw notFound('频道不存在');
   const body = await readJson<Record<string, unknown>>(c);
-  const patch: { name?: string; description?: string | null; postPolicy?: PostPolicy } = {};
+  const patch: {
+    name?: string;
+    description?: string | null;
+    audience?: ChannelAudience;
+    postPolicy?: PostPolicy;
+  } = {};
   if (body.name !== undefined) patch.name = requireString(body.name, '频道名称', 40);
   if (body.description !== undefined) patch.description = optionalString(body.description, '频道简介', 200);
+  if (body.audience !== undefined) patch.audience = requireOneOf<ChannelAudience>(body.audience, CHANNEL_AUDIENCES, '受众');
   if (body.postPolicy !== undefined) patch.postPolicy = requireOneOf<PostPolicy>(body.postPolicy, POST_POLICIES, '发言规则');
   await updateChannel(c.env.DB, id, patch);
-  return c.json({ channel: await findChannel(c.env.DB, id) });
+
+  const nextAudience = patch.audience ?? existing.audience;
+  if (body.memberIds !== undefined || patch.audience !== undefined) {
+    if (nextAudience === 'custom') {
+      const memberIds =
+        body.memberIds !== undefined ? memberIdList(body.memberIds) : await listChannelMemberIds(c.env.DB, id);
+      await replaceChannelMembers(c.env.DB, id, memberIds.length > 0 ? memberIds : [c.get('member').id]);
+    } else if (existing.audience === 'custom') {
+      await replaceChannelMembers(c.env.DB, id, []);
+    }
+  }
+
+  return c.json({ channel: await loadAdminChannel(c.env.DB, id) });
 });
 
 channelRoutes.post('/:id/members', async (c) => {

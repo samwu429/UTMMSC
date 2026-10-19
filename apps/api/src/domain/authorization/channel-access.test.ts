@@ -3,8 +3,10 @@ import { canPostInChannel, canReadChannel } from './channel-access';
 
 const student = { role: 'student' as const, enrollmentStatus: 'student' as const };
 const alumni = { role: 'alumni' as const, enrollmentStatus: 'alumni' as const };
+const honorary = { role: 'honorary_alumni' as const, enrollmentStatus: 'alumni' as const };
 const lead = { role: 'head_technology' as const, enrollmentStatus: 'student' as const };
 const executive = { role: 'president' as const, enrollmentStatus: 'alumni' as const };
+const finance = { role: 'vp_finance' as const, enrollmentStatus: 'student' as const };
 
 describe('canReadChannel', () => {
   it('opens all-audience channels to everyone', () => {
@@ -18,6 +20,25 @@ describe('canReadChannel', () => {
     expect(canReadChannel(students, student)).toBe(true);
     expect(canReadChannel(students, alumni)).toBe(false);
     expect(canReadChannel(students, executive)).toBe(true);
+  });
+
+  it('opens honorary, heads, officers, and staff to the matching office group', () => {
+    const advisors = { audience: 'honorary' as const, postPolicy: 'members' as const, isMember: false };
+    expect(canReadChannel(advisors, honorary)).toBe(true);
+    expect(canReadChannel(advisors, student)).toBe(false);
+
+    const heads = { audience: 'heads' as const, postPolicy: 'members' as const, isMember: false };
+    expect(canReadChannel(heads, lead)).toBe(true);
+    expect(canReadChannel(heads, finance)).toBe(false);
+
+    const officers = { audience: 'officers' as const, postPolicy: 'members' as const, isMember: false };
+    expect(canReadChannel(officers, finance)).toBe(true);
+    expect(canReadChannel(officers, lead)).toBe(false);
+
+    const staff = { audience: 'staff' as const, postPolicy: 'members' as const, isMember: false };
+    expect(canReadChannel(staff, lead)).toBe(true);
+    expect(canReadChannel(staff, finance)).toBe(true);
+    expect(canReadChannel(staff, student)).toBe(false);
   });
 
   it('requires membership for custom channels unless the actor manages channels', () => {

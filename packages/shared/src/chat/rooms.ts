@@ -3,16 +3,20 @@ import type { Role } from '../identity/roles';
 
 /**
  * Channel audience decides who may enter without an explicit membership row.
- * `all`, `student`, and `alumni` are implicit; `custom` requires membership.
- * 频道受众决定无需成员记录即可进入的人群。`all`、`student`、`alumni` 为隐式；`custom` 需要成员记录。
+ * Enrollment and role groups are implicit; `custom` requires membership.
+ * 频道受众决定无需成员记录即可进入的人群。在校/身份分组为隐式；`custom` 需要成员记录。
  */
-export const CHANNEL_AUDIENCES = ['all', 'student', 'alumni', 'custom'] as const;
+export const CHANNEL_AUDIENCES = ['all', 'student', 'alumni', 'honorary', 'heads', 'officers', 'staff', 'custom'] as const;
 export type ChannelAudience = (typeof CHANNEL_AUDIENCES)[number];
 
 export const CHANNEL_AUDIENCE_LABELS: Record<ChannelAudience, string> = {
   all: '全体成员',
   student: '在校生',
   alumni: '毕业生',
+  honorary: '荣誉顾问',
+  heads: '部门部长',
+  officers: '主席团',
+  staff: '负责人及以上',
   custom: '指定成员',
 };
 

@@ -78,7 +78,11 @@ export async function createChannel(db: D1Database, input: CreateChannelInput): 
   return row;
 }
 
-export async function updateChannel(db: D1Database, id: string, patch: { name?: string; description?: string | null; postPolicy?: PostPolicy }): Promise<void> {
+export async function updateChannel(
+  db: D1Database,
+  id: string,
+  patch: { name?: string; description?: string | null; audience?: ChannelAudience; postPolicy?: PostPolicy },
+): Promise<void> {
   const sets: string[] = [];
   const params: unknown[] = [];
   if (patch.name !== undefined) {
@@ -89,6 +93,10 @@ export async function updateChannel(db: D1Database, id: string, patch: { name?: 
     sets.push('description = ?');
     params.push(patch.description);
   }
+  if (patch.audience !== undefined) {
+    sets.push('audience = ?');
+    params.push(patch.audience);
+  }
   if (patch.postPolicy !== undefined) {
     sets.push('post_policy = ?');
     params.push(patch.postPolicy);
@@ -96,6 +104,14 @@ export async function updateChannel(db: D1Database, id: string, patch: { name?: 
   if (sets.length === 0) return;
   params.push(id);
   await db.prepare(`UPDATE channels SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run();
+}
+
+export async function listChannelMemberIds(db: D1Database, channelId: string): Promise<string[]> {
+  const result = await db
+    .prepare('SELECT member_id FROM channel_memberships WHERE channel_id = ? ORDER BY joined_at ASC')
+    .bind(channelId)
+    .all<{ member_id: string }>();
+  return result.results.map((row) => row.member_id);
 }
 
 export async function addChannelMembers(db: D1Database, channelId: string, memberIds: string[]): Promise<void> {
@@ -110,6 +126,20 @@ export async function addChannelMembers(db: D1Database, channelId: string, membe
 
 export async function removeChannelMember(db: D1Database, channelId: string, memberId: string): Promise<void> {
   await db.prepare('DELETE FROM channel_memberships WHERE channel_id = ? AND member_id = ?').bind(channelId, memberId).run();
+}
+
+/** Replaces the explicit membership list used by custom-audience channels. */
+/** 重写指定成员频道用的成员名单。 */
+export async function replaceChannelMembers(db: D1Database, channelId: string, memberIds: string[]): Promise<void> {
+  const unique = [...new Set(memberIds)];
+  const ts = nowIso();
+  const statements = [db.prepare('DELETE FROM channel_memberships WHERE channel_id = ?').bind(channelId)];
+  for (const memberId of unique) {
+    statements.push(
+      db.prepare('INSERT INTO channel_memberships (channel_id, member_id, joined_at) VALUES (?, ?, ?)').bind(channelId, memberId, ts),
+    );
+  }
+  await db.batch(statements);
 }
 
 /** Memberships cascade away with the channel row. Room history in the Durable Object is left behind. */

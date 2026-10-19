@@ -173,8 +173,22 @@ export interface CreateChannelBody {
 
 export interface UpdateChannelBody {
   name?: string;
-  description?: string;
+  description?: string | null;
+  audience?: ChannelAudience;
   postPolicy?: PostPolicy;
+  memberIds?: string[];
+}
+
+export interface AdminChannelRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  audience: ChannelAudience;
+  postPolicy: PostPolicy;
+  createdAt: string;
+  lastMessageAt: string | null;
+  memberIds: string[];
 }
 
 export interface OpenDirectResponse {
