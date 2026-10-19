@@ -112,6 +112,13 @@ export async function removeChannelMember(db: D1Database, channelId: string, mem
   await db.prepare('DELETE FROM channel_memberships WHERE channel_id = ? AND member_id = ?').bind(channelId, memberId).run();
 }
 
+/** Memberships cascade away with the channel row. Room history in the Durable Object is left behind. */
+/** 成员记录随频道行一起删掉。Durable Object 里的房间历史会留下来，但列表里已经看不到。 */
+export async function deleteChannel(db: D1Database, id: string): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM channels WHERE id = ?').bind(id).run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
 export async function touchChannel(db: D1Database, channelId: string, at: string): Promise<void> {
   await db.prepare('UPDATE channels SET last_message_at = ? WHERE id = ?').bind(at, channelId).run();
 }

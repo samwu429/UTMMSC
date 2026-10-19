@@ -2,12 +2,14 @@ import type {
   AdminMemberRow,
   AnnouncementBody,
   AnnouncementResponse,
+  ChannelAudience,
   CreateChannelBody,
   CreateEventBody,
   EventRecord,
   ManualApplication,
   MemberStatus,
   MemberSelf,
+  PostPolicy,
   Role,
 } from '@utmmsc/shared';
 import { api } from '../../shared/api/client';
@@ -30,7 +32,21 @@ export const adminApi = {
     }>('/admin/enrollment-year-requests'),
   decideEnrollmentYear: (id: string, decision: 'approve' | 'reject') =>
     api<{ ok: true }>(`/admin/enrollment-year-requests/${encodeURIComponent(id)}/${decision}`, { method: 'POST' }),
+  channels: () =>
+    api<{
+      channels: {
+        id: string;
+        slug: string;
+        name: string;
+        description: string | null;
+        audience: ChannelAudience;
+        postPolicy: PostPolicy;
+        createdAt: string;
+        lastMessageAt: string | null;
+      }[];
+    }>('/channels'),
   createChannel: (body: CreateChannelBody) => api<{ channel: unknown }>('/channels', { method: 'POST', body }),
+  deleteChannel: (id: string) => api<{ ok: true }>(`/channels/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   events: () => api<{ events: EventRecord[] }>('/admin/events'),
   createEvent: (body: CreateEventBody) => api<{ event: EventRecord }>('/admin/events', { method: 'POST', body }),
   deleteEvent: (id: string) => api<{ ok: true }>(`/admin/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),

@@ -38,6 +38,7 @@ const ENGLISH: Record<string, string> = {
   '先加好友才能私聊': 'Add each other as friends before sending a direct message.',
   '不能和自己私聊': 'You cannot message yourself.',
   '此频道不允许你发言': 'You cannot post in this channel.',
+  '频道不存在': 'That channel does not exist.',
   '网络连接失败，请检查网络后重试': 'The network request failed. Check your connection and try again.',
   '出错了，请稍后再试': 'Something went wrong. Try again in a moment.',
 };

@@ -3,7 +3,9 @@ import { CHANNEL_AUDIENCES, POST_POLICIES, type ChannelAudience, type PostPolicy
 import {
   addChannelMembers,
   createChannel,
+  deleteChannel,
   findChannel,
+  listChannels,
   removeChannelMember,
   updateChannel,
 } from '../../../infrastructure/d1/channels';
@@ -23,6 +25,25 @@ function memberIdList(value: unknown): string[] {
   if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) throw badRequest('invalid_field', '成员列表格式错误');
   return value as string[];
 }
+
+function toAdminChannel(row: Awaited<ReturnType<typeof findChannel>>) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    audience: row.audience,
+    postPolicy: row.post_policy,
+    createdAt: row.created_at,
+    lastMessageAt: row.last_message_at,
+  };
+}
+
+channelRoutes.get('/', async (c) => {
+  const channels = await listChannels(c.env.DB);
+  return c.json({ channels: channels.map((row) => toAdminChannel(row)) });
+});
 
 channelRoutes.post('/', async (c) => {
   const body = await readJson<Record<string, unknown>>(c);
@@ -63,5 +84,12 @@ channelRoutes.post('/:id/members', async (c) => {
 
 channelRoutes.delete('/:id/members/:memberId', async (c) => {
   await removeChannelMember(c.env.DB, c.req.param('id'), c.req.param('memberId'));
+  return c.json({ ok: true });
+});
+
+channelRoutes.delete('/:id', async (c) => {
+  const id = c.req.param('id');
+  if (!(await findChannel(c.env.DB, id))) throw notFound('频道不存在');
+  await deleteChannel(c.env.DB, id);
   return c.json({ ok: true });
 });
