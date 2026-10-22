@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RECALL_WINDOW_MS, decideRecall, redactChatBody, withinRecallWindow } from './recall';
+import type { ChatMessage, QuotePreview } from './protocol';
+import { RECALL_WINDOW_MS, decideRecall, redactChatBody, redactChatMessage, redactQuotePreview, withinRecallWindow } from './recall';
 
 const base = {
   authorId: 'mem_a',
@@ -54,5 +55,57 @@ describe('redactChatBody', () => {
   it('leaves a live message untouched', () => {
     const live = { text: 'hi', imageKey: null, deleted: false, recalled: false };
     expect(redactChatBody(live)).toBe(live);
+  });
+});
+
+const quote: QuotePreview = { id: 2, authorId: 'mem_b', authorName: 'B', excerpt: 'quoted words', hasImage: true, state: 'ok' };
+
+const message: ChatMessage = {
+  id: 9,
+  roomId: 'channel:ch_1',
+  author: { id: 'mem_a', displayName: 'A' },
+  text: 'secret',
+  imageKey: 'chat/channel/ch_1/x.png',
+  imageWidth: 400,
+  imageHeight: 300,
+  replyTo: quote,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  deleted: false,
+  recalled: true,
+};
+
+describe('redactChatMessage', () => {
+  it('blanks body, image, size and quote of a recalled or deleted message', () => {
+    const redacted = redactChatMessage(message);
+    expect(redacted).toMatchObject({ text: '', imageKey: null, imageWidth: null, imageHeight: null, replyTo: null, recalled: true });
+    expect(JSON.stringify(redacted)).not.toContain('secret');
+    expect(JSON.stringify(redacted)).not.toContain('quoted words');
+    expect(redactChatMessage({ ...message, recalled: false, deleted: true }).text).toBe('');
+  });
+
+  it('is idempotent and returns the same object once clean', () => {
+    const once = redactChatMessage(message);
+    const twice = redactChatMessage(once);
+    expect(twice).toBe(once);
+    expect(twice).toEqual(once);
+  });
+
+  it('leaves a live message untouched', () => {
+    const live = { ...message, recalled: false };
+    expect(redactChatMessage(live)).toBe(live);
+  });
+});
+
+describe('redactQuotePreview', () => {
+  it('drops excerpt and image flag unless the target is live', () => {
+    for (const state of ['recalled', 'deleted', 'unavailable'] as const) {
+      expect(redactQuotePreview(quote, state)).toEqual({ ...quote, state, excerpt: '', hasImage: false });
+    }
+    expect(redactQuotePreview(quote, 'ok')).toBe(quote);
+  });
+
+  it('is idempotent', () => {
+    const once = redactQuotePreview(quote, 'recalled');
+    expect(redactQuotePreview(once, 'recalled')).toBe(once);
   });
 });

@@ -72,6 +72,11 @@ const ENGLISH: Record<string, string> = {
   '这条消息不能撤回': 'This message cannot be recalled.',
   '没有禁言权限': 'You do not have permission to mute members.',
   '消息最多 2000 字': 'Messages can be at most 2000 characters.',
+  '引用的消息不存在': 'The quoted message is no longer available.',
+  '只有管理员可以@所有人': 'Only moderators can mention everyone.',
+  '这条消息不能删除': 'This message cannot be deleted.',
+  '查询过于频繁，请稍候': 'Loading too quickly. Wait a moment.',
+  '图片尺寸无效': 'The image size is not valid.',
 };
 
 /** Patterns for server messages that embed a number or a field name. */

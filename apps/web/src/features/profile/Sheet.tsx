@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { useTr } from '../../shared/i18n/locale';
 
 /** A bottom sheet for editing one profile section at a time. */
 /** 从底部升起的编辑层，一次只改资料里的一块。 */
-export function Sheet({ title, closeLabel = '取消', onClose, children }: { title: string; closeLabel?: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ title, closeLabel, onClose, children }: { title: string; closeLabel?: string; onClose: () => void; children: ReactNode }) {
+  const tr = useTr();
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
       <div
@@ -14,7 +16,7 @@ export function Sheet({ title, closeLabel = '取消', onClose, children }: { tit
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-[17px] font-semibold text-brand-800">{title}</h2>
           <button type="button" onClick={onClose} className="min-h-11 px-1 text-[15px] text-stone-500">
-            {closeLabel}
+            {closeLabel ?? tr('取消', 'Cancel')}
           </button>
         </div>
         {children}

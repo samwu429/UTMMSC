@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import {
   CHANNEL_AUDIENCES,
   CHANNEL_AUDIENCE_LABELS,
+  DEFAULT_HISTORY_VISIBILITY,
   POST_POLICIES,
   POST_POLICY_LABELS,
   type AdminChannelRow,
   type AdminMemberRow,
   type ChannelAudience,
+  type HistoryVisibility,
   type PostPolicy,
 } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels, useTr } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
-import { Card, EmptyState, Notice, Spinner } from '../../../shared/ui/Card';
+import { Badge, Card, EmptyState, Notice, Spinner } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
 import { Field, Select, TextInput } from '../../../shared/ui/Field';
 import { adminApi } from '../api';
@@ -40,7 +42,49 @@ function emptyForm() {
     audience: 'all' as ChannelAudience,
     postPolicy: 'members' as PostPolicy,
     memberIds: [] as string[],
+    historyVisibility: DEFAULT_HISTORY_VISIBILITY as HistoryVisibility,
   };
+}
+
+/**
+ * The owner's history switch. Off is WeChat's rule: someone who joins later only sees messages from
+ * their join on. Turning it off again grandfathers everyone who is in the channel at that moment.
+ * 负责人可调的历史消息开关。关闭时与微信一致：之后加入的人只能看到加入之后的消息。重新关闭时，当时已在频道里的人都保留原有的可见范围。
+ */
+function HistorySwitch({ value, onChange }: { value: HistoryVisibility; onChange: (next: HistoryVisibility) => void }) {
+  const tr = useTr();
+  const labelId = useId();
+  const hintId = useId();
+  const on = value === 'all';
+  return (
+    <div className="space-y-1.5">
+      <div className="flex min-h-11 items-center justify-between gap-3">
+        <span id={labelId} className="text-[15px] text-stone-800">
+          {tr('新成员可查看历史消息', 'New members can see earlier messages')}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-labelledby={labelId}
+          aria-describedby={hintId}
+          onClick={() => onChange(on ? 'since_join' : 'all')}
+          className={`relative inline-flex h-[31px] w-[51px] shrink-0 items-center rounded-full transition-colors motion-reduce:transition-none ${on ? 'bg-brand-700' : 'bg-stone-300'}`}
+        >
+          <span
+            aria-hidden
+            className={`absolute left-[2px] h-[27px] w-[27px] rounded-full bg-white shadow transition-transform motion-reduce:transition-none ${on ? 'translate-x-5' : 'translate-x-0'}`}
+          />
+        </button>
+      </div>
+      <p id={hintId} className="text-xs leading-relaxed text-stone-500">
+        {tr(
+          '关闭时与微信一致：新成员只能看到加入之后的消息。已在频道里的成员不受影响。',
+          'Off matches WeChat: new members only see messages sent after they join. Current members are not affected.',
+        )}
+      </p>
+    </div>
+  );
 }
 
 export function ChannelsPanel() {
@@ -92,6 +136,7 @@ export function ChannelsPanel() {
       audience: channel.audience,
       postPolicy: channel.postPolicy,
       memberIds: [...channel.memberIds],
+      historyVisibility: channel.historyVisibility ?? DEFAULT_HISTORY_VISIBILITY,
     });
     setMemberQuery('');
     setMessage(null);
@@ -115,6 +160,7 @@ export function ChannelsPanel() {
         audience: form.audience,
         postPolicy: form.postPolicy,
         memberIds: form.audience === 'custom' ? form.memberIds : undefined,
+        historyVisibility: form.historyVisibility,
       };
       if (editingId) {
         await adminApi.updateChannel(editingId, {
@@ -184,6 +230,11 @@ export function ChannelsPanel() {
                       </>
                     ) : null}
                   </p>
+                  {channel.historyVisibility === 'all' ? (
+                    <p className="mt-1">
+                      <Badge tone="brand">{tr('新成员可看历史', 'History visible')}</Badge>
+                    </p>
+                  ) : null}
                   {channel.description ? <p className="mt-1 text-sm text-stone-600">{channel.description}</p> : null}
                 </div>
                 <Button type="button" variant="secondary" className="shrink-0 py-2" onClick={() => beginEdit(channel)}>
@@ -286,6 +337,7 @@ export function ChannelsPanel() {
               ))}
             </Select>
           </Field>
+          <HistorySwitch value={form.historyVisibility} onChange={(historyVisibility) => setForm((prev) => ({ ...prev, historyVisibility }))} />
           <Button type="submit" block loading={busy} disabled={!form.name.trim()}>
             {editingId ? tr('保存修改', 'Save changes') : tr('创建频道', 'Create channel')}
           </Button>

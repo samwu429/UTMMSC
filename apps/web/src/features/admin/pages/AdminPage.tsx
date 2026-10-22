@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { hasPermission, type MemberSelf } from '@utmmsc/shared';
 import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -41,7 +42,11 @@ export function AdminPage() {
   const tr = useTr();
   const member = useSessionStore((s) => s.member);
   const sections = SECTIONS.filter((s) => member && s.visible(member));
-  const [active, setActive] = useState(sections[0]?.key ?? '');
+  // Links such as chat info's channel settings open a specific tab with ?tab=.
+  // 聊天信息里的频道设置等链接通过 ?tab= 打开指定标签。
+  const [params] = useSearchParams();
+  const requested = params.get('tab');
+  const [active, setActive] = useState(sections.find((s) => s.key === requested)?.key ?? sections[0]?.key ?? '');
   const current = sections.find((s) => s.key === active) ?? sections[0];
 
   return (

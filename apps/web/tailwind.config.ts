@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import { WX_COLORS } from './src/shared/ui/wxTokens';
 
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -14,6 +15,7 @@ export default {
         },
         gold: '#FFD23F',
         canvas: '#F2F3F5',
+        wx: WX_COLORS,
       },
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', 'Arial', 'sans-serif'],

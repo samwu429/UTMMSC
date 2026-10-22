@@ -1,4 +1,4 @@
-import { channelRoomId, directRoomId, type ChatAuthor } from '@utmmsc/shared';
+import { channelRoomId, directRoomId, type ChatAuthor, type RoomAccess, type RoomMemberSummary, type SystemMemberRef } from '@utmmsc/shared';
 import type { Env } from '../env';
 import { listChannels } from '../infrastructure/d1/channels';
 import { listDirectForMember } from '../infrastructure/d1/direct';
@@ -15,6 +15,36 @@ export function roomStub(env: Env, roomId: string): DurableObjectStub<ChatRoom> 
  */
 export async function revokeRoom(env: Env, roomId: string, memberId?: string): Promise<void> {
   await roomStub(env, roomId).revoke(memberId);
+}
+
+/** Unread count, mentions and newest visible row for one member, under that member's history floor. */
+/** 某成员在其历史下限之内的未读数、@ 和最新可见的一行。 */
+export async function summaryForRoom(env: Env, roomId: string, memberId: string, access: RoomAccess): Promise<RoomMemberSummary> {
+  return roomStub(env, roomId).summaryFor({ memberId, access });
+}
+
+export async function markRoomRead(env: Env, roomId: string, memberId: string): Promise<void> {
+  await roomStub(env, roomId).markAllRead(memberId);
+}
+
+/** Clears the room for this member only and returns the first id they can still see. */
+/** 只为该成员清空房间，返回其仍能看到的第一个 id。 */
+export async function clearRoomFor(env: Env, roomId: string, memberId: string): Promise<number> {
+  return roomStub(env, roomId).clearFor(memberId);
+}
+
+/**
+ * Writes the join notice for members an admin just added. Call it after the membership rows are
+ * written and pass that moment as `at`, so the notice sits at each new member's history floor.
+ * 为管理员刚添加的成员写入入群提示。应在写入成员记录之后调用，并把该时刻作为 `at` 传入，使提示正好位于每位新成员的历史下限处。
+ */
+export async function recordRoomJoins(
+  env: Env,
+  roomId: string,
+  input: { actor: SystemMemberRef | null; members: SystemMemberRef[]; at: string },
+): Promise<void> {
+  if (input.members.length === 0) return;
+  await roomStub(env, roomId).recordJoins({ ...input, roomId });
 }
 
 /** Every room a member can have written in: all channels plus their direct conversations. */

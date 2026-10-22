@@ -1,11 +1,15 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import { useTr } from '../i18n/locale';
 import { Button } from './Button';
+import { useBackToClose } from './overlayHistory';
 
 interface ConfirmRequest {
   title: string;
   body?: string;
   confirmLabel?: string;
+  /** Null leaves only the confirm button, for a plain notice. */
+  /** 为 null 时只保留确认按钮，用作单纯的提示。 */
+  cancelLabel?: string | null;
   danger?: boolean;
 }
 
@@ -36,6 +40,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setRequest(null);
   }
 
+  // The system back gesture cancels, as a tap outside does, instead of leaving the page.
+  // 系统返回手势与点按外部一样表示取消，而不是离开页面。
+  useBackToClose(() => finish(false), request !== null);
+
   return (
     <ConfirmContext.Provider value={ask}>
       {children}
@@ -49,12 +57,14 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-200" />
             <h2 className="text-[17px] font-semibold text-brand-800">{request.title}</h2>
             {request.body ? <p className="mt-2 text-sm leading-relaxed text-stone-600">{request.body}</p> : null}
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={() => finish(false)}>
-                {tr('取消', 'Cancel')}
-              </Button>
+            <div className={`mt-4 grid gap-2 ${request.cancelLabel === null ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {request.cancelLabel === null ? null : (
+                <Button variant="secondary" onClick={() => finish(false)}>
+                  {request.cancelLabel ?? tr('取消', 'Cancel')}
+                </Button>
+              )}
               <Button variant={request.danger ? 'danger' : 'primary'} onClick={() => finish(true)}>
-                {request.confirmLabel ?? '确定'}
+                {request.confirmLabel ?? tr('确定', 'OK')}
               </Button>
             </div>
           </div>

@@ -132,3 +132,139 @@ textarea {
     animation: none;
   }
 }
+
+/* Chat bubbles: WeChat geometry with a tail on the avatar side. Colours come from the wx tokens. */
+/* 聊天气泡：微信的尺寸，尾巴朝向头像一侧。颜色取自 wx 色板。 */
+.wx-bubble {
+  position: relative;
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 16px;
+  line-height: 1.4;
+  color: theme('colors.wx.ink');
+}
+
+.wx-bubble-mine,
+.wx-bubble-other {
+  transition: background-color 120ms ease-out;
+}
+
+.wx-bubble-mine {
+  background-color: theme('colors.wx.mine');
+}
+
+.wx-bubble-other {
+  background-color: theme('colors.wx.other');
+}
+
+/* The tail is a 10px square turned 45 degrees; it inherits the bubble colour, including the pressed one. */
+/* 尾巴是旋转 45 度的 10px 方块；它继承气泡颜色，包括按下时的颜色。 */
+.wx-bubble-mine::before,
+.wx-bubble-other::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.wx-bubble-mine::before {
+  right: -4px;
+}
+
+.wx-bubble-other::before {
+  left: -4px;
+}
+
+.wx-bubble-mine.is-pressed {
+  background-color: theme('colors.wx.minePressed');
+}
+
+.wx-bubble-other.is-pressed {
+  background-color: theme('colors.wx.otherPressed');
+}
+
+/* Scroll position is restored by hand from an anchor row, so the browser must not adjust it too. */
+/* 滚动位置由锚点行手动恢复，浏览器不能再自行调整。 */
+.wx-no-anchor {
+  overflow-anchor: none;
+}
+
+/* A new screen slides in from the right. Only the start frame is kept, so no transform is left behind for fixed children. */
+/* 新页面从右侧滑入。只保留起始帧，结束后不留下 transform，避免影响 fixed 子元素。 */
+.wx-push-in {
+  animation: wx-push-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.wx-pop {
+  animation: wx-pop 120ms ease-out backwards;
+}
+
+.wx-flash {
+  animation: wx-flash 900ms ease-in-out;
+}
+
+.wx-fade {
+  animation: wx-fade 200ms ease-out backwards;
+}
+
+.wx-slide-up {
+  animation: wx-slide-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+/* The activity indicator turns one spoke at a time, like the system spinner. */
+/* 加载指示器一格一格地转动，与系统菊花一致。 */
+.wx-spinner {
+  animation: wx-spin 1s steps(12, end) infinite;
+}
+
+@keyframes wx-push-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes wx-pop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes wx-flash {
+  0%,
+  100% { background-color: transparent; }
+  30%,
+  60% { background-color: #e0e0e0; }
+}
+
+@keyframes wx-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes wx-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes wx-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-push-in,
+  .wx-pop,
+  .wx-flash,
+  .wx-fade,
+  .wx-slide-up,
+  .wx-spinner {
+    animation: none;
+  }
+
+  .wx-bubble-mine,
+  .wx-bubble-other {
+    transition: none;
+  }
+}

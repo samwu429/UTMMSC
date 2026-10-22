@@ -1,4 +1,4 @@
-import type { ChannelSummary, DirectConversationSummary, ChannelAudience, PostPolicy } from '../chat/rooms';
+import type { ChannelSummary, DirectConversationSummary, ChannelAudience, ChatPrefs, HistoryVisibility, PostPolicy } from '../chat/rooms';
 import type { FileCategory, FileRecord } from '../files/categories';
 import type { FriendshipState } from '../identity/friends';
 import type { EnrollmentStatus, MemberProfile, MemberSelf } from '../identity/member';
@@ -154,6 +154,26 @@ export interface ChatOverviewResponse {
   direct: DirectConversationSummary[];
 }
 
+/** What the chat screen and the chat info page show about one room. */
+/** 聊天页与聊天信息页展示的房间信息。 */
+export interface RoomMeta {
+  roomId: string;
+  kind: 'channel' | 'direct';
+  /** Channel name, or the peer's display name for a direct conversation. */
+  /** 频道名称；私聊时为对方的显示名。 */
+  title: string;
+  description: string | null;
+  memberCount: number;
+  peer?: { id: string; displayName: string; avatarKey: string | null };
+  audience?: ChannelAudience;
+  postPolicy?: PostPolicy;
+  historyVisibility?: HistoryVisibility;
+  canPost: boolean;
+  canModerate: boolean;
+  canManage: boolean;
+  prefs: ChatPrefs;
+}
+
 export interface RoomTicketResponse {
   ticket: string;
   roomId: string;
@@ -161,6 +181,47 @@ export interface RoomTicketResponse {
   /** False when the member may read the room but the post policy excludes them. */
   /** 成员能看这个房间、但发言规则不允许时为 false。 */
   canPost: boolean;
+  /** Lets image tags load this room's chat images. */
+  /** 供图片标签加载本房间的聊天图片。 */
+  mediaToken: string;
+  /** Present only when the ticket was requested with ?meta=1. */
+  /** 仅在以 ?meta=1 领取票据时返回。 */
+  room?: RoomMeta;
+}
+
+export interface RoomMemberCard {
+  id: string;
+  displayName: string;
+  avatarKey: string | null;
+  role: Role;
+}
+
+export interface RoomMembersResponse {
+  members: RoomMemberCard[];
+  total: number;
+  /** Cursor for the next page, or null on the last page. */
+  /** 下一页的游标；最后一页为 null。 */
+  next: string | null;
+}
+
+/** `hidden: true` hides the room from the list until a newer message arrives. */
+/** `hidden: true` 会把房间从列表里隐藏，直到有更新的消息。 */
+export interface UpdateChatPrefsBody {
+  pinned?: boolean;
+  muted?: boolean;
+  markedUnread?: boolean;
+  hidden?: boolean;
+}
+
+export interface ChatPrefsResponse {
+  prefs: ChatPrefs;
+}
+
+/** Rows below beforeId are gone for the caller only. */
+/** 只对调用者而言，beforeId 以下的消息已清空。 */
+export interface ClearChatHistoryResponse {
+  ok: true;
+  beforeId: number;
 }
 
 export interface CreateChannelBody {
@@ -169,6 +230,7 @@ export interface CreateChannelBody {
   audience: ChannelAudience;
   postPolicy: PostPolicy;
   memberIds?: string[];
+  historyVisibility?: HistoryVisibility;
 }
 
 export interface UpdateChannelBody {
@@ -177,6 +239,7 @@ export interface UpdateChannelBody {
   audience?: ChannelAudience;
   postPolicy?: PostPolicy;
   memberIds?: string[];
+  historyVisibility?: HistoryVisibility;
 }
 
 export interface AdminChannelRow {
@@ -189,6 +252,7 @@ export interface AdminChannelRow {
   createdAt: string;
   lastMessageAt: string | null;
   memberIds: string[];
+  historyVisibility?: HistoryVisibility;
 }
 
 export interface OpenDirectResponse {

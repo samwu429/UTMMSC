@@ -6,7 +6,9 @@ import { ApplyPage } from '../features/auth/pages/ApplyPage';
 import { ForgotPage } from '../features/auth/pages/ForgotPage';
 import { LoginPage } from '../features/auth/pages/LoginPage';
 import { RegisterPage } from '../features/auth/pages/RegisterPage';
+import { ChatInfoPage } from '../features/chat/pages/ChatInfoPage';
 import { ChatOverviewPage } from '../features/chat/pages/ChatOverviewPage';
+import { ChatSearchPage } from '../features/chat/pages/ChatSearchPage';
 import { RoomPage } from '../features/chat/pages/RoomPage';
 import { MemberPage } from '../features/directory/pages/MemberPage';
 import { DiscoverFeedPage } from '../features/discover/pages/DiscoverFeedPage';
@@ -81,6 +83,8 @@ export function App() {
         </Route>
         <Route element={<RequireSession />}>
           <Route path="/chat/room/:roomId" element={<RoomPage />} />
+          <Route path="/chat/room/:roomId/info" element={<ChatInfoPage />} />
+          <Route path="/chat/search" element={<ChatSearchPage />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/chat" element={<ChatOverviewPage />} />

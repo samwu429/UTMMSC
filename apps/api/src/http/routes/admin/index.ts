@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
+import { recordEligibilityChange } from '../../../infrastructure/d1/channel-joins';
+import { listChannels } from '../../../infrastructure/d1/channels';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
 import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
 import {
@@ -15,6 +17,8 @@ import {
   updateActingRole,
   officeHolderExists,
   correctEnrollment,
+  viewedRole,
+  type MemberRow,
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
@@ -24,6 +28,7 @@ import { consumeAdvisorInvite, issueAdvisorInvite, listOpenInvites, retireOtherI
 import { rateLimit } from '../../middleware/rate-limit';
 import { revokeMemberEverywhere } from '../../rooms';
 import type { AppEnv } from '../../context';
+import type { Env } from '../../../env';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
 import { optionalString, readJson, requireInteger, requireOneOf, requireString } from '../../validation';
@@ -44,6 +49,24 @@ adminRoutes.post('/acting-role', async (c) => {
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });
 });
+
+/**
+ * Gives a member a real join time for every audience channel they can newly read after a role or
+ * enrollment change, and drops it for channels they can no longer read. Runs before their sockets are
+ * revoked, so the re-issued ticket already sees the new join time.
+ * 身份或在读状态变化后，为成员新能阅读的每个受众频道记录真实的加入时间，并删除其不再能阅读的频道记录。在关闭其连接之前执行，重新签发的票据就能用上新的加入时间。
+ */
+async function recordJoinChanges(env: Env, before: MemberRow): Promise<void> {
+  const after = await findMemberById(env.DB, before.id);
+  if (!after) return;
+  await recordEligibilityChange(
+    env.DB,
+    before.id,
+    { role: viewedRole(before), enrollmentStatus: before.enrollment_status },
+    { role: viewedRole(after), enrollmentStatus: after.enrollment_status },
+    await listChannels(env.DB),
+  );
+}
 
 function mailConfig(env: AppEnv['Bindings']) {
   return { apiKey: env.BREVO_API_KEY, fromEmail: env.MAIL_FROM_EMAIL, fromName: env.MAIL_FROM_NAME };
@@ -90,6 +113,7 @@ adminRoutes.post('/members/:id/role', requirePermission('members.assign_role'), 
   if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   if (isOfficeRole(role) && (await officeHolderExists(c.env.DB, role, target.id))) throw badRequest('office_taken', '这个职位已经有人担任');
   await updateMemberRole(c.env.DB, target.id, role);
+  await recordJoinChanges(c.env, target);
   c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
   return c.json({ ok: true });
 });
@@ -125,6 +149,7 @@ adminRoutes.post('/members/:id/enrollment', async (c) => {
     : requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
   const status: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : requested;
   await correctEnrollment(c.env.DB, target, year, status);
+  await recordJoinChanges(c.env, target);
   c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
   return c.json({ ok: true, graduationYear: year, enrollmentStatus: status });
 });
@@ -164,6 +189,7 @@ adminRoutes.post('/enrollment-year-requests/:id/:decision', async (c) => {
   if (target) {
     const status: EnrollmentStatus = shouldGraduate(request.requested_year, 'student') ? 'alumni' : target.enrollment_status;
     await correctEnrollment(c.env.DB, target, request.requested_year, status);
+    await recordJoinChanges(c.env, target);
     c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
   }
   const mail = enrollmentYearDecisionMail(request.email, request.display_name, request.requested_year, decision === 'approve');

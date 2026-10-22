@@ -44,12 +44,14 @@ export interface DirectWithPeer extends DirectRow {
   peer_enrollment: 'student' | 'alumni';
   peer_graduation_year: number;
   peer_role: Role;
+  peer_avatar_key: string | null;
 }
 
 export async function listDirectForMember(db: D1Database, memberId: string): Promise<DirectWithPeer[]> {
   const result = await db
     .prepare(
-      `SELECT dc.*, m.id AS peer_id, m.display_name AS peer_name, m.enrollment_status AS peer_enrollment, m.graduation_year AS peer_graduation_year, m.role AS peer_role
+      `SELECT dc.*, m.id AS peer_id, m.display_name AS peer_name, m.enrollment_status AS peer_enrollment, m.graduation_year AS peer_graduation_year, m.role AS peer_role,
+              m.avatar_key AS peer_avatar_key
        FROM direct_conversations dc
        JOIN members m ON m.id = CASE WHEN dc.member_low = ? THEN dc.member_high ELSE dc.member_low END
        WHERE dc.member_low = ? OR dc.member_high = ?

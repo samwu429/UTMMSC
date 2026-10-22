@@ -39,7 +39,7 @@ function openToList(raw: string | null): OpenTo[] {
   return stringList(raw).filter((item): item is OpenTo => (OPEN_TO as readonly string[]).includes(item));
 }
 
-export function viewedRole(row: MemberRow): Role {
+export function viewedRole(row: Pick<MemberRow, 'role' | 'acting_role'>): Role {
   const acting = row.acting_role;
   if (row.role === 'superadmin' && acting && acting !== 'superadmin' && (ROLES as readonly string[]).includes(acting)) {
     return acting as Role;
@@ -105,6 +105,24 @@ export async function findAuthorCards(db: D1Database, ids: string[]): Promise<Ma
     for (const row of result.results) cards.set(row.id, { displayName: row.display_name, avatarKey: row.avatar_key });
   }
   return cards;
+}
+
+/** The fields that decide which channels a member can read. */
+/** 决定成员能阅读哪些频道的字段。 */
+export type MemberAccessRow = Pick<MemberRow, 'id' | 'role' | 'acting_role' | 'enrollment_status' | 'created_at'>;
+
+export async function findMemberAccessRows(db: D1Database, ids: string[]): Promise<MemberAccessRow[]> {
+  const rows: MemberAccessRow[] = [];
+  const unique = [...new Set(ids)];
+  for (let i = 0; i < unique.length; i += 90) {
+    const slice = unique.slice(i, i + 90);
+    const result = await db
+      .prepare(`SELECT id, role, acting_role, enrollment_status, created_at FROM members WHERE id IN (${slice.map(() => '?').join(', ')})`)
+      .bind(...slice)
+      .all<MemberAccessRow>();
+    rows.push(...result.results);
+  }
+  return rows;
 }
 
 export async function countMembers(db: D1Database): Promise<number> {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { canPostInChannel, canReadChannel } from './channel-access';
+import { CHANNEL_AUDIENCES, ENROLLMENT_STATUSES, ROLES, hasPermission, type EnrollmentStatus, type Role } from '@utmmsc/shared';
+import { audienceRoleFilter, canPostInChannel, canReadChannel, type AudienceRoleFilter } from './channel-access';
 
 const student = { role: 'student' as const, enrollmentStatus: 'student' as const };
 const alumni = { role: 'alumni' as const, enrollmentStatus: 'alumni' as const };
@@ -61,5 +62,45 @@ describe('canPostInChannel', () => {
     const alumniOnly = { audience: 'alumni' as const, postPolicy: 'members' as const, isMember: false };
     expect(canPostInChannel(alumniOnly, student)).toBe(false);
     expect(canPostInChannel(alumniOnly, alumni)).toBe(true);
+  });
+});
+
+describe('audienceRoleFilter', () => {
+  function matches(filter: AudienceRoleFilter, actor: { role: Role; enrollmentStatus: EnrollmentStatus }, isMember: boolean): boolean {
+    switch (filter.kind) {
+      case 'all':
+        return true;
+      case 'enrollment':
+        return actor.enrollmentStatus === filter.status;
+      case 'roles':
+        return filter.roles.includes(actor.role);
+      case 'custom':
+        return isMember;
+    }
+  }
+
+  it('agrees with canReadChannel for every role, enrollment and audience', () => {
+    let checked = 0;
+    for (const role of ROLES) {
+      if (hasPermission(role, 'channels.manage')) continue;
+      for (const enrollmentStatus of ENROLLMENT_STATUSES) {
+        for (const audience of CHANNEL_AUDIENCES) {
+          for (const isMember of [false, true]) {
+            const actor = { role, enrollmentStatus };
+            const expected = canReadChannel({ audience, postPolicy: 'members', isMember }, actor);
+            expect(matches(audienceRoleFilter(audience), actor, isMember), `${role}/${enrollmentStatus}/${audience}/${String(isMember)}`).toBe(expected);
+            checked += 1;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('derives role lists instead of hard-coding them', () => {
+    const heads = audienceRoleFilter('heads');
+    expect(heads.kind === 'roles' && heads.roles.every((role) => role.startsWith('head_'))).toBe(true);
+    const staff = audienceRoleFilter('staff');
+    expect(staff.kind === 'roles' && staff.roles.includes('superadmin')).toBe(true);
   });
 });

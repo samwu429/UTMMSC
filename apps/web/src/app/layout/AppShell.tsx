@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
+import { UnreadDot } from '../../features/chat/components/UnreadDot';
+import { showDot, totalUnread, useOverviewStore } from '../../features/chat/state/overviewStore';
 import { useSessionStore } from '../../shared/session/store';
 
 type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me' | 'discover' | 'apps';
@@ -120,6 +122,8 @@ function ChatTab() {
   const { tr } = useLabels();
   const { pathname } = useLocation();
   const isActive = pathname === '/chat' || pathname.startsWith('/directory');
+  const unread = useOverviewStore((s) => totalUnread(s.data));
+  const dot = useOverviewStore((s) => showDot(s.data));
   const wasActive = useRef(isActive);
   const [motion, setMotion] = useState<'idle' | 'drop' | 'rise'>('idle');
 
@@ -145,11 +149,91 @@ function ChatTab() {
         />
         <span className={`chat-glyph ${place} ${motion === 'drop' ? 'chat-drop-glyph' : ''} ${motion === 'rise' ? 'chat-rise-glyph' : ''}`}>
           <TabIcon name="chat" />
+          {/* The badge rides on the glyph, so it follows the drop and rise animations. */}
+          {/* 角标挂在图标上，随落下和浮起动画一起移动。 */}
+          <UnreadDot
+            count={unread}
+            dot={unread === 0 && dot}
+            className={`absolute shadow-[0_0_0_1.5px_#fff] ${unread > 0 ? '-top-[7px] left-[14px]' : '-top-[2px] left-[19px]'}`}
+          />
         </span>
       </span>
       <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${isActive ? 'font-medium' : 'text-brand-700'}`}>{tr('聊天', 'Chat')}</span>
+      {unread > 0 ? (
+        <span className="sr-only">{tr(`，${unread} 条未读`, `, ${unread} unread`)}</span>
+      ) : dot ? (
+        <span className="sr-only">{tr('，有未读消息', ', unread messages')}</span>
+      ) : null}
       <span className={`mt-1 h-[3px] w-4 rounded-full ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
     </NavLink>
+  );
+}
+
+const TITLE_PREFIX = /^\(\d+\) /;
+
+/** Home-screen icon badge where the browser supports it. Failures are ignored; the badge is a hint. */
+/** 在支持的浏览器上设置主屏幕图标角标。失败时忽略；角标只是提示。 */
+function setIconBadge(count: number) {
+  try {
+    if (typeof navigator === 'undefined') return;
+    if (count > 0 && typeof navigator.setAppBadge === 'function') navigator.setAppBadge(count).catch(() => undefined);
+    else if (count === 0 && typeof navigator.clearAppBadge === 'function') navigator.clearAppBadge().catch(() => undefined);
+  } catch {
+    // Some browsers expose the API but throw outside an installed app.
+    // 部分浏览器提供了该接口，但在未安装的应用中会抛错。
+  }
+}
+
+function setTitleCount(count: number) {
+  const base = document.title.replace(TITLE_PREFIX, '');
+  document.title = count > 0 ? `(${count}) ${base}` : base;
+}
+
+/**
+ * Keeps the conversation list fresh without a global timer: once on mount, then whenever the app
+ * returns to the foreground, regains focus or comes back online. The chat tab adds its own polling.
+ * 不使用全局定时器保持会话列表最新：挂载时加载一次，之后在应用回到前台、重新获得焦点或网络恢复时加载。聊天页另有自己的轮询。
+ */
+function useOverviewSync() {
+  useEffect(() => {
+    const store = useOverviewStore.getState();
+    void store.refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void store.refresh({ resume: true });
+    };
+    const onFocus = () => void store.refresh();
+    const onOnline = () => void store.refresh({ force: true, resume: true });
+    const onOffline = () => store.setOffline(true);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+}
+
+/** Unread count in the document title and on the home-screen icon. Muted chats are not counted. */
+/** 把未读数写到页面标题和主屏幕图标上。免打扰的会话不计入。 */
+function useUnreadIndicators() {
+  const unread = useOverviewStore((s) => totalUnread(s.data));
+  useEffect(() => {
+    setTitleCount(unread);
+    setIconBadge(unread);
+  }, [unread]);
+  useEffect(
+    () => () => {
+      // Signing out leaves the shell; the next member must not inherit the count.
+      // 退出登录会离开外壳；下一个成员不能沿用这个数字。
+      if (useSessionStore.getState().token) return;
+      setTitleCount(0);
+      setIconBadge(0);
+    },
+    [],
   );
 }
 
@@ -160,12 +244,14 @@ export function AppShell() {
   const setMember = useSessionStore((s) => s.setMember);
   const member = useSessionStore((s) => s.member);
   const right = RIGHT_NAV;
+  useOverviewSync();
+  useUnreadIndicators();
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">
       <main className="flex-1 px-4 pb-28 pt-5">
         {member?.realRole === 'superadmin' && member.actingRole ? (
-          <div className="-mx-4 mb-4 flex items-center justify-between gap-3 bg-brand-800 px-4 py-2 text-sm text-white">
+          <div className="-mx-4 mb-5 flex items-center justify-between gap-3 bg-brand-800 px-4 py-2 text-sm text-white">
             <span className="min-w-0 truncate">{tr(`正在以${role(member.actingRole)}测试`, `Testing as ${role(member.actingRole)}`)}</span>
             <button
               type="button"
