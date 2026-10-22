@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enrollmentCalendarYear, enrollmentYearMax, enrollmentYearMin, isValidEnrollmentYear, shouldGraduate } from './member';
+import { ADMIN_ENROLLMENT_YEAR_MIN, enrollmentCalendarYear, enrollmentYearMax, enrollmentYearMin, isValidEnrollmentYear, isValidRegistrationYear, registrationYearRange, shouldGraduate } from './member';
 
 describe('enrollment year', () => {
   const now = new Date('2026-10-12T00:00:00Z');
@@ -41,5 +41,22 @@ describe('enrollmentCalendarYear', () => {
     for (let t = start; t < end; t += 7 * 60 * 60 * 1000) {
       expect(torontoYearInSql(new Date(t))).toBe(enrollmentCalendarYear(new Date(t)));
     }
+  });
+});
+
+describe('registration year range', () => {
+  const now = new Date('2026-10-22T12:00:00Z');
+
+  it('keeps students within five years of today', () => {
+    expect(registrationYearRange('student', now)).toEqual({ min: 2021, max: 2031 });
+    expect(isValidRegistrationYear(2020, 'student', now)).toBe(false);
+    expect(isValidRegistrationYear(2031, 'student', now)).toBe(true);
+  });
+
+  it('lets graduates go back to the admin minimum but not into the future', () => {
+    expect(registrationYearRange('alumni', now)).toEqual({ min: ADMIN_ENROLLMENT_YEAR_MIN, max: 2026 });
+    expect(isValidRegistrationYear(2012, 'alumni', now)).toBe(true);
+    expect(isValidRegistrationYear(2027, 'alumni', now)).toBe(false);
+    expect(isValidRegistrationYear(ADMIN_ENROLLMENT_YEAR_MIN - 1, 'alumni', now)).toBe(false);
   });
 });

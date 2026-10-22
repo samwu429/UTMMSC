@@ -1,3 +1,5 @@
+import type { EnrollmentStatus } from './member';
+
 /**
  * University of Toronto email domains accepted for self-service registration.
  * Addresses outside this list must go through the manual application queue.
@@ -42,4 +44,20 @@ export function isUniversityEmail(raw: string): boolean {
   return ALLOWED_EMAIL_DOMAINS.some(
     (allowed) => domain === allowed || domain.endsWith(`.${allowed}`),
   );
+}
+
+/**
+ * Enrollment status the address already settles. mail.utoronto.ca is issued to current students and
+ * alumni.utoronto.ca to graduates. utoronto.ca and department sub-domains are rare and say nothing about
+ * enrollment, so those people choose for themselves (null).
+ * 邮箱地址已经决定的在读状态。mail.utoronto.ca 发给在读学生，alumni.utoronto.ca 发给毕业生。
+ * utoronto.ca 及院系子域名很少见，也不能说明在读状态，由本人选择（返回 null）。
+ */
+export function enrollmentForEmail(raw: string): EnrollmentStatus | null {
+  if (!isUniversityEmail(raw)) return null;
+  const domain = emailDomainOf(raw) ?? '';
+  const under = (parent: string) => domain === parent || domain.endsWith(`.${parent}`);
+  if (under('mail.utoronto.ca')) return 'student';
+  if (under('alumni.utoronto.ca')) return 'alumni';
+  return null;
 }

@@ -6,7 +6,8 @@ import {
   enrollmentCalendarYear,
   isUniversityEmail,
   isValidDisplayName,
-  isValidEnrollmentYear,
+  enrollmentForEmail,
+  isValidRegistrationYear,
   shouldGraduate,
   isValidPassword,
   isWellFormedEmail,
@@ -185,7 +186,10 @@ authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
     return c.json(await startSession(c.env, member), 201);
   }
 
-  let enrollmentStatus = requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
+  // mail.utoronto.ca is always a student and alumni.utoronto.ca always a graduate; only other addresses choose.
+  // mail.utoronto.ca 一律为在校生，alumni.utoronto.ca 一律为毕业生；其他邮箱才由本人选择。
+  const impliedStatus = enrollmentForEmail(email);
+  let enrollmentStatus = impliedStatus ?? requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
   let graduationYear = requireInteger(body.graduationYear, '入学年份');
   const major = programMajor(optionalString(body.major, '专业', PROGRAM_MAJOR_MAX));
 
@@ -196,7 +200,7 @@ authRoutes.post('/register', rateLimit(10, 60_000), async (c) => {
     if (!approved) throw forbidden('该邮箱尚未通过人工审核');
     enrollmentStatus = approved.enrollment_status;
     graduationYear = approved.graduation_year;
-  } else if (!isValidEnrollmentYear(graduationYear)) {
+  } else if (!isValidRegistrationYear(graduationYear, enrollmentStatus)) {
     throw badRequest('invalid_year', '入学年份无效');
   }
   await verifyCodeOrThrow(c.env, email, 'register', requireString(body.code, '验证码', 6));
@@ -253,7 +257,7 @@ authRoutes.post('/apply', rateLimit(5, 60_000), async (c) => {
   const note = optionalString(body.note, '备注', 500);
   if (!isWellFormedEmail(email)) throw badRequest('invalid_email', '邮箱格式错误');
   if (!isValidDisplayName(displayName)) throw badRequest('invalid_name', '姓名需 2 到 40 个字符');
-  if (!isValidEnrollmentYear(graduationYear)) throw badRequest('invalid_year', '入学年份无效');
+  if (!isValidRegistrationYear(graduationYear, enrollmentStatus)) throw badRequest('invalid_year', '入学年份无效');
   if (await findMemberByEmail(c.env.DB, email)) throw conflict('already_registered', '该邮箱已注册，请直接登录');
   if (await hasPendingApplication(c.env.DB, email)) throw conflict('already_applied', '申请已提交，请等待审核');
   await createApplication(c.env.DB, {

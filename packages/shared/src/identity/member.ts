@@ -72,6 +72,21 @@ export function shouldGraduate(enrollmentYear: number, status: EnrollmentStatus,
   return status === 'student' && enrollmentCalendarYear(now) - enrollmentYear >= 5;
 }
 
+/**
+ * Years offered at registration and in manual applications. Graduates may have enrolled long ago, so for
+ * 毕业生 the range runs from ADMIN_ENROLLMENT_YEAR_MIN to this year; otherwise it is five years either side.
+ * 注册和人工申请时可选的入学年份。毕业生可能很早就入学，所以毕业生的范围是 ADMIN_ENROLLMENT_YEAR_MIN 到今年；其他情况为今年前后各五年。
+ */
+export function registrationYearRange(status: EnrollmentStatus, now: Date = new Date()): { min: number; max: number } {
+  if (status === 'alumni') return { min: ADMIN_ENROLLMENT_YEAR_MIN, max: enrollmentCalendarYear(now) };
+  return { min: enrollmentYearMin(now), max: enrollmentYearMax(now) };
+}
+
+export function isValidRegistrationYear(year: number, status: EnrollmentStatus, now: Date = new Date()): boolean {
+  const { min, max } = registrationYearRange(status, now);
+  return Number.isInteger(year) && year >= min && year <= max;
+}
+
 /** Years a system admin may write when correcting a registration. Wider than the self-serve picker. */
 /** 系统管理员更正入学年份时可用的范围，比注册时的选项更宽。 */
 export const ADMIN_ENROLLMENT_YEAR_MIN = 1990;

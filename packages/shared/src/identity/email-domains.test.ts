@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emailDomainOf, isUniversityEmail, normalizeEmail } from './email-domains';
+import { emailDomainOf, enrollmentForEmail, isUniversityEmail, normalizeEmail } from './email-domains';
 
 describe('isUniversityEmail', () => {
   it('accepts the three university domains', () => {
@@ -34,5 +34,20 @@ describe('normalizeEmail / emailDomainOf', () => {
     expect(normalizeEmail(' A@B.CA ')).toBe('a@b.ca');
     expect(emailDomainOf('A@Mail.UToronto.ca')).toBe('mail.utoronto.ca');
     expect(emailDomainOf('no-at-sign')).toBeNull();
+  });
+});
+
+describe('enrollmentForEmail', () => {
+  it('reads the status from mail and alumni addresses', () => {
+    expect(enrollmentForEmail('sam@mail.utoronto.ca')).toBe('student');
+    expect(enrollmentForEmail(' Sam@MAIL.UTORONTO.CA ')).toBe('student');
+    expect(enrollmentForEmail('grad@alumni.utoronto.ca')).toBe('alumni');
+  });
+
+  it('leaves utoronto.ca, department sub-domains and other addresses to the person', () => {
+    expect(enrollmentForEmail('staff@utoronto.ca')).toBeNull();
+    expect(enrollmentForEmail('x@cs.utoronto.ca')).toBeNull();
+    expect(enrollmentForEmail('a@gmail.com')).toBeNull();
+    expect(enrollmentForEmail('a@mail.utoronto.ca.evil.com')).toBeNull();
   });
 });

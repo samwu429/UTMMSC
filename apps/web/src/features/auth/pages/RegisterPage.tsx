@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { encodeProgramSelection, isUniversityEmail, normalizeEmail, programChoiceState } from '@utmmsc/shared';
+import { encodeProgramSelection, enrollmentForEmail, isUniversityEmail, normalizeEmail, programChoiceState } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -33,6 +33,9 @@ export function RegisterPage() {
 
   const approvedFlow = !inviteToken && params.get('approved') === '1';
   const university = isUniversityEmail(email);
+  // An approved manual application already fixed the status, and the server uses the reviewed one.
+  // 人工审核通过的申请已经确定了状态，服务端以审核时的为准。
+  const fixedStatus = approvedFlow ? null : enrollmentForEmail(email);
   const needsCode = inviteToken ? inviteReady : approvedFlow || university;
   const showManualHint = !inviteToken && email.includes('@') && !university && !approvedFlow;
   const programsReady = programChoiceState(profile.programs).ready;
@@ -119,7 +122,7 @@ export function RegisterPage() {
               <TextInput autoComplete="name" value={displayName} maxLength={40} onChange={(e) => setDisplayName(e.target.value)} />
             </Field>
           ) : (
-            <ProfileFields value={profile} onChange={setProfile} />
+            <ProfileFields value={profile} onChange={setProfile} fixedStatus={fixedStatus} />
           )}
           {error ? <Notice tone="error">{error}</Notice> : null}
           <Button type="submit" block loading={busy} disabled={inviteToken ? displayName.trim().length < 2 : showManualHint || !programsReady}>
