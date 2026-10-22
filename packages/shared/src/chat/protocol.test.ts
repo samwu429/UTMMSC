@@ -50,6 +50,13 @@ describe('parseClientFrame', () => {
     expect(parseServerFrame({ type: 'recalled', messageId: 4 })).toMatchObject({ type: 'recalled', messageId: 4 });
   });
 
+  it('accepts an author update only when it names the author', () => {
+    const author = { id: 'mem_1', displayName: 'Sam', avatarKey: 'preset:man-cute-purple' };
+    expect(parseServerFrame({ type: 'author', author })).toEqual({ type: 'author', author });
+    expect(parseServerFrame({ type: 'author' })).toBeNull();
+    expect(parseServerFrame({ type: 'author', author: { displayName: 'Sam' } })).toBeNull();
+  });
+
   it('bounds mute duration to thirty days', () => {
     expect(parseClientFrame({ type: 'mute', memberId: 'm', minutes: 60 })).toEqual({
       type: 'mute',

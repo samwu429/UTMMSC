@@ -133,6 +133,13 @@ export function useRoomSocket(roomId: string) {
           return { ...prev, error: localizedMessage(frame.message) };
         case 'pong':
           return prev;
+        case 'author': {
+          const { author } = frame;
+          return {
+            ...prev,
+            messages: prev.messages.map((m) => (m.author.id === author.id ? { ...m, author: { ...m.author, ...author } } : m)),
+          };
+        }
       }
     });
   }, [rememberHidden]);

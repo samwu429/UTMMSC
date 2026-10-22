@@ -10,8 +10,8 @@ export const HISTORY_PAGE_SIZE = 50;
 export interface ChatAuthor {
   id: string;
   displayName: string;
-  /** Avatar at send time. Null when the sender had none. */
-  /** 发送当时的头像。发送者没有头像时为 null。 */
+  /** The sender's current avatar, filled in by the room when it serves history. Null when they have none. */
+  /** 发送者当前的头像，由房间在下发历史时填入。没有头像时为 null。 */
   avatarKey?: string | null;
 }
 
@@ -132,6 +132,13 @@ export interface PongFrame {
   type: 'pong';
 }
 
+/** A member changed their name or avatar; clients update every message they already show by that author. */
+/** 某成员修改了名字或头像；客户端更新已显示的该作者全部消息。 */
+export interface AuthorFrame {
+  type: 'author';
+  author: ChatAuthor;
+}
+
 export type ServerFrame =
   | ReadyFrame
   | MessageFrame
@@ -140,7 +147,8 @@ export type ServerFrame =
   | RecalledFrame
   | PresenceFrame
   | ErrorFrame
-  | PongFrame;
+  | PongFrame
+  | AuthorFrame;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -212,6 +220,8 @@ export function parseServerFrame(raw: unknown): ServerFrame | null {
     case 'error':
     case 'pong':
       return raw as unknown as ServerFrame;
+    case 'author':
+      return isRecord(raw.author) && typeof raw.author.id === 'string' ? (raw as unknown as ServerFrame) : null;
     default:
       return null;
   }

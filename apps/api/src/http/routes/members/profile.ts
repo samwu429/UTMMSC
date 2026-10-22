@@ -11,7 +11,8 @@ import {
   insertPost,
   listFeed,
 } from '../../../infrastructure/d1/profile';
-import { findMemberById, markGraduated, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { findMemberById, markGraduated, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type MemberRow, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { announceAuthor } from '../../rooms';
 import { cancelPendingYearRequest, findPendingYearRequest, savePendingYearRequest } from '../../../infrastructure/d1/enrollment-requests';
 import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
@@ -48,6 +49,10 @@ async function readUpload(c: { req: { header: (name: string) => string | undefin
   return { bytes, contentType };
 }
 
+function chatAuthor(row: MemberRow) {
+  return { id: row.id, displayName: row.display_name, avatarKey: row.avatar_key };
+}
+
 profileRoutes.post('/me/avatar', rateLimit(10, 60_000), async (c) => {
   const { bytes, contentType } = await readUpload(c, AVATAR_MAX_BYTES, '头像不能超过 8MB');
   const member = c.get('member');
@@ -65,6 +70,7 @@ profileRoutes.post('/me/avatar', rateLimit(10, 60_000), async (c) => {
   if (previous?.startsWith('avatar/') && previous !== key) c.executionCtx.waitUntil(deleteObject(bucket, previous));
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
+  c.executionCtx.waitUntil(announceAuthor(c.env, chatAuthor(updated)));
   return c.json({ member: toSelf(updated), mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
 });
 
@@ -81,6 +87,7 @@ profileRoutes.post('/me/avatar/preset', async (c) => {
   if (previous?.startsWith('avatar/') && previous !== key) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), previous));
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
+  c.executionCtx.waitUntil(announceAuthor(c.env, chatAuthor(updated)));
   return c.json({ member: toSelf(updated) });
 });
 
@@ -90,6 +97,7 @@ profileRoutes.delete('/me/avatar', async (c) => {
   if (member.avatar_key?.startsWith('avatar/')) c.executionCtx.waitUntil(deleteObject(requireBucket(c.env), member.avatar_key));
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
+  c.executionCtx.waitUntil(announceAuthor(c.env, chatAuthor(updated)));
   return c.json({ member: toSelf(updated) });
 });
 

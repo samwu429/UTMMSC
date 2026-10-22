@@ -8,6 +8,7 @@ import {
   parseClientFrame,
   parseRoomId,
   redactChatBody,
+  type ChatAuthor,
   type ChatMessage,
   type ClientFrame,
   type Role,
@@ -16,6 +17,7 @@ import {
 import type { Env } from '../../env';
 import { conversationPreview } from '../../domain/messaging/preview';
 import { touchChannel } from '../../infrastructure/d1/channels';
+import { findAuthorCards, type AuthorCard } from '../../infrastructure/d1/members';
 import { touchDirect } from '../../infrastructure/d1/direct';
 
 /** Identity attached to each socket; survives hibernation through serializeAttachment. */
@@ -136,6 +138,21 @@ export class ChatRoom extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Called after a member changes their avatar. Old uploaded avatars are deleted from storage, so
+   * stored rows, open sockets, and on-screen messages all move to the new one.
+   * 成员更换头像后调用。旧的上传头像会从存储中删除，因此已存的消息、打开的连接和屏幕上的消息都要换成新头像。
+   */
+  async refreshAuthor(author: ChatAuthor): Promise<void> {
+    const avatarKey = author.avatarKey ?? null;
+    this.sql.exec('UPDATE messages SET author_name = ?, avatar_key = ? WHERE author_id = ?', author.displayName, avatarKey, author.id);
+    for (const socket of this.ctx.getWebSockets(author.id)) {
+      const identity = socket.deserializeAttachment() as SocketIdentity | null;
+      if (identity) socket.serializeAttachment({ ...identity, displayName: author.displayName, avatarKey });
+    }
+    this.broadcast({ type: 'author', author: { id: author.id, displayName: author.displayName, avatarKey } });
+  }
+
   /* WebSocket upgrade */
 
   async fetch(request: Request): Promise<Response> {
@@ -229,7 +246,7 @@ export class ChatRoom extends DurableObject<Env> {
         ws.send(JSON.stringify({ type: 'pong' } satisfies ServerFrame));
         return;
       case 'history':
-        this.sendHistory(ws, frame.beforeId);
+        await this.sendHistory(ws, frame.beforeId);
         return;
       case 'read':
         // Never past the newest message, or a bad client would hide all future unread counts.
@@ -382,18 +399,38 @@ export class ChatRoom extends DurableObject<Env> {
 
   /* Storage helpers */
 
-  private sendHistory(ws: WebSocket, beforeId?: number): void {
+  private async sendHistory(ws: WebSocket, beforeId?: number): Promise<void> {
     const limit = HISTORY_PAGE_SIZE + 1;
     const rows = beforeId
       ? this.sql.exec<MessageRow>('SELECT * FROM messages WHERE id < ? ORDER BY id DESC LIMIT ?', beforeId, limit).toArray()
       : this.sql.exec<MessageRow>('SELECT * FROM messages ORDER BY id DESC LIMIT ?', limit).toArray();
     const hasMore = rows.length > HISTORY_PAGE_SIZE;
     const page = rows.slice(0, HISTORY_PAGE_SIZE).reverse();
-    const frame: ServerFrame = { type: 'history_result', messages: page.map((r) => this.toMessage(r)), hasMore };
-    ws.send(JSON.stringify(frame));
+    const authors = await this.currentAuthors(page);
+    const frame: ServerFrame = { type: 'history_result', messages: page.map((r) => this.toMessage(r, authors.get(r.author_id))), hasMore };
+    try {
+      ws.send(JSON.stringify(frame));
+    } catch {
+      // The socket closed while authors were loading.
+      // 加载作者信息期间连接已关闭。
+    }
   }
 
-  private toMessage(row: MessageRow): ChatMessage {
+  /**
+   * Rows keep the avatar from send time, which may point at a deleted upload. History is served with
+   * each author's current name and avatar; if D1 is unreachable the stored values are used.
+   * 消息行保存的是发送时的头像，可能指向已删除的上传文件。下发历史时使用作者当前的名字和头像；D1 不可用时退回已存的值。
+   */
+  private async currentAuthors(rows: MessageRow[]): Promise<Map<string, AuthorCard>> {
+    if (rows.length === 0) return new Map();
+    try {
+      return await findAuthorCards(this.env.DB, rows.map((r) => r.author_id));
+    } catch {
+      return new Map();
+    }
+  }
+
+  private toMessage(row: MessageRow, current?: AuthorCard): ChatMessage {
     const recalled = row.recalled === 1;
     const deleted = row.deleted === 1;
     return redactChatBody({
@@ -401,8 +438,8 @@ export class ChatRoom extends DurableObject<Env> {
       roomId: this.roomId ?? '',
       author: {
         id: row.author_id,
-        displayName: row.author_name,
-        avatarKey: typeof row.avatar_key === 'string' ? row.avatar_key : null,
+        displayName: current?.displayName ?? row.author_name,
+        avatarKey: current ? current.avatarKey : typeof row.avatar_key === 'string' ? row.avatar_key : null,
       },
       text: recalled || deleted ? '' : row.text,
       imageKey: recalled || deleted ? null : row.image_key,

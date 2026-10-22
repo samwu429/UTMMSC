@@ -86,6 +86,27 @@ export async function findMemberById(db: D1Database, id: string): Promise<Member
   return db.prepare('SELECT * FROM members WHERE id = ?').bind(id).first<MemberRow>();
 }
 
+export interface AuthorCard {
+  displayName: string;
+  avatarKey: string | null;
+}
+
+/** Current name and avatar for a set of members, in batches that stay under D1's bound-parameter limit. */
+/** 一组成员当前的名字与头像，分批查询以不超过 D1 的参数个数上限。 */
+export async function findAuthorCards(db: D1Database, ids: string[]): Promise<Map<string, AuthorCard>> {
+  const cards = new Map<string, AuthorCard>();
+  const unique = [...new Set(ids)];
+  for (let i = 0; i < unique.length; i += 90) {
+    const slice = unique.slice(i, i + 90);
+    const result = await db
+      .prepare(`SELECT id, display_name, avatar_key FROM members WHERE id IN (${slice.map(() => '?').join(', ')})`)
+      .bind(...slice)
+      .all<{ id: string; display_name: string; avatar_key: string | null }>();
+    for (const row of result.results) cards.set(row.id, { displayName: row.display_name, avatarKey: row.avatar_key });
+  }
+  return cards;
+}
+
 export async function countMembers(db: D1Database): Promise<number> {
   const row = await db.prepare('SELECT COUNT(*) AS n FROM members').first<{ n: number }>();
   return row?.n ?? 0;
