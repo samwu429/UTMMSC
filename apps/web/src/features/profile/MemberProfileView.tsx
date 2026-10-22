@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from 'react';
-import { ENROLLMENT_LABELS, OPEN_TO, OPEN_TO_LABELS, enrollmentYearLabel, formatStoredMajor, isHonoraryRole, roleTitle, showsEnrollment, type ActivityPost, type Experience, type MemberProfile, type MemberSelf } from '@utmmsc/shared';
+import { OPEN_TO, isHonoraryRole, roleTitle, showsEnrollment, type ActivityPost, type Experience, type MemberProfile, type MemberSelf, type OpenTo } from '@utmmsc/shared';
+import { useLabels, useTr } from '../../shared/i18n/locale';
 import { experiencePeriod, formatPostTime } from './format';
 import { CoverBanner } from './CoverBanner';
 import { MemberAvatar } from './InitialAvatar';
 import { CameraIcon, ChevronIcon, PlusIcon } from './icons';
 import { PostMediaView } from './PostMediaView';
 
-function openToLabels(member: MemberProfile): string[] {
+function openToLabels(member: MemberProfile, label: (id: OpenTo) => string): string[] {
   const picked = new Set(member.openTo ?? []);
-  return OPEN_TO.filter((id) => picked.has(id)).map((id) => OPEN_TO_LABELS[id]);
+  return OPEN_TO.filter((id) => picked.has(id)).map(label);
 }
 
 function ActionChip({ label, onClick }: { label: string; onClick: () => void }) {
@@ -42,13 +43,14 @@ function Block({ title, action, children }: { title: string; action?: ReactNode;
 
 function AboutText({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  const tr = useTr();
   const long = text.length > 120;
   return (
     <div>
       <p className={`whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800 ${long && !open ? 'line-clamp-3' : ''}`}>{text}</p>
       {long ? (
         <button type="button" className="mt-1 text-[15px] text-brand-700" onClick={() => setOpen((value) => !value)}>
-          {open ? '收起' : '更多'}
+          {open ? tr('收起', 'Less') : tr('更多', 'More')}
         </button>
       ) : null}
     </div>
@@ -86,12 +88,13 @@ export function MemberProfileView({
   avatarBusy?: boolean;
   action?: ReactNode;
 }) {
-  const looking = openToLabels(member);
-  const title = roleTitle(member.role);
+  const { tr, role, enrollment, year, openTo, major, list } = useLabels();
+  const looking = openToLabels(member, openTo);
+  const title = roleTitle(member.role) ? role(member.role) : null;
   const school = [
-    showsEnrollment(member.role) ? formatStoredMajor(member.major) : null,
-    showsEnrollment(member.role) ? enrollmentYearLabel(member.graduationYear) : null,
-    showsEnrollment(member.role) && !isHonoraryRole(member.role) ? ENROLLMENT_LABELS[member.enrollmentStatus] : null,
+    showsEnrollment(member.role) ? major(member.major) : null,
+    showsEnrollment(member.role) ? year(member.graduationYear) : null,
+    showsEnrollment(member.role) && !isHonoraryRole(member.role) ? enrollment(member.enrollmentStatus) : null,
   ].filter(Boolean).join(' · ');
   const skills = member.skills ?? [];
   const preview = posts.slice(0, 2);
@@ -104,7 +107,7 @@ export function MemberProfileView({
           <div className="relative -mt-10 h-20 w-20">
             <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className={`h-20 w-20 text-2xl ring-4 ring-white ${avatarBusy ? 'opacity-50' : ''}`} />
             {onEditAvatar ? (
-              <button type="button" aria-label="换头像" onClick={onEditAvatar} className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-brand-800 text-white ring-2 ring-white">
+              <button type="button" aria-label={tr('换头像', 'Change profile photo')} onClick={onEditAvatar} className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-brand-800 text-white ring-2 ring-white">
                 <CameraIcon />
               </button>
             ) : null}
@@ -114,7 +117,7 @@ export function MemberProfileView({
               {member.displayName}
               {title ? <span className="ml-2 align-middle text-sm font-normal text-brand-700">{title}</span> : null}
             </h1>
-            {onEditIntro ? <ActionChip label="编辑" onClick={onEditIntro} /> : null}
+            {onEditIntro ? <ActionChip label={tr('编辑', 'Edit')} onClick={onEditIntro} /> : null}
           </div>
           {member.headline ? <p className="mt-1 text-[15px] leading-snug text-stone-800">{member.headline}</p> : null}
           {member.location ? <p className="mt-1 text-sm text-stone-500">{member.location}</p> : null}
@@ -122,13 +125,13 @@ export function MemberProfileView({
           {looking.length > 0 || onEditOpenTo ? (
             onEditOpenTo ? (
               <button type="button" onClick={onEditOpenTo} className="mt-3 w-full rounded-lg bg-brand-50 px-3 py-2.5 text-left active:bg-brand-100">
-                <span className="block text-[13px] text-brand-700">正在寻找</span>
-                <span className="mt-0.5 block text-[15px] text-brand-800">{looking.length > 0 ? looking.join('、') : '还没有'}</span>
+                <span className="block text-[13px] text-brand-700">{tr('正在寻找', 'Open to')}</span>
+                <span className="mt-0.5 block text-[15px] text-brand-800">{looking.length > 0 ? list(looking) : tr('还没有', 'Nothing yet')}</span>
               </button>
             ) : (
               <div className="mt-3 rounded-lg bg-brand-50 px-3 py-2.5">
-                <span className="block text-[13px] text-brand-700">正在寻找</span>
-                <span className="mt-0.5 block text-[15px] text-brand-800">{looking.join('、')}</span>
+                <span className="block text-[13px] text-brand-700">{tr('正在寻找', 'Open to')}</span>
+                <span className="mt-0.5 block text-[15px] text-brand-800">{list(looking)}</span>
               </div>
             )
           ) : null}
@@ -138,18 +141,18 @@ export function MemberProfileView({
 
       {member.about || onEditAbout ? (
         <Block
-          title="简介"
-          action={onEditAbout && member.about ? <ActionChip label="编辑" onClick={onEditAbout} /> : null}
+          title={tr('简介', 'About')}
+          action={onEditAbout && member.about ? <ActionChip label={tr('编辑', 'Edit')} onClick={onEditAbout} /> : null}
         >
           {member.about ? <AboutText text={member.about} /> : null}
-          {!member.about && onEditAbout ? <AddRow label="添加简介" onClick={onEditAbout} /> : null}
+          {!member.about && onEditAbout ? <AddRow label={tr('添加简介', 'Add an about section')} onClick={onEditAbout} /> : null}
         </Block>
       ) : null}
 
       {experiences.length > 0 || onAddExperience ? (
         <Block
-          title="经历"
-          action={onAddExperience && experiences.length > 0 ? <ActionChip label="添加" onClick={onAddExperience} /> : null}
+          title={tr('经历', 'Experience')}
+          action={onAddExperience && experiences.length > 0 ? <ActionChip label={tr('添加', 'Add')} onClick={onAddExperience} /> : null}
         >
           {experiences.length > 0 ? (
             <div className="divide-y divide-stone-200">
@@ -158,7 +161,7 @@ export function MemberProfileView({
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold text-brand-800">{item.title}</p>
                     {onDeleteExperience ? (
-                      <button type="button" aria-label="删除这条经历" onClick={() => onDeleteExperience(item.id)} className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-400">
+                      <button type="button" aria-label={tr('删除这条经历', 'Delete this experience')} onClick={() => onDeleteExperience(item.id)} className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-400">
                         <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
                           <path d="M5 7h14M9 7V5h6v2M8 7l.7 12h6.6L16 7" />
                         </svg>
@@ -172,18 +175,18 @@ export function MemberProfileView({
               ))}
             </div>
           ) : (
-            <AddRow label="添加经历" onClick={() => onAddExperience?.()} />
+            <AddRow label={tr('添加经历', 'Add experience')} onClick={() => onAddExperience?.()} />
           )}
         </Block>
       ) : null}
 
       {skills.length > 0 || onEditSkills ? (
         <Block
-          title="技能"
-          action={onEditSkills && skills.length > 0 ? <ActionChip label="编辑" onClick={onEditSkills} /> : null}
+          title={tr('技能', 'Skills')}
+          action={onEditSkills && skills.length > 0 ? <ActionChip label={tr('编辑', 'Edit')} onClick={onEditSkills} /> : null}
         >
           {skills.length > 0 ? <p className="text-[15px] leading-relaxed text-stone-800">{skills.join(' · ')}</p> : null}
-          {skills.length === 0 && onEditSkills ? <AddRow label="添加技能" onClick={onEditSkills} /> : null}
+          {skills.length === 0 && onEditSkills ? <AddRow label={tr('添加技能', 'Add skills')} onClick={onEditSkills} /> : null}
         </Block>
       ) : null}
 
@@ -191,13 +194,13 @@ export function MemberProfileView({
         <section className="bg-white px-4 py-4">
           {onShowActivity && preview.length > 0 ? (
             <button type="button" onClick={onShowActivity} className="flex min-h-11 w-full items-center justify-between">
-              <h2 className="text-[17px] font-semibold text-brand-800">动态</h2>
+              <h2 className="text-[17px] font-semibold text-brand-800">{tr('动态', 'Updates')}</h2>
               <span className="text-stone-300">
                 <ChevronIcon />
               </span>
             </button>
           ) : (
-            <h2 className="text-[17px] font-semibold text-brand-800">动态</h2>
+            <h2 className="text-[17px] font-semibold text-brand-800">{tr('动态', 'Updates')}</h2>
           )}
           {preview.length > 0 ? (
             <div className="mt-1 divide-y divide-stone-200">
@@ -211,7 +214,7 @@ export function MemberProfileView({
             </div>
           ) : onShowActivity ? (
             <div className="mt-3">
-              <AddRow label="发表动态" onClick={onShowActivity} />
+              <AddRow label={tr('发表动态', 'Post an update')} onClick={onShowActivity} />
             </div>
           ) : null}
         </section>

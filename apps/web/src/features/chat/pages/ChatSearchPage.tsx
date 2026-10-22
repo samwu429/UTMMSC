@@ -108,7 +108,9 @@ export function ChatSearchPage() {
   // While the next page of contacts loads, keep showing the earlier ones that still match, so the section does not flicker.
   // 下一批联系人加载期间，继续显示之前仍然匹配的联系人，避免该区域闪烁。
   const members = contactsReady ? contacts.members : query && contacts ? contacts.members.filter((member) => matchesQuery(member.displayName, query)) : [];
-  const nothing = query !== '' && contactsReady && members.length === 0 && matches.length === 0;
+  // A failed contact lookup is not "no results"; its error line shows instead.
+  // 联系人查询失败不等于「没有结果」，此时只显示错误行。
+  const nothing = query !== '' && contactsReady && !contacts.error && members.length === 0 && matches.length === 0;
 
   function cancel() {
     if (location.key !== 'default') navigate(-1);
@@ -174,14 +176,14 @@ export function ChatSearchPage() {
         ) : null}
         {contactsReady && contacts.error ? <p className="px-4 py-3 text-[13px] text-wx-meta">{contacts.error}</p> : null}
         {channels.length > 0 ? (
-          <Section title={tr('频道', 'Channels')}>
+          <Section title={tr('群聊', 'Groups')}>
             {channels.map((item) => (
               <ConversationResult key={item.roomId} roomId={item.roomId} avatar={item.avatar} title={item.title} query={query} />
             ))}
           </Section>
         ) : null}
         {direct.length > 0 ? (
-          <Section title={tr('私聊', 'Direct')}>
+          <Section title={tr('私信', 'Direct messages')}>
             {direct.map((item) => (
               <ConversationResult key={item.roomId} roomId={item.roomId} avatar={item.avatar} title={item.title} query={query} />
             ))}

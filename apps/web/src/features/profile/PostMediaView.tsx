@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PostMedia } from '@utmmsc/shared';
+import { useTr } from '../../shared/i18n/locale';
 import { useMediaUrl } from './media';
 
 function Frame({ item, className, onOpen }: { item: PostMedia; className: string; onOpen?: (item: PostMedia) => void }) {
@@ -19,6 +20,7 @@ function Frame({ item, className, onOpen }: { item: PostMedia; className: string
 export function PostMediaView({ media }: { media: PostMedia[] }) {
   const [open, setOpen] = useState<PostMedia | null>(null);
   const openUrl = useMediaUrl(open?.key);
+  const tr = useTr();
   if (media.length === 0) return null;
   const video = media.find((item) => item.kind === 'video');
   const images = media.filter((item) => item.kind === 'image');
@@ -38,7 +40,7 @@ export function PostMediaView({ media }: { media: PostMedia[] }) {
         </div>
       ) : null}
       {open && openUrl ? (
-        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black" onClick={() => setOpen(null)} aria-label="关闭">
+        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black" onClick={() => setOpen(null)} aria-label={tr('关闭', 'Close')}>
           <img src={openUrl} alt="" className="max-h-full max-w-full object-contain" />
         </button>
       ) : null}

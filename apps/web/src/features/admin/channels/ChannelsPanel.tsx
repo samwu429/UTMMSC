@@ -226,7 +226,7 @@ export function ChannelsPanel() {
                     {channel.audience === 'custom' ? (
                       <>
                         <span className="mx-1">·</span>
-                        {tr(`${channel.memberIds.length} 人`, `${channel.memberIds.length} people`)}
+                        {tr(`${channel.memberIds.length} 人`, `${channel.memberIds.length} ${channel.memberIds.length === 1 ? 'person' : 'people'}`)}
                       </>
                     ) : null}
                   </p>

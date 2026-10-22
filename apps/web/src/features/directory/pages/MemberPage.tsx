@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { directRoomId, type FriendshipState, type MemberDetailResponse } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
@@ -14,6 +15,7 @@ import { profileApi } from '../../profile/api';
 export function MemberPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const tr = useTr();
   const self = useSessionStore((s) => s.member);
   const setMediaToken = useSessionStore((s) => s.setMediaToken);
   const [detail, setDetail] = useState<MemberDetailResponse | null>(null);
@@ -72,7 +74,7 @@ export function MemberPage() {
 
   return (
     <div>
-      <BackHeader to="/chat?tab=members" label="成员" />
+      <BackHeader to="/chat?tab=members" label={tr('通讯录', 'Contacts')} />
       {error && !detail ? <Notice tone="error">{error}</Notice> : null}
       {!detail && !error ? <Spinner /> : null}
       {notice ? <div className="mb-3"><Notice tone="error">{notice}</Notice></div> : null}
@@ -84,28 +86,28 @@ export function MemberPage() {
           action={
             mine ? (
               <Button block variant="secondary" onClick={() => navigate('/settings')}>
-                编辑资料
+                {tr('编辑资料', 'Edit profile')}
               </Button>
             ) : friendship === 'friends' ? (
               <Button block onClick={openDirect} loading={opening}>
-                发私信
+                {tr('发私信', 'Message')}
               </Button>
             ) : friendship === 'outgoing' ? (
               <Button block variant="secondary" disabled>
-                等待通过
+                {tr('等待通过', 'Pending')}
               </Button>
             ) : friendship === 'incoming' ? (
               <div className="flex gap-2">
                 <Button className="flex-1" loading={friendBusy} onClick={() => changeFriend('accept')}>
-                  通过申请
+                  {tr('通过申请', 'Accept request')}
                 </Button>
                 <Button className="flex-1" variant="secondary" disabled={friendBusy} onClick={() => changeFriend('reject')}>
-                  拒绝
+                  {tr('拒绝', 'Decline')}
                 </Button>
               </div>
             ) : (
               <Button block loading={friendBusy} onClick={() => changeFriend('request')}>
-                加好友
+                {tr('加好友', 'Add friend')}
               </Button>
             )
           }

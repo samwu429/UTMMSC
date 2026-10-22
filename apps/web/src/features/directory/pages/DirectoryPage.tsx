@@ -6,6 +6,7 @@ import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List, Notice, PageTitle, Spinner } from '../../../shared/ui/Card';
 import { Select, TextInput } from '../../../shared/ui/Field';
+import { toast } from '../../../shared/ui/toast';
 import { friendsApi } from '../../friends/api';
 import { directoryApi } from '../api';
 import { MemberRow } from '../components/MemberRow';
@@ -23,6 +24,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [friends, setFriends] = useState<FriendSummary | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const selfId = useSessionStore((s) => s.member?.id);
   const { tr, enrollment: enrollmentLabel, year: yearLabel } = useLabels();
 
@@ -51,7 +53,9 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
         return { ...base, outgoingIds: base.outgoingIds.includes(id) ? base.outgoingIds : [...base.outgoingIds, id] };
       });
     } catch (err) {
-      setError(errorMessage(err));
+      // A toast, because the list's notice sits above the row that was tapped and may be off screen.
+      // 用浮动提示，因为列表的提示条在被点的那一行上方，可能不在屏幕内。
+      toast(errorMessage(err), { ms: 2500 });
     } finally {
       setBusyId(null);
     }
@@ -67,7 +71,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
         return { ...base, friendIds: [...base.friendIds, id], incoming: base.incoming.filter((card) => card.member.id !== id) };
       });
     } catch (err) {
-      setError(errorMessage(err));
+      toast(errorMessage(err), { ms: 2500 });
     } finally {
       setBusyId(null);
     }
@@ -104,6 +108,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
   async function loadMore() {
     if (!cursor || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
+    setLoadingMore(true);
     const requestedFor = filterKey;
     try {
       const res = await directoryApi.list({ q: q || undefined, enrollmentStatus: enrollment || undefined, graduationYear: year ? Number(year) : undefined, cursor });
@@ -119,6 +124,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
       setError(errorMessage(err));
     } finally {
       loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }
 
@@ -135,7 +141,18 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
           </List>
         </div>
       ) : null}
-      <TextInput placeholder={tr('搜索姓名、专业、技能或所在地', 'Search name, program, skills, or location')} value={q} onChange={(e) => setQ(e.target.value)} />
+      <TextInput
+        type="search"
+        enterKeyHint="search"
+        autoComplete="off"
+        aria-label={tr('搜索成员', 'Search members')}
+        placeholder={tr('搜索姓名、专业、技能或所在地', 'Search name, program, skills, or location')}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+      />
       <div className="grid grid-cols-2 gap-3">
         <Select value={enrollment} onChange={(e) => setEnrollment(e.target.value as EnrollmentStatus | '')}>
           <option value="">{tr('全部状态', 'Any status')}</option>
@@ -155,7 +172,9 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
         </Select>
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
-      {loading ? <Spinner /> : members.length === 0 ? (
+      {/* A new search keeps the current list on screen, dimmed, instead of swapping it for a spinner on every keystroke. */}
+      {/* 新的搜索会保留当前列表并调暗，而不是每次按键都换成加载圈。 */}
+      {loading && members.length === 0 ? <Spinner /> : !loading && members.length === 0 ? (
         <div className="text-center">
           <EmptyState>{tr('没有匹配的成员', 'No matching members')}</EmptyState>
           {q || enrollment || year ? (
@@ -172,24 +191,22 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
           ) : null}
         </div>
       ) : null}
-      {!loading ? (
-        <div className="space-y-3">
-          {members.length > 0 ? (
-            <List>
-              {members.map((m) => (
-                <MemberRow
-                  key={m.id}
-                  member={m}
-                  friendship={stateFor(m.id)}
-                  busy={busyId === m.id}
-                  onRequest={stateFor(m.id) === 'none' ? () => request(m.id) : undefined}
-                  onAccept={stateFor(m.id) === 'incoming' ? () => accept(m.id) : undefined}
-                />
-              ))}
-            </List>
-          ) : null}
-          {cursor ? (
-            <Button variant="secondary" block onClick={loadMore}>
+      {members.length > 0 ? (
+        <div className={`space-y-3 transition-opacity ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
+          <List>
+            {members.map((m) => (
+              <MemberRow
+                key={m.id}
+                member={m}
+                friendship={stateFor(m.id)}
+                busy={busyId === m.id}
+                onRequest={stateFor(m.id) === 'none' ? () => request(m.id) : undefined}
+                onAccept={stateFor(m.id) === 'incoming' ? () => accept(m.id) : undefined}
+              />
+            ))}
+          </List>
+          {cursor && !loading ? (
+            <Button variant="secondary" block onClick={loadMore} loading={loadingMore}>
               {tr('加载更多', 'Load more')}
             </Button>
           ) : null}

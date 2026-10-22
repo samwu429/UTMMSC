@@ -4,6 +4,9 @@ import { WX_COLORS } from './wxTokens';
 /** brand-700 from tailwind.config.ts, used for links and pills on white. */
 /** tailwind.config.ts 中的 brand-700，用于白底上的链接和浮标。 */
 const BRAND_700 = '#5B2A86';
+/** brand-50, the fill behind the 群聊 tag in the chat list. */
+/** brand-50，聊天列表里「群聊」标签的底色。 */
+const BRAND_50 = '#F4EEF8';
 const WHITE = '#FFFFFF';
 
 function channel(value: number): number {
@@ -41,6 +44,7 @@ const PAIRS: [label: string, foreground: string, background: string][] = [
   ['white on popover', WHITE, WX_COLORS.popover],
   ['quoteInk on quote', WX_COLORS.quoteInk, WX_COLORS.quote],
   ['brand-700 on white', BRAND_700, WHITE],
+  ['brand-700 on brand-50', BRAND_700, BRAND_50],
 ];
 
 describe('contrast', () => {

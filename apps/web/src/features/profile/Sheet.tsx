@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 import { useTr } from '../../shared/i18n/locale';
+import { useBackToClose } from '../../shared/ui/overlayHistory';
 
-/** A bottom sheet for editing one profile section at a time. */
-/** 从底部升起的编辑层，一次只改资料里的一块。 */
+/** A bottom sheet for editing one profile section at a time. The system back gesture closes it. */
+/** 从底部升起的编辑层，一次只改资料里的一块。系统返回手势会关闭它。 */
 export function Sheet({ title, closeLabel, onClose, children }: { title: string; closeLabel?: string; onClose: () => void; children: ReactNode }) {
   const tr = useTr();
+  useBackToClose(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
       <div

@@ -122,7 +122,7 @@ function FilterStrip({ filter }: { filter: Exclude<Filter, 'all'> }) {
   const tr = useTr();
   return (
     <div className="-mx-4 flex h-9 items-center justify-between bg-wx-canvas px-4 text-[13px] text-wx-meta">
-      <span>{filter === 'channels' ? tr('仅显示频道', 'Channels only') : tr('仅显示私聊', 'Direct messages only')}</span>
+      <span>{filter === 'channels' ? tr('仅显示群聊', 'Groups only') : tr('仅显示私信', 'Direct messages only')}</span>
       <Link to="/chat" replace className="flex min-h-9 items-center text-wx-link">
         {tr('显示全部', 'Show all')}
       </Link>

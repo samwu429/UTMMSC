@@ -116,7 +116,7 @@ export function RegisterPage() {
           </Field>
           {inviteToken ? (
             <Field label={tr('姓名', 'Name')}>
-              <TextInput value={displayName} maxLength={40} onChange={(e) => setDisplayName(e.target.value)} />
+              <TextInput autoComplete="name" value={displayName} maxLength={40} onChange={(e) => setDisplayName(e.target.value)} />
             </Field>
           ) : (
             <ProfileFields value={profile} onChange={setProfile} />

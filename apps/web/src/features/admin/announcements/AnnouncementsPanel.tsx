@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
 import { Card, Notice } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
@@ -15,18 +16,28 @@ export function AnnouncementsPanel() {
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const ask = useConfirm();
+  const tr = useTr();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (sendEmail) {
-      const ok = await ask({ title: '给全体成员发邮件？', body: '发出后会送到每位成员的邮箱。', confirmLabel: '发送' });
+      const ok = await ask({
+        title: tr('给全体成员发邮件？', 'Email every member?'),
+        body: tr('发出后会送到每位成员的邮箱。', 'Once sent, it goes to every member by email.'),
+        confirmLabel: tr('发送', 'Send'),
+      });
       if (!ok) return;
     }
     setMessage(null);
     setBusy(true);
     try {
       const res = await adminApi.announce({ title, body, sendEmail });
-      setMessage({ tone: 'success', text: res.emailed ? `已向 ${res.recipientCount} 位成员发送邮件` : `公告已记录（${res.recipientCount} 位成员，未发邮件）` });
+      setMessage({
+        tone: 'success',
+        text: res.emailed
+          ? tr(`已向 ${res.recipientCount} 位成员发送邮件`, `Emailed ${res.recipientCount} ${res.recipientCount === 1 ? 'member' : 'members'}.`)
+          : tr(`公告已记录（${res.recipientCount} 位成员，未发邮件）`, `Announcement saved for ${res.recipientCount} ${res.recipientCount === 1 ? 'member' : 'members'}. No email was sent.`),
+      });
       setTitle('');
       setBody('');
     } catch (err) {
@@ -38,22 +49,27 @@ export function AnnouncementsPanel() {
 
   return (
     <Card>
-      <h2 className="mb-3 font-semibold">全员公告</h2>
+      <h2 className="mb-3 font-semibold">{tr('全员公告', 'Announcement to all members')}</h2>
       <form onSubmit={submit} className="space-y-3">
-        <Field label="标题">
+        <Field label={tr('标题', 'Title')}>
           <TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} />
         </Field>
-        <Field label="正文">
+        <Field label={tr('正文', 'Message')}>
           <TextArea value={body} onChange={(e) => setBody(e.target.value)} maxLength={5000} className="min-h-[160px]" />
         </Field>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="h-4 w-4" />
-          同时发送邮件给全体成员
+          {tr('同时发送邮件给全体成员', 'Also email every member')}
         </label>
-        <Notice>建议先在「公告」频道发消息；邮件留给确实需要所有人看到的内容。</Notice>
+        <Notice>
+          {tr(
+            '建议先在「公告」频道发消息；邮件留给确实需要所有人看到的内容。',
+            'Post in the Announcements channel first. Save email for things everyone really needs to see.',
+          )}
+        </Notice>
         {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}
         <Button type="submit" block loading={busy} disabled={!title.trim() || !body.trim()}>
-          发布
+          {tr('发布', 'Publish')}
         </Button>
       </form>
     </Card>

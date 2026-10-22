@@ -5,6 +5,7 @@ import { useLongPress, type LongPressInfo } from '../../../shared/ui/useLongPres
 import { UnreadDot } from '../components/UnreadDot';
 import { ChatAvatar } from './ChatAvatar';
 import { roomLink, type Conversation } from './conversations';
+import { KindTag } from './KindTag';
 import { RowMenu } from './RowMenu';
 
 function BellSlash() {
@@ -19,10 +20,10 @@ function BellSlash() {
 }
 
 /**
- * One 72px WeChat conversation row: square avatar with the badge on its corner, name and time on
- * the first line, the preview on the second, and a hairline that starts after the avatar.
+ * One 72px WeChat conversation row: square avatar with the badge on its corner, name, group or direct
+ * tag and time on the first line, the preview on the second, and a hairline that starts after the avatar.
  * Long press or right-click opens the row menu.
- * 一行 72px 的微信式会话：方形头像右上角带角标，第一行是名称和时间，第二行是预览，分隔线从头像之后开始。长按或右键打开行菜单。
+ * 一行 72px 的微信式会话：方形头像右上角带角标，第一行是名称、群聊或私信标签和时间，第二行是预览，分隔线从头像之后开始。长按或右键打开行菜单。
  */
 export const ConversationRow = memo(function ConversationRow({ row, last, onOpen }: { row: Conversation; last: boolean; onOpen: (roomId: string) => void }) {
   const tr = useTr();
@@ -60,7 +61,10 @@ export const ConversationRow = memo(function ConversationRow({ row, last, onOpen
         </span>
         <span className={`flex min-w-0 flex-1 flex-col justify-center gap-1 pr-4 ${last ? '' : 'border-b-[0.5px] border-wx-line'}`}>
           <span className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 truncate text-[17px] leading-6 text-wx-ink">{row.title}</span>
+            <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+              <span className="min-w-0 truncate text-[17px] leading-6 text-wx-ink">{row.title}</span>
+              <KindTag kind={row.kind} />
+            </span>
             {row.timeLabel ? <span className="shrink-0 text-[12px] text-wx-meta">{row.timeLabel}</span> : null}
           </span>
           <span className="flex items-center gap-1">

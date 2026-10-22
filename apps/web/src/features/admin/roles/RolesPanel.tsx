@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, ENROLLMENT_STATUSES, ROLE_DUTIES, ROLE_GROUPS, ROLE_LABELS, canAssignRole, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isOfficeRole, roleTier, shouldGraduate, showsEnrollment, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, ROLE_GROUPS, canAssignRole, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isOfficeRole, roleTier, shouldGraduate, showsEnrollment, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useLabels } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { Badge, Notice, Spinner } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
@@ -18,6 +19,7 @@ export function RolesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const ask = useConfirm();
+  const { tr, role: roleLabel, duty, group, enrollment, year: yearLabel } = useLabels();
 
   useEffect(() => {
     adminApi.members().then((res) => setMembers(res.members)).catch((err) => setError(errorMessage(err)));
@@ -26,9 +28,9 @@ export function RolesPanel() {
   async function setRole(member: AdminMemberRow, role: Role) {
     if (role === member.role) return;
     const ok = await ask({
-      title: `任命为${ROLE_LABELS[role]}？`,
-      body: ROLE_DUTIES[role],
-      confirmLabel: '任命',
+      title: tr(`任命为${roleLabel(role)}？`, `Appoint as ${roleLabel(role)}?`),
+      body: duty(role),
+      confirmLabel: tr('任命', 'Appoint'),
     });
     if (!ok) return;
     setError(null);
@@ -43,9 +45,9 @@ export function RolesPanel() {
   async function toggleStatus(member: AdminMemberRow) {
     const disabling = member.status === 'active';
     const ok = await ask({
-      title: disabling ? '停用这个账号？' : '恢复这个账号？',
+      title: disabling ? tr('停用这个账号？', 'Disable this account?') : tr('恢复这个账号？', 'Restore this account?'),
       body: member.displayName,
-      confirmLabel: disabling ? '停用' : '恢复',
+      confirmLabel: disabling ? tr('停用', 'Disable') : tr('恢复', 'Restore'),
       danger: disabling,
     });
     if (!ok) return;
@@ -63,9 +65,11 @@ export function RolesPanel() {
     const due = shouldGraduate(year, 'student');
     const nextStatus: EnrollmentStatus = due ? 'alumni' : status;
     const ok = await ask({
-      title: `把入学年份改为 ${year}？`,
-      body: due ? '入学已满五年，会记为毕业生。成员自己不能改这个数字。' : '成员自己不能改这个数字。',
-      confirmLabel: '更正',
+      title: tr(`把入学年份改为 ${year}？`, `Change the enrollment year to ${year}?`),
+      body: due
+        ? tr('入学已满五年，会记为毕业生。成员自己不能改这个数字。', 'Five years have passed since enrollment, so this member will be recorded as a graduate. Members cannot change this number themselves.')
+        : tr('成员自己不能改这个数字。', 'Members cannot change this number themselves.'),
+      confirmLabel: tr('更正', 'Correct'),
     });
     if (!ok) return;
     setError(null);
@@ -91,13 +95,19 @@ export function RolesPanel() {
   if (!self) return null;
   if (!members) return error ? <Notice tone="error">{error}</Notice> : <Spinner />;
 
-  const visible = members.filter((m) => !filter || m.displayName.includes(filter) || m.email.includes(filter));
+  const needle = filter.trim().toLocaleLowerCase();
+  const visible = members.filter((m) => !needle || m.displayName.toLocaleLowerCase().includes(needle) || m.email.toLocaleLowerCase().includes(needle));
 
   return (
     <div className="space-y-3">
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <p className="text-sm leading-relaxed text-stone-500">每个章程职位同时只能有一个人。荣誉顾问可以有多人，只有系统管理员能指定。主席可以任命部长和成员，不能任命其他主席团。入学年份只有系统管理员能改。</p>
-      <TextInput placeholder="搜索姓名或邮箱" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <p className="text-sm leading-relaxed text-stone-500">
+        {tr(
+          '每个章程职位同时只能有一个人。荣誉顾问可以有多人，只有系统管理员能指定。主席可以任命部长和成员，不能任命其他主席团。入学年份只有系统管理员能改。',
+          'Each office in the constitution is held by one person at a time. There can be several honorary advisors, and only a system administrator can assign them. The president can appoint department heads and members, but not other presidium members. Only a system administrator can change enrollment years.',
+        )}
+      </p>
+      <TextInput placeholder={tr('搜索姓名或邮箱', 'Search name or email')} value={filter} onChange={(e) => setFilter(e.target.value)} />
       {visible.map((m) => {
         const heldByOthers = new Set(members.filter((other) => other.id !== m.id && isOfficeRole(other.role)).map((other) => other.role));
         const editable = m.id !== self.id && (self.role === 'superadmin' || (roleTier(m.role) < roleTier(self.role) && !isHonoraryRole(m.role)));
@@ -106,30 +116,30 @@ export function RolesPanel() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate font-medium">
-                  {m.displayName} {m.status !== 'active' ? <Badge tone="amber">已停用</Badge> : null}
+                  {m.displayName} {m.status !== 'active' ? <Badge tone="amber">{tr('已停用', 'Disabled')}</Badge> : null}
                 </p>
                 <p className="truncate text-xs text-slate-500">
                   {m.email}
-                  {showsEnrollment(m.role) ? ` · ${enrollmentYearLabel(m.graduationYear)} · ${ENROLLMENT_LABELS[m.enrollmentStatus]}` : ''}
+                  {showsEnrollment(m.role) ? ` · ${yearLabel(m.graduationYear)} · ${enrollment(m.enrollmentStatus)}` : ''}
                 </p>
               </div>
               {editable ? (
                 <button type="button" onClick={() => toggleStatus(m)} className="shrink-0 px-1 text-sm font-medium text-red-700">
-                  {m.status === 'active' ? '停用' : '恢复'}
+                  {m.status === 'active' ? tr('停用', 'Disable') : tr('恢复', 'Restore')}
                 </button>
               ) : null}
             </div>
             <div className="mt-2">
               {editable ? (
                 <Select value={m.role} onChange={(e) => setRole(m, e.target.value as Role)} className="py-2">
-                  {ROLE_GROUPS.map((group) => {
-                    const options = group.roles.filter((r) => r === m.role || (canAssignRole(self.role, r) && !heldByOthers.has(r)));
+                  {ROLE_GROUPS.map((roleGroup) => {
+                    const options = roleGroup.roles.filter((r) => r === m.role || (canAssignRole(self.role, r) && !heldByOthers.has(r)));
                     if (options.length === 0) return null;
                     return (
-                      <optgroup key={group.label} label={group.label}>
+                      <optgroup key={roleGroup.label} label={group(roleGroup.label)}>
                         {options.map((r) => (
                           <option key={r} value={r}>
-                            {ROLE_LABELS[r]}
+                            {roleLabel(r)}
                           </option>
                         ))}
                       </optgroup>
@@ -137,9 +147,9 @@ export function RolesPanel() {
                   })}
                 </Select>
               ) : (
-                <Badge tone="brand">{ROLE_LABELS[m.role]}</Badge>
+                <Badge tone="brand">{roleLabel(m.role)}</Badge>
               )}
-              <p className="mt-1 text-xs leading-relaxed text-stone-500">{ROLE_DUTIES[m.role]}</p>
+              <p className="mt-1 text-xs leading-relaxed text-stone-500">{duty(m.role)}</p>
             </div>
             {self.realRole === 'superadmin' && showsEnrollment(m.role) ? (
               <div className="mt-2 grid grid-cols-2 gap-2">
@@ -150,7 +160,7 @@ export function RolesPanel() {
                 >
                   {(YEAR_OPTIONS.includes(m.graduationYear) ? YEAR_OPTIONS : [m.graduationYear, ...YEAR_OPTIONS]).map((y) => (
                     <option key={y} value={y}>
-                      {y} 年入学
+                      {yearLabel(y)}
                     </option>
                   ))}
                 </Select>
@@ -162,7 +172,7 @@ export function RolesPanel() {
                 >
                   {ENROLLMENT_STATUSES.map((status) => (
                     <option key={status} value={status}>
-                      {ENROLLMENT_LABELS[status]}
+                      {enrollment(status)}
                     </option>
                   ))}
                 </Select>

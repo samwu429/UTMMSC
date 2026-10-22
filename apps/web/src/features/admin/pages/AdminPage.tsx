@@ -52,12 +52,15 @@ export function AdminPage() {
   return (
     <div className="space-y-4">
       <BackHeader to="/discover" label={tr('发现', 'Discover')} title={tr('管理', 'Admin')} />
-      <div className="flex gap-5 overflow-x-auto border-b border-stone-200">
+      <div role="tablist" className="flex gap-5 overflow-x-auto border-b border-stone-200">
         {sections.map((s) => (
           <button
             key={s.key}
+            type="button"
+            role="tab"
+            aria-selected={current?.key === s.key}
             onClick={() => setActive(s.key)}
-            className={`-mb-px shrink-0 border-b-[3px] pb-2 text-[15px] ${current?.key === s.key ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
+            className={`-mb-px min-h-11 shrink-0 border-b-[3px] pb-2 pt-3 text-[15px] ${current?.key === s.key ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {tr(s.label, SECTION_EN[s.key] ?? s.label)}
           </button>

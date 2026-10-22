@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { formatStoredMajor, isHonoraryRole, isStaffRole, showsEnrollment, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
+import { isHonoraryRole, isStaffRole, showsEnrollment, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { useLabels } from '../../../shared/i18n/locale';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 
@@ -16,7 +16,7 @@ export function MemberRow({
   onRequest?: () => void;
   onAccept?: () => void;
 }) {
-  const { tr, role, enrollment, year } = useLabels();
+  const { tr, role, enrollment, year, major } = useLabels();
   const title = isStaffRole(member.role) || isHonoraryRole(member.role) ? role(member.role) : null;
   return (
     <div className="flex items-center gap-2 pr-3 active:bg-stone-50">
@@ -27,7 +27,7 @@ export function MemberRow({
             {member.displayName}
             {title ? <span className="ml-1.5 text-xs font-normal text-brand-800">{title}</span> : null}
           </p>
-          <p className="truncate text-sm text-stone-500">{memberLine(member, { enrollment, year })}</p>
+          <p className="truncate text-sm text-stone-500">{memberLine(member, { enrollment, year, major })}</p>
         </div>
       </Link>
       {friendship === 'friends' ? <span className="shrink-0 text-xs text-brand-700">{tr('好友', 'Friends')}</span> : null}
@@ -46,8 +46,11 @@ export function MemberRow({
   );
 }
 
-function memberLine(member: MemberProfile, labels: { enrollment: (status: MemberProfile['enrollmentStatus']) => string; year: (year: number) => string }): string {
-  const programs = showsEnrollment(member.role) ? formatStoredMajor(member.major) : null;
+function memberLine(
+  member: MemberProfile,
+  labels: { enrollment: (status: MemberProfile['enrollmentStatus']) => string; year: (year: number) => string; major: (stored: string | null | undefined) => string | null },
+): string {
+  const programs = showsEnrollment(member.role) ? labels.major(member.major) : null;
   if (member.headline) return [member.headline, programs].filter(Boolean).join(' · ');
   if (!showsEnrollment(member.role)) return '';
   const status = isHonoraryRole(member.role) ? null : labels.enrollment(member.enrollmentStatus);

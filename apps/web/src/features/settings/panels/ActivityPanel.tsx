@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MOMENT_IMAGE_LIMIT, MOMENT_IMAGE_MAX_BYTES, MOMENT_IMAGE_TYPES, MOMENT_VIDEO_MAX_BYTES, MOMENT_VIDEO_TYPES, POST_MAX, type ActivityPost } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { useConfirm } from '../../../shared/ui/confirm';
 import { Button } from '../../../shared/ui/Button';
@@ -14,13 +15,14 @@ import { PostMediaView } from '../../profile/PostMediaView';
 
 function MomentBody({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  const tr = useTr();
   const long = text.length > 140;
   return (
     <div className="mt-1">
       <p className={`whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800 ${long && !open ? 'line-clamp-6' : ''}`}>{text}</p>
       {long ? (
         <button type="button" className="mt-1 text-[15px] text-brand-700" onClick={() => setOpen((value) => !value)}>
-          {open ? '收起' : '全文'}
+          {open ? tr('收起', 'Less') : tr('全文', 'Full text')}
         </button>
       ) : null}
     </div>
@@ -29,6 +31,7 @@ function MomentBody({ text }: { text: string }) {
 
 function Moment({ post, mine, onDelete }: { post: ActivityPost; mine: boolean; onDelete: () => void }) {
   const [menu, setMenu] = useState(false);
+  const tr = useTr();
   return (
     <article className="flex gap-3 px-4 py-3">
       <Link to={`/directory/${post.authorId}`} className="shrink-0">
@@ -46,10 +49,10 @@ function Moment({ post, mine, onDelete }: { post: ActivityPost; mine: boolean; o
             <div className="flex items-center gap-2">
               {menu ? (
                 <button type="button" onClick={onDelete} className="rounded bg-brand-900 px-3 py-1.5 text-xs text-white">
-                  删除
+                  {tr('删除', 'Delete')}
                 </button>
               ) : null}
-              <button type="button" aria-label="更多" onClick={() => setMenu((value) => !value)} className="flex h-8 items-center rounded bg-stone-200/80 px-2 text-xs tracking-widest text-stone-600">
+              <button type="button" aria-label={tr('更多', 'More')} onClick={() => setMenu((value) => !value)} className="flex h-8 items-center rounded bg-stone-200/80 px-2 text-xs tracking-widest text-stone-600">
                 ···
               </button>
             </div>
@@ -73,7 +76,17 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
   const [busy, setBusy] = useState(false);
   const imageRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
+  const tr = useTr();
+  const ask = useConfirm();
   const ready = (text.trim().length > 0 || draft.length > 0) && !busy;
+
+  async function cancel() {
+    if (text.trim() || draft.length > 0) {
+      const ok = await ask({ title: tr('放弃这次编辑？', 'Discard this post?'), confirmLabel: tr('放弃', 'Discard'), danger: true });
+      if (!ok) return;
+    }
+    onCancel();
+  }
   // Free preview URLs if the composer closes with a draft still open.
   // 编辑器关闭时若还有草稿，释放预览地址。
   const draftRef = useRef(draft);
@@ -89,16 +102,16 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
     if (!list || busy) return;
     const files = [...list].filter((file) => (MOMENT_IMAGE_TYPES as readonly string[]).includes(file.type));
     if (files.length < list.length) {
-      setError('照片只支持 JPEG、PNG、WebP、GIF');
+      setError(tr('照片只支持 JPEG、PNG、WebP、GIF', 'Photos must be JPEG, PNG, WebP, or GIF.'));
       return;
     }
     if (files.some((file) => file.size > MOMENT_IMAGE_MAX_BYTES)) {
-      setError('照片不能超过 8MB');
+      setError(tr('照片不能超过 8MB', 'Each photo must be 8 MB or smaller.'));
       return;
     }
     const room = MOMENT_IMAGE_LIMIT - (draft[0]?.kind === 'video' ? 0 : draft.length);
     const picked = files.slice(0, Math.max(room, 0));
-    if (files.length > picked.length) setError(`最多 ${MOMENT_IMAGE_LIMIT} 张照片`);
+    if (files.length > picked.length) setError(tr(`最多 ${MOMENT_IMAGE_LIMIT} 张照片`, `${MOMENT_IMAGE_LIMIT} photos at most.`));
     else setError(null);
     const images = picked.map((file) => ({ file, url: URL.createObjectURL(file), kind: 'image' as const }));
     if (draft[0]?.kind === 'video') clearDraft(images);
@@ -109,11 +122,11 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
     const file = list?.[0];
     if (!file || busy) return;
     if (!(MOMENT_VIDEO_TYPES as readonly string[]).includes(file.type)) {
-      setError('视频只支持 MP4、MOV、WebM');
+      setError(tr('视频只支持 MP4、MOV、WebM', 'Videos must be MP4, MOV, or WebM.'));
       return;
     }
     if (file.size > MOMENT_VIDEO_MAX_BYTES) {
-      setError('视频不能超过 25MB');
+      setError(tr('视频不能超过 25MB', 'The video must be 25 MB or smaller.'));
       return;
     }
     setError(null);
@@ -150,17 +163,17 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
   return (
     <div className="-mb-28 min-h-[100dvh] bg-white">
       <div className="flex items-center justify-between border-b border-stone-200 px-4">
-        <button type="button" onClick={onCancel} className="min-h-11 text-[16px] text-stone-600">
-          取消
+        <button type="button" onClick={() => void cancel()} className="min-h-11 text-[16px] text-stone-600">
+          {tr('取消', 'Cancel')}
         </button>
         <Button type="button" disabled={!ready} loading={busy} onClick={() => void publish()} className="min-h-9 px-4 py-1.5">
-          发表
+          {tr('发表', 'Post')}
         </Button>
       </div>
       <textarea
         value={text}
         maxLength={POST_MAX}
-        placeholder="这一刻的想法…"
+        placeholder={tr('这一刻的想法…', 'What is on your mind…')}
         className="min-h-40 w-full resize-none bg-white px-4 py-4 text-[16px] leading-relaxed text-stone-900 outline-none placeholder:text-stone-400"
         onChange={(event) => setText(event.target.value)}
       />
@@ -169,7 +182,7 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
           {draft.map((item, index) => (
             <div key={item.url} className="relative h-20 w-20 overflow-hidden rounded bg-stone-100">
               {item.kind === 'image' ? <img src={item.url} alt="" className="h-full w-full object-cover" /> : <video src={item.url} className="h-full w-full object-cover" muted />}
-              <button type="button" onClick={() => removeAt(index)} className="absolute right-0 top-0 bg-black/60 px-1.5 text-xs text-white" aria-label="移除">
+              <button type="button" onClick={() => removeAt(index)} className="absolute right-0 top-0 flex h-7 w-7 items-center justify-center bg-black/60 text-sm text-white" aria-label={tr('移除', 'Remove')}>
                 ×
               </button>
             </div>
@@ -183,14 +196,14 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
             <circle cx="9" cy="10" r="1.4" />
             <path d="m4 16 4.5-4 3.2 3.2L15 12l5 4" />
           </svg>
-          照片
+          {tr('照片', 'Photo')}
         </button>
         <button type="button" disabled={busy} onClick={() => videoRef.current?.click()} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-stone-100 text-[15px] font-medium text-brand-800 disabled:text-stone-300">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
             <rect x="3.5" y="6" width="12" height="12" rx="2" />
             <path d="m15.5 10.5 5-2.5v8l-5-2.5v-3Z" />
           </svg>
-          视频
+          {tr('视频', 'Video')}
         </button>
       </div>
       <input ref={imageRef} type="file" accept={MOMENT_IMAGE_TYPES.join(',')} multiple className="hidden" onChange={(event) => { addImages(event.target.files); event.target.value = ''; }} />
@@ -208,6 +221,7 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const ask = useConfirm();
+  const tr = useTr();
 
   useEffect(() => {
     onPushed(composing);
@@ -231,7 +245,7 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
   }, [setMediaToken]);
 
   async function remove(id: string) {
-    const ok = await ask({ title: '删除这条动态？', confirmLabel: '删除', danger: true });
+    const ok = await ask({ title: tr('删除这条动态？', 'Delete this update?'), confirmLabel: tr('删除', 'Delete'), danger: true });
     if (!ok) return;
     setError(null);
     try {
@@ -258,11 +272,11 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
     <div className="bg-white">
       <CoverBanner coverKey={self?.coverKey} tall editable={Boolean(self)}>
         <button type="button" onClick={() => setComposing(true)} className="absolute right-3 top-3 z-10 min-h-10 rounded-full border-t-[3px] border-gold bg-white px-4 text-[15px] font-medium text-brand-800">
-          发表
+          {tr('发表', 'Post')}
         </button>
         {self ? <p className="absolute bottom-6 right-28 left-4 truncate text-right text-[18px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]">{self.displayName}</p> : null}
         {self ? (
-          <button type="button" onClick={onOpenProfile} className="absolute -bottom-8 right-4 z-10" aria-label="我的资料">
+          <button type="button" onClick={onOpenProfile} className="absolute -bottom-8 right-4 z-10" aria-label={tr('我的资料', 'My profile')}>
             <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-16 w-16 text-xl ring-4 ring-white" />
           </button>
         ) : null}
@@ -270,15 +284,15 @@ export function ActivityPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =
       <div className="h-12" />
       <button type="button" onClick={() => setComposing(true)} className="mx-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-white px-3 py-3 text-left ring-1 ring-stone-200 active:bg-stone-50">
         {self ? <MemberAvatar name={self.displayName} avatarKey={self.avatarKey} className="h-10 w-10 text-sm" /> : null}
-        <span className="text-[15px] text-stone-400">这一刻的想法…</span>
+        <span className="text-[15px] text-stone-400">{tr('这一刻的想法…', 'What is on your mind…')}</span>
       </button>
       {error ? <div className="px-4 pb-3 pt-3"><Notice tone="error">{error}</Notice></div> : null}
       {posts === null && !error ? <Spinner /> : null}
       {posts && posts.length === 0 ? (
         <div className="px-4 py-10 text-center">
-          <p className="text-sm text-stone-400">还没有动态</p>
+          <p className="text-sm text-stone-400">{tr('还没有动态', 'No updates yet')}</p>
           <Button type="button" className="mt-4" onClick={() => setComposing(true)}>
-            发表第一条
+            {tr('发表第一条', 'Post the first one')}
           </Button>
         </div>
       ) : null}

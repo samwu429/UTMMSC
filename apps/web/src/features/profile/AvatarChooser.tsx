@@ -1,6 +1,14 @@
 import { useRef } from 'react';
 import { PRESET_AVATARS, presetAvatarKey, type PresetAvatarId, type PresetAvatarMotion } from '@utmmsc/shared';
+import { useTr } from '../../shared/i18n/locale';
 import { Button } from '../../shared/ui/Button';
+
+const AVATAR_EN: Record<PresetAvatarId, string> = {
+  'woman-cute-gold': 'Woman · Cute · Gold',
+  'woman-cool-purple': 'Woman · Cool · Purple',
+  'man-cute-purple': 'Man · Cute · Purple',
+  'man-cool-gold': 'Man · Cool · Gold',
+};
 
 export function AvatarChooser({
   currentKey,
@@ -16,13 +24,14 @@ export function AvatarChooser({
   onRemove: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const tr = useTr();
 
   return (
     <div>
       <div className="space-y-4">
         {PRESET_AVATARS.map((item) => (
           <div key={item.id}>
-            <p className="mb-2 text-sm font-medium text-brand-800">{item.label}</p>
+            <p className="mb-2 text-sm font-medium text-brand-800">{tr(item.label, AVATAR_EN[item.id])}</p>
             <div className="grid grid-cols-2 gap-3">
               {(['animated', 'still'] as const).map((motion) => {
                 const selected = currentKey === presetAvatarKey(item.id, motion);
@@ -34,7 +43,7 @@ export function AvatarChooser({
                       alt=""
                       className={`h-24 w-24 rounded-full object-cover ring-2 ${selected ? 'ring-gold' : 'ring-stone-200'}`}
                     />
-                    <span className={`text-sm ${selected ? 'font-medium text-brand-800' : 'text-stone-500'}`}>{motion === 'animated' ? '动态' : '静态'}</span>
+                    <span className={`text-sm ${selected ? 'font-medium text-brand-800' : 'text-stone-500'}`}>{motion === 'animated' ? tr('动态', 'Animated') : tr('静态', 'Still')}</span>
                   </button>
                 );
               })}
@@ -43,11 +52,11 @@ export function AvatarChooser({
         ))}
       </div>
       <Button type="button" variant="secondary" block className="mt-5" disabled={busy} onClick={() => fileRef.current?.click()}>
-        从相册上传
+        {tr('从相册上传', 'Upload a photo')}
       </Button>
       {currentKey ? (
         <button type="button" disabled={busy} onClick={onRemove} className="mt-3 min-h-11 w-full text-sm text-stone-400 disabled:opacity-50">
-          去掉头像
+          {tr('去掉头像', 'Remove profile photo')}
         </button>
       ) : null}
       <input

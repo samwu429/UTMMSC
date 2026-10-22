@@ -309,10 +309,14 @@ function RoomComposer({
     setQuote(null);
   }, [room, quote]);
 
+  function notifyTooLong() {
+    toast(tr(`消息最多 ${MESSAGE_TEXT_MAX} 字`, `Messages can be at most ${MESSAGE_TEXT_MAX} characters`));
+  }
+
   function insertTarget(target: MentionTarget, replaceTrigger: boolean): boolean {
     const edit = insertMention(latestRef.current.text, readSelection(), target, { replaceTrigger });
     if (!edit) {
-      toast(tr('消息最多 2000 字', 'Messages can be at most 2000 characters'));
+      notifyTooLong();
       return false;
     }
     mentionsRef.current = [...mentionsRef.current, target];
@@ -416,7 +420,10 @@ function RoomComposer({
 
   function insertEmoji(emoji: string) {
     const edit = insertAtSelection(latestRef.current.text, readSelection(), emoji);
-    if (!edit) return;
+    if (!edit) {
+      notifyTooLong();
+      return;
+    }
     applyEdit(edit);
     useDraftsStore.getState().pushRecentEmoji(emoji);
   }
@@ -490,6 +497,13 @@ function RoomComposer({
               value={text}
               maxLength={MESSAGE_TEXT_MAX}
               onChange={onChange}
+              onPaste={(event) => {
+                // maxLength cuts a long paste silently, so say why the end is missing.
+                // maxLength 会悄悄截断过长的粘贴内容，所以提示末尾为什么不见了。
+                const el = event.currentTarget;
+                const kept = el.value.length - (el.selectionEnd - el.selectionStart);
+                if (kept + event.clipboardData.getData('text').length > MESSAGE_TEXT_MAX) notifyTooLong();
+              }}
               onKeyDown={onKeyDown}
               onFocus={onInputFocus}
               onBlur={rememberSelection}

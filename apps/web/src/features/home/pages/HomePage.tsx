@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DailyCardResponse } from '@utmmsc/shared';
-import { formatStoredMajor, isHonoraryRole, showsEnrollment } from '@utmmsc/shared';
+import { isHonoraryRole, showsEnrollment } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
 import { formatEventTime } from '../../../shared/format/time';
@@ -11,9 +11,9 @@ import { MemberAvatar } from '../../profile/InitialAvatar';
 import { homeApi } from '../api';
 
 export function HomePage() {
-  const { tr, role, enrollment, year, locale } = useLabels();
+  const { tr, role, enrollment, year, major, locale } = useLabels();
   const member = useSessionStore((s) => s.member);
-  const programs = member ? formatStoredMajor(member.major) : null;
+  const programs = member ? major(member.major) : null;
   const [card, setCard] = useState<DailyCardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,7 +90,7 @@ export function HomePage() {
 
       <section className="mt-7">
         <h2 className="mb-2 text-[15px] font-medium text-brand-800">{tr('近期活动', 'Upcoming events')}</h2>
-        {!card || card.events.length === 0 ? (
+        {!card ? null : card.events.length === 0 ? (
           <EmptyState>{tr('主席团还没有录入活动', 'The presidium has not added any events')}</EmptyState>
         ) : (
           <List>

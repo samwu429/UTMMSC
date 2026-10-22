@@ -8,6 +8,7 @@ import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
+import { toast } from '../../../shared/ui/toast';
 import { filesApi } from '../api';
 
 export function FilesPage() {
@@ -18,6 +19,7 @@ export function FilesPage() {
   const [files, setFiles] = useState<FileRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const ask = useConfirm();
   const { tr, fileCategory } = useLabels();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,8 +66,11 @@ export function FilesPage() {
   }
 
   // Downloads require the bearer token, so the blob is fetched then handed to a temporary link.
-  // 下载需要 Bearer 令牌，因此先取回 blob 再交给临时链接。
+  // The row says 下载中… meanwhile, so a large file is not tapped again.
+  // 下载需要 Bearer 令牌，因此先取回 blob 再交给临时链接。期间该行显示「下载中…」，大文件不会被重复点击。
   async function download(file: FileRecord) {
+    if (downloadingId) return;
+    setDownloadingId(file.id);
     try {
       const blob = await filesApi.download(file.id);
       const url = URL.createObjectURL(blob);
@@ -75,7 +80,9 @@ export function FilesPage() {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
-      setError(errorMessage(err));
+      toast(errorMessage(err), { ms: 2500 });
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -107,12 +114,15 @@ export function FilesPage() {
           ) : null
         }
       />
-      <div className="flex gap-5 overflow-x-auto border-b border-stone-200">
+      <div role="tablist" className="flex gap-5 overflow-x-auto border-b border-stone-200">
         {FILE_CATEGORIES.map((c) => (
           <button
             key={c}
+            type="button"
+            role="tab"
+            aria-selected={category === c}
             onClick={() => setCategory(c)}
-            className={`-mb-px shrink-0 border-b-[3px] pb-2 text-[15px] ${category === c ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
+            className={`-mb-px min-h-11 shrink-0 border-b-[3px] pb-2 pt-3 text-[15px] ${category === c ? 'border-gold font-medium text-brand-800' : 'border-transparent text-stone-500'}`}
           >
             {fileCategory(c)}
           </button>
@@ -124,7 +134,13 @@ export function FilesPage() {
         <List>
           {files.map((file) => (
             <div key={file.id} className="flex items-center gap-3 py-2 pl-4 pr-2">
-              <button onClick={() => download(file)} className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left">
+              <button
+                type="button"
+                onClick={() => void download(file)}
+                disabled={downloadingId !== null}
+                aria-busy={downloadingId === file.id}
+                className={`flex min-w-0 flex-1 items-center gap-3 py-1 text-left ${downloadingId !== null && downloadingId !== file.id ? 'opacity-60' : ''}`}
+              >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-800">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
                     <path d="M7 3.5h7l5 5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
@@ -134,7 +150,9 @@ export function FilesPage() {
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{file.fileName}</span>
                   <span className="block text-xs text-stone-500">
-                    {formatBytes(file.sizeBytes)} · {file.uploadedBy.displayName} · {formatRelative(file.createdAt)}
+                    {downloadingId === file.id
+                      ? tr(`下载中… ${formatBytes(file.sizeBytes)}`, `Downloading… ${formatBytes(file.sizeBytes)}`)
+                      : `${formatBytes(file.sizeBytes)} · ${file.uploadedBy.displayName} · ${formatRelative(file.createdAt)}`}
                   </span>
                 </span>
               </button>

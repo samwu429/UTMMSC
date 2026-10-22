@@ -162,7 +162,7 @@ export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken,
         kind === 'direct'
           ? tr('删除后，聊天双方都看不到这条消息。', 'Neither person in this chat will be able to see it.')
           : tr('删除后，频道里的所有人都看不到这条消息。', 'No one in the channel will be able to see it.'),
-      confirmLabel: tr('删除', 'Delete'),
+      confirmLabel: tr('删除', 'Remove'),
       danger: true,
     });
     if (ok) actions.removeAsModerator(id);

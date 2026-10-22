@@ -5,6 +5,10 @@ import { useTr } from '../../../shared/i18n/locale';
 import { List, Notice, PageTitle } from '../../../shared/ui/Card';
 import { miniappApi } from '../api';
 
+const SUMMARY_EN: Record<string, string> = {
+  rufree: 'Shared timetables. Import your courses, overlay them with friends, find free time together, and get exam reminders.',
+};
+
 function AppMark({ app }: { app: MiniApp }) {
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-800 text-sm font-semibold text-white">
@@ -63,7 +67,7 @@ export function MiniappsPage() {
   return (
     <div>
       <PageTitle>{tr('小程序', 'Mini apps')}</PageTitle>
-      <p className="-mt-2 mb-6 text-[11px] leading-4 text-stone-400">Maintained and updated by technology department</p>
+      <p className="-mt-2 mb-6 text-[11px] leading-4 text-stone-400">{tr('由技术部维护和更新', 'Maintained and updated by the technology department')}</p>
 
       <section>
         <h2 className="mb-2 text-[15px] font-medium">{tr('我的收藏', 'Pinned')}</h2>
@@ -93,7 +97,7 @@ export function MiniappsPage() {
                   <AppMark app={app} />
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{app.name}</span>
-                    <span className="block truncate text-sm text-stone-500">{app.summary}</span>
+                    <span className="block truncate text-sm text-stone-500">{tr(app.summary, SUMMARY_EN[app.id] ?? app.summary)}</span>
                   </span>
                 </a>
                 <button

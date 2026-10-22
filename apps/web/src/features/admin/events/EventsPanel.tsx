@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { EventRecord } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatEventTime } from '../../../shared/format/time';
+import { useTr } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
 import { Card, EmptyState, Notice } from '../../../shared/ui/Card';
 import { useConfirm } from '../../../shared/ui/confirm';
@@ -17,6 +18,7 @@ export function EventsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ask = useConfirm();
+  const tr = useTr();
 
   useEffect(() => {
     adminApi.events().then((res) => setEvents(res.events)).catch((err) => setError(errorMessage(err)));
@@ -46,7 +48,7 @@ export function EventsPanel() {
   }
 
   async function remove(event: EventRecord) {
-    const ok = await ask({ title: '删除这个活动？', body: event.title, confirmLabel: '删除', danger: true });
+    const ok = await ask({ title: tr('删除这个活动？', 'Delete this event?'), body: event.title, confirmLabel: tr('删除', 'Delete'), danger: true });
     if (!ok) return;
     try {
       await adminApi.deleteEvent(event.id);
@@ -59,28 +61,28 @@ export function EventsPanel() {
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="mb-3 font-semibold">新增活动</h2>
+        <h2 className="mb-3 font-semibold">{tr('新增活动', 'New event')}</h2>
         <form onSubmit={submit} className="space-y-3">
-          <Field label="活动名称">
+          <Field label={tr('活动名称', 'Event name')}>
             <TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} />
           </Field>
-          <Field label="开始时间">
+          <Field label={tr('开始时间', 'Start time')}>
             <TextInput type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
           </Field>
-          <Field label="地点（选填）">
+          <Field label={tr('地点（选填）', 'Location (optional)')}>
             <TextInput value={location} onChange={(e) => setLocation(e.target.value)} maxLength={120} />
           </Field>
-          <Field label="说明（选填）">
+          <Field label={tr('说明（选填）', 'Description (optional)')}>
             <TextArea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
           </Field>
           {error ? <Notice tone="error">{error}</Notice> : null}
           <Button type="submit" block loading={busy} disabled={!title.trim() || !startsAt}>
-            保存活动
+            {tr('保存活动', 'Save event')}
           </Button>
         </form>
       </Card>
       {events.length === 0 ? (
-        <EmptyState>还没有活动</EmptyState>
+        <EmptyState>{tr('还没有活动', 'No events yet')}</EmptyState>
       ) : (
         <div className="space-y-2">
           {events.map((event) => (
@@ -93,7 +95,7 @@ export function EventsPanel() {
                 </p>
               </div>
               <button onClick={() => remove(event)} className="shrink-0 text-sm text-red-600">
-                删除
+                {tr('删除', 'Delete')}
               </button>
             </div>
           ))}

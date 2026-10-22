@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Experience, MemberDetailResponse, MemberSelf, PresetAvatarId, PresetAvatarMotion } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { useConfirm } from '../../../shared/ui/confirm';
 import { Notice, Spinner } from '../../../shared/ui/Card';
@@ -29,6 +30,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const ask = useConfirm();
+  const tr = useTr();
 
   useEffect(() => {
     if (!selfId) return;
@@ -55,7 +57,7 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
   }
 
   async function removeExperience(id: string) {
-    const ok = await ask({ title: '删除这条经历？', confirmLabel: '删除', danger: true });
+    const ok = await ask({ title: tr('删除这条经历？', 'Delete this experience?'), confirmLabel: tr('删除', 'Delete'), danger: true });
     if (!ok) return;
     setError(null);
     try {
@@ -129,37 +131,45 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
         onAddExperience={() => setSheet('experience')}
         onDeleteExperience={removeExperience}
         onShowActivity={onShowActivity}
-        onEditAvatar={() => setSheet('avatar')}
+        onEditAvatar={() => {
+          setError(null);
+          setSheet('avatar');
+        }}
         onCoverSaved={(member) => applyMember(member, false)}
         avatarBusy={avatarBusy}
       />
       {sheet === 'intro' ? (
-        <Sheet title="编辑资料" onClose={() => setSheet(null)}>
+        <Sheet title={tr('编辑资料', 'Edit profile')} onClose={() => setSheet(null)}>
           <IntroEditor member={detail.member} onSaved={(member) => applyMember(member, true)} />
         </Sheet>
       ) : null}
       {sheet === 'about' ? (
-        <Sheet title="编辑简介" onClose={() => setSheet(null)}>
+        <Sheet title={tr('编辑简介', 'Edit about')} onClose={() => setSheet(null)}>
           <AboutEditor member={detail.member} onSaved={(member) => applyMember(member, true)} />
         </Sheet>
       ) : null}
       {sheet === 'open' ? (
-        <Sheet title="正在寻找" onClose={() => setSheet(null)}>
+        <Sheet title={tr('正在寻找', 'Open to')} onClose={() => setSheet(null)}>
           <OpenToEditor member={detail.member} onSaved={(member) => applyMember(member, true)} />
         </Sheet>
       ) : null}
       {sheet === 'skills' ? (
-        <Sheet title="技能" closeLabel="完成" onClose={() => setSheet(null)}>
+        <Sheet title={tr('技能', 'Skills')} closeLabel={tr('完成', 'Done')} onClose={() => setSheet(null)}>
           <SkillsEditor member={detail.member} onChange={(member) => applyMember(member, false)} />
         </Sheet>
       ) : null}
       {sheet === 'avatar' ? (
-        <Sheet title="选择头像" onClose={() => setSheet(null)}>
+        <Sheet title={tr('选择头像', 'Choose profile photo')} onClose={() => setSheet(null)}>
+          {error ? (
+            <div className="mb-3">
+              <Notice tone="error">{error}</Notice>
+            </div>
+          ) : null}
           <AvatarChooser currentKey={detail.member.avatarKey} busy={avatarBusy} onPreset={choosePreset} onUpload={pickAvatar} onRemove={removeAvatar} />
         </Sheet>
       ) : null}
       {sheet === 'experience' ? (
-        <Sheet title="添加经历" onClose={() => setSheet(null)}>
+        <Sheet title={tr('添加经历', 'Add experience')} onClose={() => setSheet(null)}>
           <ExperienceForm onCreated={created} />
         </Sheet>
       ) : null}

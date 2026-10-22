@@ -20,6 +20,7 @@ const RESEND_SECONDS = 60;
 export function CodeField({ email, purpose, value, onChange, onError }: Props) {
   const [seconds, setSeconds] = useState(0);
   const [sending, setSending] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const tr = useTr();
 
   useEffect(() => {
@@ -34,6 +35,7 @@ export function CodeField({ email, purpose, value, onChange, onError }: Props) {
     try {
       await authApi.requestCode({ email, purpose });
       setSeconds(RESEND_SECONDS);
+      setSentTo(email);
     } catch (error) {
       onError(errorMessage(error));
     } finally {
@@ -42,7 +44,10 @@ export function CodeField({ email, purpose, value, onChange, onError }: Props) {
   }
 
   return (
-    <Field label={tr('邮箱验证码', 'Email code')}>
+    <Field
+      label={tr('邮箱验证码', 'Email code')}
+      hint={sentTo !== null && sentTo === email ? tr(`已发送到 ${email}，没收到的话看看垃圾邮件`, `Sent to ${email}. Check your spam folder if it does not arrive.`) : undefined}
+    >
       <div className="flex gap-2">
         <TextInput
           inputMode="numeric"

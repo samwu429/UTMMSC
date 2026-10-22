@@ -1,6 +1,7 @@
-import { useLocaleStore } from '../i18n/locale';
+import { PROGRAM_EN, useLocaleStore } from '../i18n/locale';
 
 const ENGLISH: Record<string, string> = {
+  ...PROGRAM_EN,
   '邮箱或密码不正确': 'The email or password is incorrect.',
   '当前密码不正确': 'The current password is incorrect.',
   '登录已过期，请重新登录': 'Your session expired. Sign in again.',

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { RoomMemberCard } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
+import { useBackToClose } from '../../../shared/ui/overlayHistory';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 import { chatApi } from '../api';
@@ -67,6 +68,7 @@ export function MemberListSheet({ roomId, total, onClose }: { roomId: string; to
   });
 
   useVisualViewportOverlay(rootRef);
+  useBackToClose(onClose);
 
   useLayoutEffect(() => {
     backRef.current?.focus({ preventScroll: true });

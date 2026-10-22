@@ -42,7 +42,7 @@ function ChannelSection({ roomId, info, onViewAll }: { roomId: string; info: Roo
       </InfoGroup>
       <InfoGroup>
         <InfoCell label={tr('频道名称', 'Channel name')} value={info.title} />
-        <InfoCell label={tr('频道公告', 'Notice')} detail={info.description?.trim() ? info.description : tr('暂无公告', 'No notice')} />
+        <InfoCell label={tr('频道简介', 'Description')} detail={info.description?.trim() ? info.description : tr('暂无简介', 'No description')} />
         {history ? <InfoCell label={tr('历史消息', 'Chat history')} value={tr(history.zh, history.en)} /> : null}
       </InfoGroup>
       {info.canManage ? (

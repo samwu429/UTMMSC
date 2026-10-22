@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { ABOUT_MAX, HEADLINE_MAX, LOCATION_MAX, OPEN_TO, OPEN_TO_LABELS, SKILL_MAX_COUNT, SKILL_MAX_LENGTH, encodeProgramSelection, programChoiceState, readStoredProgramCodes, showsEnrollment, type MemberProfile, type MemberSelf, type OpenTo } from '@utmmsc/shared';
+import { ABOUT_MAX, HEADLINE_MAX, LOCATION_MAX, OPEN_TO, SKILL_MAX_COUNT, SKILL_MAX_LENGTH, encodeProgramSelection, programChoiceState, readStoredProgramCodes, showsEnrollment, type MemberProfile, type MemberSelf, type OpenTo } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
+import { useLabels, useTr } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
 import { Notice } from '../../../shared/ui/Card';
 import { Field, TextArea, TextInput } from '../../../shared/ui/Field';
@@ -8,6 +9,7 @@ import { ProgramPicker } from '../../auth/components/ProgramPicker';
 import { profileApi } from '../../profile/api';
 
 export function IntroEditor({ member, onSaved }: { member: MemberProfile; onSaved: (member: MemberSelf) => void }) {
+  const tr = useTr();
   const stored = readStoredProgramCodes(member.major);
   const [headline, setHeadline] = useState(member.headline ?? '');
   const [location, setLocation] = useState(member.location ?? '');
@@ -38,22 +40,23 @@ export function IntroEditor({ member, onSaved }: { member: MemberProfile; onSave
 
   return (
     <form onSubmit={save} className="space-y-4">
-      <Field label="标题">
-        <TextInput value={headline} maxLength={HEADLINE_MAX} placeholder="例如 UTM 计算机 · 在找暑期实习" onChange={(event) => setHeadline(event.target.value)} />
+      <Field label={tr('标题', 'Headline')}>
+        <TextInput value={headline} maxLength={HEADLINE_MAX} placeholder={tr('例如 UTM 计算机 · 在找暑期实习', 'For example, UTM Computer Science · Looking for a summer internship')} onChange={(event) => setHeadline(event.target.value)} />
       </Field>
-      <Field label="所在地">
-        <TextInput value={location} maxLength={LOCATION_MAX} placeholder="多伦多" onChange={(event) => setLocation(event.target.value)} />
+      <Field label={tr('所在地', 'Location')}>
+        <TextInput value={location} maxLength={LOCATION_MAX} placeholder={tr('多伦多', 'Toronto')} onChange={(event) => setLocation(event.target.value)} />
       </Field>
       {campus ? <ProgramPicker programs={programs} onChange={setPrograms} legacyMajor={stored.kind === 'legacy' ? stored.text : null} /> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
       <Button type="submit" block loading={busy} disabled={campus && programs !== null && !choice.ready}>
-        保存
+        {tr('保存', 'Save')}
       </Button>
     </form>
   );
 }
 
 export function AboutEditor({ member, onSaved }: { member: MemberProfile; onSaved: (member: MemberSelf) => void }) {
+  const tr = useTr();
   const [about, setAbout] = useState(member.about ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,16 +77,17 @@ export function AboutEditor({ member, onSaved }: { member: MemberProfile; onSave
 
   return (
     <form onSubmit={save} className="space-y-4">
-      <TextArea value={about} maxLength={ABOUT_MAX} placeholder="你在学什么、做过什么、想认识谁" onChange={(event) => setAbout(event.target.value)} />
+      <TextArea value={about} maxLength={ABOUT_MAX} placeholder={tr('你在学什么、做过什么、想认识谁', 'What you study, what you have done, and who you want to meet')} onChange={(event) => setAbout(event.target.value)} />
       {error ? <Notice tone="error">{error}</Notice> : null}
       <Button type="submit" block loading={busy}>
-        保存
+        {tr('保存', 'Save')}
       </Button>
     </form>
   );
 }
 
 export function OpenToEditor({ member, onSaved }: { member: MemberProfile; onSaved: (member: MemberSelf) => void }) {
+  const { tr, openTo: openToLabel } = useLabels();
   const [openTo, setOpenTo] = useState<OpenTo[]>(member.openTo ?? []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,52 +117,61 @@ export function OpenToEditor({ member, onSaved }: { member: MemberProfile; onSav
           const on = openTo.includes(id);
           return (
             <button key={id} type="button" onClick={() => toggle(id)} className={`min-h-11 rounded-lg px-3 text-[15px] ${on ? 'bg-brand-800 text-white' : 'bg-stone-100 text-stone-700'}`}>
-              {OPEN_TO_LABELS[id]}
+              {openToLabel(id)}
             </button>
           );
         })}
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
       <Button type="submit" block loading={busy}>
-        保存
+        {tr('保存', 'Save')}
       </Button>
     </form>
   );
 }
 
 export function SkillsEditor({ member, onChange }: { member: MemberProfile; onChange: (member: MemberSelf) => void }) {
+  const tr = useTr();
   const [skills, setSkills] = useState<string[]>(member.skills ?? []);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function persist(next: string[]) {
+  async function persist(next: string[]): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
       const res = await profileApi.update({ skills: next });
       setSkills(res.member.skills);
       onChange(res.member);
+      return true;
     } catch (err) {
       setError(errorMessage(err));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  function add() {
+  // The typed skill stays in the box until it is saved, so a failed save does not lose it.
+  // 输入的技能在保存成功前一直留在输入框里，保存失败也不会丢。
+  async function add() {
     const skill = draft.trim();
-    setDraft('');
-    if (!skill || skills.includes(skill) || busy) return;
+    if (!skill || busy) return;
+    if (skills.some((item) => item.toLocaleLowerCase() === skill.toLocaleLowerCase())) {
+      setDraft('');
+      setError(tr('这项技能已经添加过了', 'You already added this skill.'));
+      return;
+    }
     if (skill.length > SKILL_MAX_LENGTH) {
-      setError(`每项不超过 ${SKILL_MAX_LENGTH} 个字`);
+      setError(tr(`每项不超过 ${SKILL_MAX_LENGTH} 个字`, `Each skill can be ${SKILL_MAX_LENGTH} characters at most.`));
       return;
     }
     if (skills.length >= SKILL_MAX_COUNT) {
-      setError(`最多 ${SKILL_MAX_COUNT} 项`);
+      setError(tr(`最多 ${SKILL_MAX_COUNT} 项`, `${SKILL_MAX_COUNT} skills at most.`));
       return;
     }
-    void persist([...skills, skill]);
+    if (await persist([...skills, skill])) setDraft((current) => (current.trim() === skill ? '' : current));
   }
 
   return (
@@ -177,17 +190,18 @@ export function SkillsEditor({ member, onChange }: { member: MemberProfile; onCh
           className="min-w-0 flex-1"
           value={draft}
           maxLength={SKILL_MAX_LENGTH}
-          placeholder="Python、咨询"
+          placeholder={tr('例如 Python', 'e.g. Python')}
+          enterKeyHint="done"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
-              add();
+              void add();
             }
           }}
         />
-        <Button type="button" variant="secondary" onClick={add} loading={busy}>
-          添加
+        <Button type="button" variant="secondary" onClick={() => void add()} loading={busy}>
+          {tr('添加', 'Add')}
         </Button>
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}

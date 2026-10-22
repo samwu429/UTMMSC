@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_LABELS, enrollmentYearLabel, formatStoredMajor, type ManualApplication } from '@utmmsc/shared';
+import type { ManualApplication } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { formatRelative } from '../../../shared/format/time';
+import { useLabels } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { Button } from '../../../shared/ui/Button';
 import { Card, EmptyState, Notice, Spinner } from '../../../shared/ui/Card';
@@ -22,6 +23,7 @@ export function ApprovalsPanel() {
   const [yearRequests, setYearRequests] = useState<YearRequest[] | null>(isSystemAdmin ? null : []);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { tr, enrollment, year, major } = useLabels();
 
   useEffect(() => {
     adminApi.applications().then((res) => setItems(res.applications)).catch((err) => setError(errorMessage(err)));
@@ -59,7 +61,7 @@ export function ApprovalsPanel() {
   }
 
   if (!items || !yearRequests) return error ? <Notice tone="error">{error}</Notice> : <Spinner />;
-  if (items.length === 0 && yearRequests.length === 0) return <EmptyState>没有待审核的申请</EmptyState>;
+  if (items.length === 0 && yearRequests.length === 0) return <EmptyState>{tr('没有待审核的申请', 'No applications waiting for review')}</EmptyState>;
 
   return (
     <div className="space-y-3">
@@ -69,36 +71,39 @@ export function ApprovalsPanel() {
           <p className="font-medium">{request.displayName}</p>
           <p className="text-sm text-slate-600">{request.email}</p>
           <p className="mt-1 text-sm text-slate-700">
-            入学年份 {request.currentYear} 年，申请改为 {request.requestedYear} 年
+            {tr(
+              `入学年份 ${request.currentYear} 年，申请改为 ${request.requestedYear} 年`,
+              `Enrollment year ${request.currentYear}, requested change to ${request.requestedYear}`,
+            )}
           </p>
-          <p className="mt-1 text-xs text-slate-400">{formatRelative(request.createdAt)} 提交</p>
+          <p className="mt-1 text-xs text-slate-400">{tr(`${formatRelative(request.createdAt)} 提交`, `Submitted ${formatRelative(request.createdAt)}`)}</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Button onClick={() => decideYear(request.id, 'approve')} loading={busyId === request.id}>
-              同意
+              {tr('同意', 'Approve')}
             </Button>
             <Button variant="secondary" onClick={() => decideYear(request.id, 'reject')} disabled={busyId === request.id}>
-              拒绝
+              {tr('拒绝', 'Decline')}
             </Button>
           </div>
         </Card>
       ))}
       {items.map((a) => {
-        const programs = formatStoredMajor(a.major);
+        const programs = major(a.major);
         return (
           <Card key={a.id}>
             <p className="font-medium">
-              {a.displayName} <span className="text-sm font-normal text-slate-500">· {enrollmentYearLabel(a.graduationYear)} · {ENROLLMENT_LABELS[a.enrollmentStatus]}</span>
+              {a.displayName} <span className="text-sm font-normal text-slate-500">· {year(a.graduationYear)} · {enrollment(a.enrollmentStatus)}</span>
             </p>
             <p className="text-sm text-slate-600">{a.email}</p>
             {programs ? <p className="text-sm text-slate-600">{programs}</p> : null}
             {a.note ? <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-sm">{a.note}</p> : null}
-            <p className="mt-1 text-xs text-slate-400">{formatRelative(a.createdAt)} 提交</p>
+            <p className="mt-1 text-xs text-slate-400">{tr(`${formatRelative(a.createdAt)} 提交`, `Submitted ${formatRelative(a.createdAt)}`)}</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button onClick={() => decide(a.id, 'approve')} loading={busyId === a.id}>
-                通过
+                {tr('通过', 'Approve')}
               </Button>
               <Button variant="secondary" onClick={() => decide(a.id, 'reject')} disabled={busyId === a.id}>
-                拒绝
+                {tr('拒绝', 'Decline')}
               </Button>
             </div>
           </Card>

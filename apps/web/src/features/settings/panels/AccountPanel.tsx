@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ROLE_GROUPS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, formatStoredMajor, isHonoraryRole, isStaffRole, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
+import { ROLE_GROUPS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isStaffRole, isValidPassword, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels, useLocaleStore } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -106,7 +106,7 @@ function PasswordScreen({ onBack }: { onBack: () => void }) {
           <TextInput type="password" autoComplete="new-password" value={next} onChange={(event) => setNext(event.target.value)} />
         </Field>
         {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}
-        <Button type="submit" block loading={busy}>
+        <Button type="submit" block loading={busy} disabled={!current || !isValidPassword(next)}>
           {tr('更新密码', 'Update password')}
         </Button>
       </form>
@@ -261,7 +261,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const [graduateError, setGraduateError] = useState<string | null>(null);
   const [pendingYear, setPendingYear] = useState<number | null>(null);
   const ask = useConfirm();
-  const { tr, role, group, enrollment, year } = useLabels();
+  const { tr, role, group, enrollment, year, major } = useLabels();
   const locale = useLocaleStore((s) => s.locale);
   const installed = isStandalone();
 
@@ -369,7 +369,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
           />
         ) : null}
         <Row label={tr('状态', 'Status')} value={status} />
-        {campus ? <Row label={tr('专业', 'Program')} value={formatStoredMajor(member.major) ?? tr('尚未选择专业', 'No program selected')} onClick={() => setScreen('programs')} /> : null}
+        {campus ? <Row label={tr('专业', 'Program')} value={major(member.major) ?? tr('尚未选择专业', 'No program selected')} onClick={() => setScreen('programs')} /> : null}
         {campus && !alumni ? (
           <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
             {tr('我已毕业', 'I have graduated')}

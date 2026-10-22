@@ -8,6 +8,7 @@ import {
   programsInDepartment,
   PROGRAM_RULE_SUMMARY,
 } from '@utmmsc/shared';
+import { useLabels } from '../../../shared/i18n/locale';
 
 export function ProgramPicker({
   programs,
@@ -18,6 +19,7 @@ export function ProgramPicker({
   onChange: (next: string[] | null) => void;
   legacyMajor?: string | null;
 }) {
+  const { tr, program: programText } = useLabels();
   const [openId, setOpenId] = useState<string | null>(null);
   const undeclared = programs !== null && programs.length === 0;
   const state = programChoiceState(programs);
@@ -35,9 +37,16 @@ export function ProgramPicker({
 
   return (
     <div className="space-y-2">
-      <p className="text-[13px] font-medium text-stone-600">专业</p>
-      <p className="text-xs leading-relaxed text-stone-500">专业可以随时更改。{PROGRAM_RULE_SUMMARY}</p>
-      {legacyMajor ? <p className="text-xs leading-relaxed text-stone-600">当前记录：{legacyMajor}。重新选择并保存后会替换它。</p> : null}
+      <p className="text-[13px] font-medium text-stone-600">{tr('专业', 'Program')}</p>
+      <p className="text-xs leading-relaxed text-stone-500">
+        {tr('专业可以随时更改。', 'You can change your program anytime. ')}
+        {programText(PROGRAM_RULE_SUMMARY)}
+      </p>
+      {legacyMajor ? (
+        <p className="text-xs leading-relaxed text-stone-600">
+          {tr(`当前记录：${legacyMajor}。重新选择并保存后会替换它。`, `Current entry: ${legacyMajor}. Choosing again and saving replaces it.`)}
+        </p>
+      ) : null}
 
       {programs && programs.length > 0 ? (
         <ul className="divide-y divide-stone-200 overflow-hidden rounded-lg bg-white ring-1 ring-stone-200">
@@ -45,7 +54,7 @@ export function ProgramPicker({
             <li key={code} className="flex items-center gap-3 px-3 py-2.5">
               <span className="min-w-0 flex-1 text-sm leading-snug text-brand-800">{labelFor(code)}</span>
               <button type="button" className="shrink-0 text-sm text-stone-500" onClick={() => toggle(code)}>
-                移除
+                {tr('移除', 'Remove')}
               </button>
             </li>
           ))}
@@ -63,7 +72,7 @@ export function ProgramPicker({
             onChange(event.target.checked ? [] : null);
           }}
         />
-        <span className="text-[15px] text-stone-800">尚未选择专业</span>
+        <span className="text-[15px] text-stone-800">{tr('尚未选择专业', 'No program selected')}</span>
       </label>
 
       <div className={`overflow-hidden rounded-lg bg-white ring-1 ring-stone-200 ${undeclared ? 'pointer-events-none opacity-40' : ''}`}>
@@ -80,7 +89,7 @@ export function ProgramPicker({
                 className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left active:bg-stone-50"
                 onClick={() => setOpenId(open ? null : department.id)}
               >
-                <span className="min-w-0 flex-1 text-[15px] leading-snug text-brand-800">{department.name}</span>
+                <span className="min-w-0 flex-1 text-[15px] leading-snug text-brand-800">{tr(department.nameZh, department.name)}</span>
                 {picked > 0 ? <span className="shrink-0 text-xs font-medium text-brand-700">{picked}</span> : null}
                 <span className={`shrink-0 text-stone-400 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden>
                   ›
@@ -123,7 +132,7 @@ export function ProgramPicker({
       </div>
 
       <p id="program-choice-status" data-program-ready={state.ready ? 'yes' : 'no'} className={`text-xs leading-relaxed ${state.ready ? 'text-brand-800' : 'text-red-700'}`}>
-        {state.message}
+        {programText(state.message)}
       </p>
     </div>
   );

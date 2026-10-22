@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { MemberSelf } from '@utmmsc/shared';
 import { errorMessage } from '../../shared/api/errors';
+import { useTr } from '../../shared/i18n/locale';
 import { useSessionStore } from '../../shared/session/store';
 import { Button } from '../../shared/ui/Button';
 import { Notice } from '../../shared/ui/Card';
@@ -45,6 +46,7 @@ function CoverAdjuster({
   onBack: () => void;
   onUse: (file: File) => void;
 }) {
+  const tr = useTr();
   const frameRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -141,10 +143,12 @@ function CoverAdjuster({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-relaxed text-stone-500">拖动照片，选择露在封面里的部分。上面是动态页，下面是资料页。</p>
-      {failed ? <Notice tone="error">这张照片打不开，请换一张。</Notice> : null}
+      <p className="text-sm leading-relaxed text-stone-500">
+        {tr('拖动照片，选择露在封面里的部分。上面是动态页，下面是资料页。', 'Drag the photo to choose what shows in the cover. The top frame is the updates page, the bottom one is your profile.')}
+      </p>
+      {failed ? <Notice tone="error">{tr('这张照片打不开，请换一张。', 'This photo could not be opened. Choose another one.')}</Notice> : null}
       <div>
-        <p className="mb-1 text-xs text-stone-400">动态</p>
+        <p className="mb-1 text-xs text-stone-400">{tr('动态', 'Updates')}</p>
         <div
           ref={frameRef}
           className="relative w-full touch-none overflow-hidden rounded-lg bg-stone-200 ring-1 ring-stone-300"
@@ -160,13 +164,13 @@ function CoverAdjuster({
       {/* The profile strip is the vertical middle of the moments strip, same as object-cover on the saved photo. */}
       {/* 资料页那条是动态页那条的纵向中间，和保存后页面上的裁切一致。 */}
       <div>
-        <p className="mb-1 text-xs text-stone-400">资料</p>
+        <p className="mb-1 text-xs text-stone-400">{tr('资料', 'Profile')}</p>
         <div className="relative w-full overflow-hidden rounded-lg bg-stone-200 ring-1 ring-stone-300" style={{ height: profileH || 96 }}>
           {image && style ? <img src={image.src} alt="" draggable={false} style={style} /> : null}
         </div>
       </div>
       <label className="block text-sm text-stone-600">
-        缩放
+        {tr('缩放', 'Zoom')}
         <input
           type="range"
           min={1}
@@ -178,10 +182,10 @@ function CoverAdjuster({
         />
       </label>
       <Button block disabled={!image || failed} loading={busy} onClick={() => void confirm()}>
-        使用这张
+        {tr('使用这张', 'Use this photo')}
       </Button>
       <Button block variant="secondary" disabled={busy} onClick={onBack}>
-        重选
+        {tr('重选', 'Choose another')}
       </Button>
     </div>
   );
@@ -200,6 +204,7 @@ export function CoverBanner({
   onSaved?: (member: MemberSelf) => void;
   children?: ReactNode;
 }) {
+  const tr = useTr();
   const token = useSessionStore((s) => s.mediaToken);
   const setMember = useSessionStore((s) => s.setMember);
   const setMediaToken = useSessionStore((s) => s.setMediaToken);
@@ -264,11 +269,11 @@ export function CoverBanner({
           onClick={() => setOpen(true)}
           className={`absolute z-10 inline-flex min-h-9 items-center rounded-full bg-black/40 px-3 text-sm font-medium text-white ${tall ? 'left-3 top-3' : 'right-3 top-3'}`}
         >
-          换封面
+          {tr('换封面', 'Change cover')}
         </button>
       ) : null}
       {open ? (
-        <Sheet title={draft ? '调整封面' : '封面'} onClose={close}>
+        <Sheet title={draft ? tr('调整封面', 'Adjust cover') : tr('封面', 'Cover')} onClose={close}>
           <input
             ref={inputRef}
             type="file"
@@ -287,14 +292,16 @@ export function CoverBanner({
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm leading-relaxed text-stone-500">选完照片后可以先拖动，确认露出的部分，再放到资料页和动态页顶部。</p>
+              <p className="text-sm leading-relaxed text-stone-500">
+                {tr('选完照片后可以先拖动，确认露出的部分，再放到资料页和动态页顶部。', 'After choosing a photo, drag it to set what shows before it goes at the top of your profile and updates page.')}
+              </p>
               {error ? <Notice tone="error">{error}</Notice> : null}
               <Button block onClick={() => inputRef.current?.click()} loading={busy}>
-                选择照片
+                {tr('选择照片', 'Choose photo')}
               </Button>
               {coverKey ? (
                 <Button block variant="secondary" disabled={busy} onClick={() => void clear()}>
-                  恢复默认
+                  {tr('恢复默认', 'Restore default')}
                 </Button>
               ) : null}
             </div>
