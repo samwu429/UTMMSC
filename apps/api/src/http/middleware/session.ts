@@ -1,8 +1,9 @@
 import type { MiddlewareHandler } from 'hono';
 import { hasPermission, type Permission } from '@utmmsc/shared';
 import { readSessionToken } from '../../domain/identity/session-token';
-import { findMemberById, settleEnrollment, sweepGraduations, viewedRole } from '../../infrastructure/d1/members';
+import { findMemberById, sweepGraduations, viewedRole } from '../../infrastructure/d1/members';
 import { isSessionLive } from '../../infrastructure/d1/sessions';
+import { recordGraduations, settleMember } from '../access';
 import type { AppEnv } from '../context';
 import { forbidden, unauthorized } from '../errors';
 
@@ -19,10 +20,11 @@ export const requireSession: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!claims) throw unauthorized('登录已过期，请重新登录');
   const live = await isSessionLive(c.env.DB, claims.sid, claims.mid);
   if (!live) throw unauthorized('登录已失效，请重新登录');
-  await sweepGraduations(c.env.DB);
+  const graduated = await sweepGraduations(c.env.DB);
+  if (graduated.length > 0) c.executionCtx.waitUntil(recordGraduations(c.env, graduated));
   const row = await findMemberById(c.env.DB, claims.mid);
   if (!row || row.status !== 'active') throw unauthorized('账号不可用');
-  const member = await settleEnrollment(c.env.DB, row);
+  const member = await settleMember(c.env, c.executionCtx, row);
   c.set('member', member);
   c.set('sessionId', claims.sid);
   await next();

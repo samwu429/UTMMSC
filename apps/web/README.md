@@ -59,8 +59,8 @@ The chat screens follow WeChat's layout and interaction. Own bubbles use the clu
 - 聊天标签是一个混合频道与私聊的列表，置顶会话在前，其余按最近活动排序。长按或右键某一行可以标为已读或未读、置顶、消息免打扰和不显示该聊天。
 - The room is a column of title bar, timeline and composer pinned to the visual viewport, so the keyboard and the emoji or more panels keep the newest message right above the input and the page never scrolls. The title shows 「频道名(人数)」 or the peer name, never an online count, and a connection line (连接中… / 收取中… / 未连接) only while not connected.
 - 房间由标题栏、时间线和输入栏组成一列，固定在可见视口内，键盘或表情、更多面板弹出时最新消息仍紧贴输入栏，页面本身不会滚动。标题显示「频道名(人数)」或对方名字，不显示在线人数；只有未连接时才显示连接状态（连接中… / 收取中… / 未连接）。
-- A single tap on a bubble does nothing. A 450ms long press, a right-click or the hidden 消息操作 button opens the dark menu: 复制, 引用, 撤回 (within 3 minutes, no confirmation), 删除 (hides it for you on all your devices), 翻译, 删除（管理员） and 禁言 for moderators.
-- 单击气泡没有任何反应。长按 450 毫秒、右键或隐藏的「消息操作」按钮会打开深色菜单：复制、引用、撤回（3 分钟内，无需确认）、删除（只在你自己的所有设备上隐藏）、翻译，管理员另有删除（管理员）和禁言。
+- A single tap on a bubble does nothing. A 450ms long press, a right-click or the hidden 消息操作 button opens the dark menu: 复制, 引用, 撤回 (within 3 minutes, no confirmation), 删除 (hides it for you on all your devices), 翻译, and for moderators in channels 删除（管理员） and 禁言 on members below their tier.
+- 单击气泡没有任何反应。长按 450 毫秒、右键或隐藏的「消息操作」按钮会打开深色菜单：复制、引用、撤回（3 分钟内，无需确认）、删除（只在你自己的所有设备上隐藏）、翻译；在频道中，管理员对档位低于自己的成员另有删除（管理员）和禁言。
 - Entering a room marks everything read while the page is visible. The back button shows the other chats' unread count. More than a screen of unread shows the 「N条新消息」 pill, and an @ shows 「有人@我」.
 - 页面可见时，进入房间即把内容标为已读。返回键显示其他会话的未读数。未读超过一屏时显示「N条新消息」胶囊，有人 @ 时显示「有人@我」。
 - Older pages load from a top sentinel behind a gray spinner and keep the reading position. Reconnects catch up instead of reloading, and sends queue in an outbox, so the composer is never disabled for connectivity.

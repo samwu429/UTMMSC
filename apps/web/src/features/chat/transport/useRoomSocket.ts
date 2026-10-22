@@ -15,6 +15,7 @@ import {
 import { ApiClientError, errorMessage, localizedMessage } from '../../../shared/api/errors';
 import { useLocaleStore } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
+import { refreshMember } from '../../auth/refreshMember';
 import { chatApi } from '../api';
 import type { PendingMessage, RoomController } from '../room/types';
 import { HistoryRequests, planCatchUp, planSync, type HistoryFields, type HistoryPurpose, type HistoryRequest } from './historyRequests';
@@ -57,6 +58,9 @@ const UNTIL_PAGES_MAX = 10;
 const TRIM_KEEP = 200;
 const RECALL_STASH_MS = 5 * 60 * 1000;
 const SYNC_WAIT_MS = 10_000;
+/** Close code the room uses when the member's access changed. */
+/** 成员权限变化时房间使用的关闭码。 */
+const ACCESS_CHANGED_CODE = 4003;
 const SYNC_RETRY_MS = 2_000;
 const SYNC_RETRIES_MAX = 3;
 /** Lock holder for the span from socket open until the first history result is applied. */
@@ -187,7 +191,9 @@ class RoomSession {
   private generation = 0;
   private socket: WebSocket | null = null;
   private attempt = 0;
-  private firstTicket = true;
+  /** The next ticket asks for room meta: on the first connect of a visit and after an access change. */
+  /** 下一张票据需要附带房间 meta：本次进入的首次连接，以及权限变化之后。 */
+  private wantsMeta = true;
   private entrySeen = false;
   /** Set by the first ready of this visit; until then data.capable is only an assumption. */
   /** 本次进入的第一个 ready 帧到达后设置；在此之前 data.capable 只是推测。 */
@@ -454,7 +460,7 @@ class RoomSession {
     this.setData({ status: 'connecting', retrying: false });
     let ticket: RoomTicketResponse;
     try {
-      ticket = await chatApi.ticket(this.roomId, { meta: this.firstTicket });
+      ticket = await chatApi.ticket(this.roomId, { meta: this.wantsMeta });
     } catch (err) {
       if (generation !== this.generation) return;
       const status = err instanceof ApiClientError ? err.status : 0;
@@ -468,7 +474,7 @@ class RoomSession {
       return;
     }
     if (generation !== this.generation) return;
-    if (ticket.room) this.firstTicket = false;
+    if (ticket.room) this.wantsMeta = false;
     this.setData({
       mediaToken: ticket.mediaToken,
       canPost: ticket.canPost !== false,
@@ -517,11 +523,17 @@ class RoomSession {
       const frame = parseServerFrame(parsed);
       if (frame) this.handleFrame(frame);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
       this.onSocketLost();
       if (!this.running || generation !== this.generation) return;
+      if (event.code === ACCESS_CHANGED_CODE) {
+        // Someone changed this member's role or enrollment: reload who they are, and the room's moderation and posting rights.
+        // 有人修改了该成员的身份或在读状态：重新加载成员资料，以及房间的管理和发言权限。
+        this.wantsMeta = true;
+        void refreshMember({ force: true });
+      }
       this.setData({ status: 'closed', retrying: true, loadingOlder: false });
       this.scheduleReconnect();
     };

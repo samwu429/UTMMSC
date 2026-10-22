@@ -4,11 +4,14 @@ import {
   CHAT_IMAGE_TYPES,
   DISPLAY_NAME_MAX,
   MESSAGE_TEXT_MAX,
+  ROLES,
+  canModerateRoom,
   channelRoomId,
   directRoomId,
   hasPermission,
   parseRoomId,
   planTranslation,
+  roleTier,
   type ChannelSummary,
   type ChatOverviewResponse,
   type ChatPrefsResponse,
@@ -31,7 +34,7 @@ import { findChannel, listChannels, listMembershipJoins, type ChannelRow } from 
 import { DEFAULT_CHAT_PREFS, clearMarkedUnread, findPrefs, listPrefs, upsertPrefs } from '../../../infrastructure/d1/chat-prefs';
 import { findDirect, listDirectForMember, openDirect, type DirectRow } from '../../../infrastructure/d1/direct';
 import { areFriends, listFriendIds } from '../../../infrastructure/d1/friends';
-import { findMemberById, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
+import { findMemberById, listMemberIdsWithRoles, viewedActor, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
 import { ROOM_MEMBERS_PAGE_MAX, countRoomMembers, listRoomMembers, type RoomRef } from '../../../infrastructure/d1/room-members';
 import { fetchTranslation, takeTranslateSlot } from '../../../domain/messaging/translate';
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
@@ -90,7 +93,7 @@ function channelAccess(channel: ChannelRow, member: MemberRow, membershipJoinedA
 async function resolveRoomAccess(env: Env, member: MemberRow, roomId: string): Promise<RoomGrant> {
   const parsed = parseRoomId(roomId);
   if (!parsed) throw notFound('房间不存在');
-  const actor = { role: viewedRole(member), enrollmentStatus: member.enrollment_status };
+  const actor = viewedActor(member);
 
   if (parsed.kind === 'channel') {
     const channel = await findChannel(env.DB, parsed.id);
@@ -133,13 +136,22 @@ function roomRefOf(grant: RoomGrant): RoomRef {
 /** 票据的 ?meta=1 与 GET /info 共用，房间标题栏与信息页始终一致。 */
 async function buildRoomMeta(env: Env, member: MemberRow, grant: RoomGrant): Promise<RoomMeta> {
   const role = viewedRole(member);
-  const [memberCount, prefs] = await Promise.all([countRoomMembers(env.DB, roomRefOf(grant)), findPrefs(env.DB, member.id, grant.roomId)]);
+  const canModerate = canModerateRoom(grant.kind, role);
+  // Everyone at or above the viewer's tier, so the message menu leaves out what the room would refuse.
+  // 档位不低于观看者的所有成员，消息菜单据此省略房间会拒绝的操作。
+  const exemptRoles = canModerate && role !== 'superadmin' ? ROLES.filter((r) => roleTier(r) >= roleTier(role)) : [];
+  const [memberCount, prefs, exempt] = await Promise.all([
+    countRoomMembers(env.DB, roomRefOf(grant)),
+    findPrefs(env.DB, member.id, grant.roomId),
+    listMemberIdsWithRoles(env.DB, exemptRoles),
+  ]);
   const base = {
     roomId: grant.roomId,
     kind: grant.kind,
     memberCount,
     canPost: grant.canPost,
-    canModerate: hasPermission(role, 'chat.moderate'),
+    canModerate,
+    ...(exempt.length > 0 ? { moderationExempt: exempt } : {}),
     canManage: hasPermission(role, 'channels.manage'),
     prefs,
   };
@@ -179,7 +191,7 @@ function decodeCursor(cursor: string | undefined): { name: string; id: string } 
 
 chatRoutes.get('/overview', requireSession, async (c) => {
   const member = c.get('member');
-  const actor = { role: viewedRole(member), enrollmentStatus: member.enrollment_status };
+  const actor = viewedActor(member);
   const [channels, memberships, implicitJoins, direct, friendIds, prefs] = await Promise.all([
     listChannels(c.env.DB),
     listMembershipJoins(c.env.DB, member.id),
@@ -307,8 +319,8 @@ chatRoutes.post('/rooms/:roomId/ticket', requireSession, async (c) => {
     mediaToken,
     canPost: grant.canPost,
   };
-  // Only the first ticket of a screen asks for meta; reconnects and media refreshes skip the extra queries.
-  // 只有进入页面时的第一张票据会请求 meta；重连和媒体令牌刷新不做这些额外查询。
+  // Only the first ticket of a screen, and the reconnect after an access change, ask for meta; other reconnects and media refreshes skip the extra queries.
+  // 只有进入页面时的第一张票据和权限变化后的重连会请求 meta；其他重连和媒体令牌刷新不做这些额外查询。
   if (c.req.query('meta') === '1') response.room = await buildRoomMeta(c.env, member, grant);
   return c.json(response);
 });

@@ -5,6 +5,7 @@ export * from './identity/profile';
 export * from './identity/friends';
 export * from './chat/protocol';
 export * from './chat/recall';
+export * from './chat/moderation';
 export * from './chat/translate';
 export * from './chat/rooms';
 export * from './files/categories';

@@ -64,8 +64,8 @@ Channels follow WeChat: a member who joins a channel after the policy started se
 
 频道规则与微信一致：在策略生效之后加入频道的成员，只能看到加入之后的消息。下限由 Worker 计算并写进房间票据；房间在每一页历史、每次补齐、每个引用、未读数和列表预览中都执行它。
 
-- Join time comes from `channel_memberships.joined_at` for custom channels. For audience channels it comes from `channel_joins` (written when an admin role or enrollment change makes the member newly eligible), or else the later of the member's and the channel's creation time.
-- 指定成员频道的加入时间取 `channel_memberships.joined_at`。受众频道取 `channel_joins`（管理员修改身份或在读状态、使成员新获得资格时写入），没有时取成员创建时间与频道创建时间中较晚的一个。
+- Join time comes from `channel_memberships.joined_at` for custom channels. For audience channels it comes from `channel_joins` (written when a role or enrollment change, including self-reported and automatic graduation, or the restoring of a disabled account makes the member newly eligible), or else the later of the member's and the channel's creation time. Every such change also closes the member's sockets so the next ticket re-checks access.
+- 指定成员频道的加入时间取 `channel_memberships.joined_at`。受众频道取 `channel_joins`（身份或在读状态变化，包括自己申报毕业和自动毕业，或恢复已停用的账号，使成员新获得资格时写入），没有时取成员创建时间与频道创建时间中较晚的一个。每次这样的变化还会关闭该成员的连接，下一张票据会重新校验权限。
 - Members whose join is earlier than `channels.history_floor_since` are grandfathered and keep the full history. Migration 0013 sets that instant for every existing channel, new channels use their creation time, and switching a channel back to since_join moves it to now.
 - 加入时间早于 `channels.history_floor_since` 的成员保留完整历史。迁移 0013 为所有现有频道设置该时刻，新频道使用创建时间，频道切回 since_join 时该时刻更新为当前时间。
 - Staff can turn on 新成员可查看历史消息 (`history_visibility = 'all'`) per channel. Members whose viewed role has `channels.manage` are never floored, and direct messages never have a floor.

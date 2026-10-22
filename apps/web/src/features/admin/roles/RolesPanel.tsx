@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENROLLMENT_STATUSES, ROLE_GROUPS, canAssignRole, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isOfficeRole, roleTier, shouldGraduate, showsEnrollment, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, ROLE_GROUPS, canAssignRole, canHoldEnrollment, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isOfficeRole, roleTier, shouldGraduate, showsEnrollment, type AdminMemberRow, type EnrollmentStatus, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -35,8 +35,8 @@ export function RolesPanel() {
     if (!ok) return;
     setError(null);
     try {
-      await adminApi.setRole(member.id, role);
-      setMembers((prev) => (prev ?? []).map((m) => (m.id === member.id ? { ...m, role } : m)));
+      const res = await adminApi.setRole(member.id, role);
+      setMembers((prev) => (prev ?? []).map((m) => (m.id === member.id ? { ...m, role, enrollmentStatus: res.enrollmentStatus ?? m.enrollmentStatus } : m)));
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -63,7 +63,7 @@ export function RolesPanel() {
   async function setEnrollment(member: AdminMemberRow, year: number, status: EnrollmentStatus) {
     if (year === member.graduationYear && status === member.enrollmentStatus) return;
     const due = shouldGraduate(year, 'student');
-    const nextStatus: EnrollmentStatus = due ? 'alumni' : status;
+    const nextStatus: EnrollmentStatus = due || !canHoldEnrollment(member.role, status) ? 'alumni' : status;
     const ok = await ask({
       title: tr(`把入学年份改为 ${year}？`, `Change the enrollment year to ${year}?`),
       body: due
@@ -109,7 +109,13 @@ export function RolesPanel() {
       </p>
       <TextInput placeholder={tr('搜索姓名或邮箱', 'Search name or email')} value={filter} onChange={(e) => setFilter(e.target.value)} />
       {visible.map((m) => {
-        const heldByOthers = new Set(members.filter((other) => other.id !== m.id && isOfficeRole(other.role)).map((other) => other.role));
+        // As on the server, only active holders occupy an office.
+        // 与服务端一致，只有在用的任职者占用职位。
+        const heldByOthers = new Set(members.filter((other) => other.id !== m.id && other.status === 'active' && isOfficeRole(other.role)).map((other) => other.role));
+        const graduated = shouldGraduate(m.graduationYear, 'student');
+        // Five years after enrollment, and for honorary advisors, the status can only be alumni.
+        // 入学满五年后，以及荣誉顾问，状态只能是毕业生。
+        const statusLocked = graduated || !canHoldEnrollment(m.role, 'student');
         const editable = m.id !== self.id && (self.role === 'superadmin' || (roleTier(m.role) < roleTier(self.role) && !isHonoraryRole(m.role)));
         return (
           <div key={m.id} className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
@@ -138,7 +144,7 @@ export function RolesPanel() {
                     return (
                       <optgroup key={roleGroup.label} label={group(roleGroup.label)}>
                         {options.map((r) => (
-                          <option key={r} value={r}>
+                          <option key={r} value={r} disabled={r !== m.role && r === 'student' && graduated}>
                             {roleLabel(r)}
                           </option>
                         ))}
@@ -165,8 +171,8 @@ export function RolesPanel() {
                   ))}
                 </Select>
                 <Select
-                  value={shouldGraduate(m.graduationYear, 'student') ? 'alumni' : m.enrollmentStatus}
-                  disabled={shouldGraduate(m.graduationYear, 'student')}
+                  value={statusLocked ? 'alumni' : m.enrollmentStatus}
+                  disabled={statusLocked}
                   onChange={(e) => void setEnrollment(m, m.graduationYear, e.target.value as EnrollmentStatus)}
                   className="py-2"
                 >

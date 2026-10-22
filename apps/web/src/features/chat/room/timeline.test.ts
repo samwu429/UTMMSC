@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeChatMessage, type ChatMessage, type NormalizedChatMessage } from '@utmmsc/shared';
-import { buildTimeline, messageActions, quoteFrom, spokenPreview, translatorFor, type MessageActionInput, type TimelineInput, type TimelineItem } from './timeline';
+import { buildTimeline, canModerateAuthor, messageActions, quoteFrom, spokenPreview, translatorFor, type MessageActionInput, type TimelineInput, type TimelineItem } from './timeline';
 import type { PendingMessage } from './types';
 
 /**
@@ -246,6 +246,22 @@ describe('messageActions', () => {
   it('offers only copy on a pending row and nothing text-based on an image', () => {
     expect(messageActions({ ...base, pending: true, own: true })).toEqual(['copy']);
     expect(messageActions({ ...base, text: '' })).toEqual(['quote', 'hide']);
+  });
+});
+
+describe('canModerateAuthor', () => {
+  const exempt = new Set(['mem_admin', 'mem_peer']);
+
+  it('leaves out moderation of members the room would refuse', () => {
+    expect(canModerateAuthor(true, false, 'mem_admin', exempt)).toBe(false);
+    expect(canModerateAuthor(true, false, 'mem_peer', exempt)).toBe(false);
+    expect(canModerateAuthor(true, false, 'mem_student', exempt)).toBe(true);
+  });
+
+  it('keeps the viewer’s own rows and never adds moderation without the permission', () => {
+    expect(canModerateAuthor(true, true, 'mem_peer', exempt)).toBe(true);
+    expect(canModerateAuthor(false, false, 'mem_student', exempt)).toBe(false);
+    expect(canModerateAuthor(true, false, 'mem_student', new Set())).toBe(true);
   });
 });
 

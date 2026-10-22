@@ -180,6 +180,22 @@ describe('store', () => {
     await forced;
   });
 
+  it('runs a forced refresh asked for during a poll once that poll settles', async () => {
+    const { api, overviews } = fakeApi();
+    const store = createOverviewStore(api, now);
+    const poll = store.getState().refresh();
+    const forced = store.getState().refresh({ force: true });
+    expect(overviews).toHaveLength(1);
+    const before = sample();
+    before.channels = before.channels.slice(0, 1);
+    overviews[0]?.resolve(before);
+    await Promise.all([poll, forced]);
+    expect(overviews).toHaveLength(2);
+    overviews[1]?.resolve(sample());
+    await vi.waitFor(() => expect(store.getState().data?.channels).toHaveLength(3));
+    expect(store.getState().syncing).toBe(false);
+  });
+
   it('keeps data and flags offline when a refresh fails on the network', async () => {
     const { api, overviews } = fakeApi();
     const store = createOverviewStore(api, now);

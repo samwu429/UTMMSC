@@ -205,7 +205,6 @@ export function createOverviewStore(api: OverviewApi, now: () => number = Date.n
   let generation = 0;
   let seq = 0;
   let inflight: Promise<void> | null = null;
-  let inflightSeq = 0;
   let again: RefreshOptions | null = null;
   let lastStartedAt: number | null = null;
   let pollers = 0;
@@ -242,7 +241,6 @@ export function createOverviewStore(api: OverviewApi, now: () => number = Date.n
     function load(options: RefreshOptions): Promise<void> {
       const startGeneration = generation;
       const startSeq = seq;
-      inflightSeq = startSeq;
       lastStartedAt = now();
       if (options.resume || !get().data) set({ syncing: true });
       const run = api
@@ -273,9 +271,10 @@ export function createOverviewStore(api: OverviewApi, now: () => number = Date.n
       if (!useSessionStore.getState().token) return Promise.resolve();
       if (inflight) {
         if (options.resume) set({ syncing: true });
-        // A forced refresh asked for after a local change must not settle for a reply that predates it.
-        // 本地改动之后要求的强制刷新，不能满足于在改动之前发出的请求结果。
-        if (options.force && seq > inflightSeq) again = { force: true, resume: options.resume || again?.resume };
+        // A forced refresh follows something the request in flight may predate, such as a local change or a role
+        // switch, so it runs again once that request settles instead of sharing its reply.
+        // 强制刷新针对的变化（例如本地改动或切换身份）可能晚于正在进行的请求，所以等该请求结束后再加载一次，而不是共用它的结果。
+        if (options.force) again = { force: true, resume: options.resume || again?.resume };
         return inflight;
       }
       const started = lastStartedAt;
@@ -417,7 +416,10 @@ export function bindOverviewToSession(store: OverviewStore): () => void {
       store.getState().reset();
       return;
     }
-    if (prev.member && state.member && prev.member.role !== state.member.role) void store.getState().refresh({ force: true });
+    // Channel access follows role and enrollment, so a change to either reloads the list.
+    // 频道权限取决于身份和在读状态，任一变化都重新加载列表。
+    const accessChanged = prev.member && state.member && (prev.member.role !== state.member.role || prev.member.enrollmentStatus !== state.member.enrollmentStatus);
+    if (accessChanged) void store.getState().refresh({ force: true });
   });
 }
 

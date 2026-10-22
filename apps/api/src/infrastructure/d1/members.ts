@@ -1,4 +1,4 @@
-import { OPEN_TO, ROLES, enrollmentCalendarYear, shouldGraduate, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
+import { canHoldEnrollment, enrollmentForRole, OPEN_TO, ROLES, enrollmentCalendarYear, shouldGraduate, type EnrollmentStatus, type MemberProfile, type MemberSelf, type MemberStatus, type OpenTo, type Role } from '@utmmsc/shared';
 import { randomId } from '../../domain/crypto/encoding';
 import { nowIso } from './time';
 
@@ -47,6 +47,23 @@ export function viewedRole(row: Pick<MemberRow, 'role' | 'acting_role'>): Role {
   return row.role;
 }
 
+/**
+ * Enrollment as seen through the acting role. A system admin testing as 毕业生 must also count as alumni,
+ * or audience channels would still follow their real enrollment and show the wrong channels.
+ * 按测试身份看到的在读状态。系统管理员以毕业生身份测试时也必须算作毕业生，否则受众频道仍按其真实在读状态显示，频道就会出错。
+ */
+export function viewedEnrollment(row: Pick<MemberRow, 'role' | 'acting_role' | 'enrollment_status'>): EnrollmentStatus {
+  const role = viewedRole(row);
+  if (role === row.role) return row.enrollment_status;
+  return enrollmentForRole(role) ?? row.enrollment_status;
+}
+
+/** Role and enrollment for channel access checks, both through the acting role. */
+/** 用于频道权限判断的身份与在读状态，二者都按测试身份计算。 */
+export function viewedActor(row: Pick<MemberRow, 'role' | 'acting_role' | 'enrollment_status'>): { role: Role; enrollmentStatus: EnrollmentStatus } {
+  return { role: viewedRole(row), enrollmentStatus: viewedEnrollment(row) };
+}
+
 export function toProfile(row: MemberRow): MemberProfile {
   return {
     id: row.id,
@@ -70,6 +87,7 @@ export function toSelf(row: MemberRow): MemberSelf {
   return {
     ...toProfile(row),
     role: viewedRole(row),
+    enrollmentStatus: viewedEnrollment(row),
     realRole: row.role,
     actingRole: row.role === 'superadmin' ? acting : null,
     email: row.email,
@@ -159,8 +177,36 @@ export async function updatePasswordHash(db: D1Database, memberId: string, passw
   await db.prepare('UPDATE members SET password_hash = ?, updated_at = ? WHERE id = ?').bind(passwordHash, nowIso(), memberId).run();
 }
 
-export async function updateMemberRole(db: D1Database, memberId: string, role: Role): Promise<void> {
-  await db.prepare('UPDATE members SET role = ?, updated_at = ? WHERE id = ?').bind(role, nowIso(), memberId).run();
+/**
+ * Role and enrollment are written together so a member-status role never disagrees with enrollment. A
+ * real role change also drops any test identity, so a demoted system admin cannot get it back on re-promotion.
+ * 身份与在读状态一起写入，成员身份类的身份不会与在读状态矛盾。真实身份改变时同时清除测试身份，被降职的系统管理员再次升任时不会恢复旧的测试身份。
+ */
+export async function updateMemberRole(db: D1Database, memberId: string, role: Role, enrollmentStatus: EnrollmentStatus): Promise<void> {
+  // SQLite evaluates every SET expression against the row before the update, so `role` here is the old role.
+  // SQLite 用更新之前的行计算每个 SET 表达式，所以这里的 `role` 是原来的身份。
+  await db
+    .prepare('UPDATE members SET acting_role = CASE WHEN role = ? THEN acting_role ELSE NULL END, role = ?, enrollment_status = ?, updated_at = ? WHERE id = ?')
+    .bind(role, role, enrollmentStatus, nowIso(), memberId)
+    .run();
+}
+
+/** The stored role, or null when the member no longer exists. */
+/** 库中存储的身份；成员已不存在时为 null。 */
+export async function findMemberRole(db: D1Database, memberId: string): Promise<Role | null> {
+  const row = await db.prepare('SELECT role FROM members WHERE id = ?').bind(memberId).first<{ role: Role }>();
+  return row?.role ?? null;
+}
+
+/** Ids of members whose stored role is one of these. Meant for office and system roles, which few members hold. */
+/** 存储身份属于这些身份之一的成员 id。用于职位和系统身份，持有者很少。 */
+export async function listMemberIdsWithRoles(db: D1Database, roles: readonly Role[]): Promise<string[]> {
+  if (roles.length === 0) return [];
+  const result = await db
+    .prepare(`SELECT id FROM members WHERE role IN (${roles.map(() => '?').join(', ')}) LIMIT 200`)
+    .bind(...roles)
+    .all<{ id: string }>();
+  return result.results.map((row) => row.id);
 }
 
 export async function updateMemberStatus(db: D1Database, memberId: string, status: MemberStatus): Promise<void> {
@@ -171,50 +217,88 @@ export async function updateActingRole(db: D1Database, memberId: string, actingR
   await db.prepare('UPDATE members SET acting_role = ?, updated_at = ? WHERE id = ?').bind(actingRole, nowIso(), memberId).run();
 }
 
-/** Writes alumni for every student whose enrollment year is five or more years ago. */
-/** 把入学已满五年的在校生写成毕业生。 */
-export async function graduateDueMembers(db: D1Database, now: Date = new Date()): Promise<void> {
-  await db
+/** The fields that decide channel access, before or after an enrollment change. */
+/** 决定频道权限的字段，用于在读状态变化之前或之后。 */
+export type EnrollmentRow = Pick<MemberRow, 'id' | 'role' | 'acting_role' | 'enrollment_status'>;
+
+export interface Graduation {
+  before: EnrollmentRow;
+  after: EnrollmentRow;
+}
+
+/**
+ * Students graduated per sweep. Each one then costs a join update and a socket revocation, so a sweep
+ * stays small and a full batch lets the next request continue.
+ * 每次处理的毕业人数。每人之后还要更新加入时间并关闭连接，所以每次只处理少量，满批时由下一个请求继续。
+ */
+const SWEEP_BATCH = 20;
+
+/**
+ * Writes alumni for up to `limit` students whose enrollment year is five or more years ago, and returns
+ * each one before and after, with `more` set when others may still be due.
+ * 把至多 `limit` 名入学已满五年的在校生写成毕业生，返回每人变更前后的行；可能还有未处理的成员时 `more` 为 true。
+ */
+export async function graduateDueMembers(db: D1Database, now: Date = new Date(), limit: number = SWEEP_BATCH): Promise<{ graduated: Graduation[]; more: boolean }> {
+  const due = await db
+    .prepare("SELECT id, role, acting_role, enrollment_status FROM members WHERE enrollment_status = 'student' AND graduation_year <= ? LIMIT ?")
+    .bind(enrollmentCalendarYear(now) - 5, limit)
+    .all<EnrollmentRow>();
+  if (due.results.length === 0) return { graduated: [], more: false };
+  const before = new Map(due.results.map((row) => [row.id, row]));
+  const ids = [...before.keys()];
+  const updated = await db
     .prepare(
       `UPDATE members
        SET enrollment_status = 'alumni',
            role = CASE WHEN role = 'student' THEN 'alumni' ELSE role END,
            updated_at = ?
-       WHERE enrollment_status = 'student'
-         AND graduation_year <= ?`,
+       WHERE id IN (${ids.map(() => '?').join(', ')}) AND enrollment_status = 'student'
+       RETURNING id, role, acting_role, enrollment_status`,
     )
-    .bind(nowIso(), enrollmentCalendarYear(now) - 5)
-    .run();
+    .bind(nowIso(), ...ids)
+    .all<EnrollmentRow>();
+  const graduated: Graduation[] = [];
+  for (const after of updated.results) {
+    const previous = before.get(after.id);
+    if (previous) graduated.push({ before: previous, after });
+  }
+  return { graduated, more: due.results.length === limit };
 }
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 let lastSweepAt = 0;
 
 /**
- * Runs the full-table graduation sweep at most once an hour per isolate, so ordinary requests do
- * not each pay for a write. The member making the request is settled individually.
- * 每个隔离实例每小时最多做一次全表毕业处理，普通请求不必每次都写库。发起请求的成员单独处理。
+ * Runs the graduation sweep at most once an hour per isolate, so ordinary requests do not each pay for a
+ * write, and returns who it graduated. The member making the request is settled individually.
+ * 每个隔离实例每小时最多做一次毕业处理，普通请求不必每次都写库；返回本次写成毕业生的成员。发起请求的成员单独处理。
  */
-export async function sweepGraduations(db: D1Database, now: Date = new Date()): Promise<void> {
-  if (now.getTime() - lastSweepAt < SWEEP_INTERVAL_MS) return;
+export async function sweepGraduations(db: D1Database, now: Date = new Date()): Promise<Graduation[]> {
+  if (now.getTime() - lastSweepAt < SWEEP_INTERVAL_MS) return [];
   lastSweepAt = now.getTime();
-  await graduateDueMembers(db, now);
+  const { graduated, more } = await graduateDueMembers(db, now);
+  if (more) lastSweepAt = 0;
+  return graduated;
 }
 
-/** Graduates this member if due and returns the row with that change applied. */
-/** 若该成员已满五年则写成毕业生，并返回更新后的行。 */
-export async function settleEnrollment(db: D1Database, member: MemberRow, now: Date = new Date()): Promise<MemberRow> {
-  if (!shouldGraduate(member.graduation_year, member.enrollment_status, now)) return member;
-  await markGraduated(db, member.id);
+/**
+ * Graduates this member if due and returns the row with that change applied. `graduated` is true only
+ * when this call wrote the change, so the follow-up work runs once.
+ * 若该成员已满五年则写成毕业生，并返回更新后的行。只有本次调用写入了变更时 `graduated` 才为 true，后续处理因此只执行一次。
+ */
+export async function settleEnrollment(db: D1Database, member: MemberRow, now: Date = new Date()): Promise<{ member: MemberRow; graduated: boolean }> {
+  if (!shouldGraduate(member.graduation_year, member.enrollment_status, now)) return { member, graduated: false };
+  const graduated = await markGraduated(db, member.id);
   return {
-    ...member,
-    enrollment_status: 'alumni',
-    role: member.role === 'student' ? 'alumni' : member.role,
+    member: { ...member, enrollment_status: 'alumni', role: member.role === 'student' ? 'alumni' : member.role },
+    graduated,
   };
 }
 
-export async function markGraduated(db: D1Database, memberId: string): Promise<void> {
-  await db
+/** Returns true when this call changed the row, false when the member was already alumni. */
+/** 本次调用修改了该行时返回 true；成员已是毕业生时返回 false。 */
+export async function markGraduated(db: D1Database, memberId: string): Promise<boolean> {
+  const result = await db
     .prepare(
       `UPDATE members
        SET enrollment_status = 'alumni',
@@ -224,12 +308,17 @@ export async function markGraduated(db: D1Database, memberId: string): Promise<v
     )
     .bind(nowIso(), memberId)
     .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
-/** System admin correction. A year that is already five years old forces alumni. */
-/** 系统管理员更正。入学已满五年时，状态固定为毕业生。 */
+/**
+ * System admin correction. A year that is already five years old forces alumni. Callers check
+ * canHoldEnrollment first; a status the role cannot hold is refused here as well.
+ * 系统管理员更正。入学已满五年时，状态固定为毕业生。调用方应先检查 canHoldEnrollment；该身份不能持有的状态在这里同样被拒绝。
+ */
 export async function correctEnrollment(db: D1Database, member: MemberRow, year: number, status: EnrollmentStatus): Promise<void> {
   const nextStatus: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : status;
+  if (!canHoldEnrollment(member.role, nextStatus)) throw new Error(`role ${member.role} cannot hold enrollment ${nextStatus}`);
   const nextRole: Role =
     member.role === 'student' && nextStatus === 'alumni'
       ? 'alumni'

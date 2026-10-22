@@ -11,8 +11,9 @@ import {
   insertPost,
   listFeed,
 } from '../../../infrastructure/d1/profile';
-import { findMemberById, markGraduated, toSelf, updateAvatarKey, updateCoverKey, updateProfile, type MemberRow, type ProfileUpdate } from '../../../infrastructure/d1/members';
-import { announceAuthor } from '../../rooms';
+import { findMemberById, markGraduated, toSelf, updateAvatarKey, updateCoverKey, updateProfile, viewedRole, type MemberRow, type ProfileUpdate } from '../../../infrastructure/d1/members';
+import { recordJoinChanges } from '../../access';
+import { announceAuthor, revokeMemberEverywhere } from '../../rooms';
 import { cancelPendingYearRequest, findPendingYearRequest, savePendingYearRequest } from '../../../infrastructure/d1/enrollment-requests';
 import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
@@ -170,8 +171,14 @@ profileRoutes.delete('/me/enrollment-year-request', async (c) => {
 
 profileRoutes.post('/me/graduate', async (c) => {
   const member = c.get('member');
+  // A test identity changes only what the system admin sees, so it must not write their real enrollment.
+  // 测试身份只改变系统管理员看到的内容，不能借此改写其真实的在读状态。
+  if (viewedRole(member) !== member.role) throw badRequest('acting_role', '测试身份下不能修改自己的在读状态');
   if (member.enrollment_status !== 'student') throw badRequest('already_alumni', '已经是毕业生');
-  await markGraduated(c.env.DB, member.id);
+  if (await markGraduated(c.env.DB, member.id)) {
+    await recordJoinChanges(c.env, member);
+    c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, member.id));
+  }
   const updated = await findMemberById(c.env.DB, member.id);
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });

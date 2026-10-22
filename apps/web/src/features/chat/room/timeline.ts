@@ -164,6 +164,15 @@ export interface MessageActionInput {
   nowMs: number;
 }
 
+/**
+ * Whether the moderation items apply to one message. The room refuses moderation of members at or above
+ * the viewer's tier, so their rows offer it only when they are the viewer's own.
+ * 管理操作是否适用于某条消息。房间会拒绝处理档位不低于观看者的成员，所以这些成员的消息只有是观看者自己的才提供管理操作。
+ */
+export function canModerateAuthor(canModerate: boolean, own: boolean, authorId: string, exempt: ReadonlySet<string>): boolean {
+  return canModerate && (own || !exempt.has(authorId));
+}
+
 /** Popover items in WeChat order. Items that do not apply are left out, never greyed out. */
 /** 按微信顺序排列的浮层操作。不适用的项直接省略，而不是置灰。 */
 export function messageActions(input: MessageActionInput): MessageActionId[] {

@@ -1,3 +1,5 @@
+import type { EnrollmentStatus } from './member';
+
 /**
  * Offices follow the constitution: four Presidium officers and five Department Heads.
  * A member holds one role. The admin screen assigns that role and never edits raw permissions.
@@ -127,6 +129,29 @@ export function roleTier(role: Role): number {
 /** 章程职位同时只能有一人。在校、毕业、荣誉顾问和系统账号不限人数。 */
 export function isOfficeRole(role: Role): boolean {
   return roleTier(role) === 1 || roleTier(role) === 2;
+}
+
+/**
+ * The enrollment status a role implies. 在校生 means a current student; 毕业生 and both honorary advisor
+ * roles mean alumni. Offices and the system account say nothing about enrollment, so they return null
+ * and the member's own enrollment applies.
+ * 身份所隐含的在读状态。在校生即在读；毕业生和两种荣誉顾问即毕业生。职位和系统账号不涉及在读状态，返回 null，以成员自己的在读状态为准。
+ */
+export function enrollmentForRole(role: Role): EnrollmentStatus | null {
+  if (role === 'student') return 'student';
+  if (role === 'alumni' || role === 'honorary_alumni' || role === 'honorary_external') return 'alumni';
+  return null;
+}
+
+/**
+ * Whether an enrollment correction may give a member with this role this status. 在校生 and 毕业生 change
+ * along with the status, so they accept either; honorary advisors are always alumni.
+ * 更正在读状态时，持有该身份的成员能否设为该状态。在校生和毕业生会随状态一起改变，所以两种状态都可以；荣誉顾问始终是毕业生。
+ */
+export function canHoldEnrollment(role: Role, status: EnrollmentStatus): boolean {
+  if (role === 'student' || role === 'alumni') return true;
+  const implied = enrollmentForRole(role);
+  return implied === null || implied === status;
 }
 
 export function isHonoraryRole(role: Role): boolean {

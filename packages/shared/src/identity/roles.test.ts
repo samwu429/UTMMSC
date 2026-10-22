@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAssignRole, hasPermission, isOfficeRole, isStaffRole, ROLES } from './roles';
+import { canAssignRole, canHoldEnrollment, enrollmentForRole, hasPermission, isOfficeRole, isStaffRole, ROLES } from './roles';
 
 describe('role permissions', () => {
   it('gives every role the base member permissions', () => {
@@ -62,5 +62,43 @@ describe('offices', () => {
     expect(isOfficeRole('superadmin')).toBe(false);
     expect(isStaffRole('head_publicity')).toBe(true);
     expect(isStaffRole('alumni')).toBe(false);
+  });
+});
+
+describe('enrollmentForRole', () => {
+  it('maps member-status and honorary roles to an enrollment status', () => {
+    expect(enrollmentForRole('student')).toBe('student');
+    expect(enrollmentForRole('alumni')).toBe('alumni');
+    expect(enrollmentForRole('honorary_alumni')).toBe('alumni');
+    expect(enrollmentForRole('honorary_external')).toBe('alumni');
+  });
+
+  it('leaves offices and the system account to the member enrollment', () => {
+    for (const role of ROLES.filter((r) => !['student', 'alumni', 'honorary_alumni', 'honorary_external'].includes(r))) {
+      expect(enrollmentForRole(role)).toBeNull();
+    }
+  });
+});
+
+describe('canHoldEnrollment', () => {
+  it('keeps honorary advisors alumni', () => {
+    expect(canHoldEnrollment('honorary_alumni', 'student')).toBe(false);
+    expect(canHoldEnrollment('honorary_external', 'student')).toBe(false);
+    expect(canHoldEnrollment('honorary_alumni', 'alumni')).toBe(true);
+    expect(canHoldEnrollment('honorary_external', 'alumni')).toBe(true);
+  });
+
+  it('lets 在校生 and 毕业生 take either status, since the role follows it', () => {
+    for (const status of ['student', 'alumni'] as const) {
+      expect(canHoldEnrollment('student', status)).toBe(true);
+      expect(canHoldEnrollment('alumni', status)).toBe(true);
+    }
+  });
+
+  it('leaves offices and the system account free to hold either status', () => {
+    for (const role of ROLES.filter((r) => enrollmentForRole(r) === null)) {
+      expect(canHoldEnrollment(role, 'student')).toBe(true);
+      expect(canHoldEnrollment(role, 'alumni')).toBe(true);
+    }
   });
 });

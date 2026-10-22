@@ -8,7 +8,7 @@ import { JumpPills } from './JumpPills';
 import { LiveAnnouncer } from './LiveAnnouncer';
 import { MessageRow, type RowActions, type RowMe } from './MessageRow';
 import { SystemTip, TimeDivider, UnreadMarker, useMinuteTick } from './SystemTip';
-import { buildTimeline, translatorFor, UNREAD_MARKER_KEY, type TimelineItem } from './timeline';
+import { buildTimeline, canModerateAuthor, translatorFor, UNREAD_MARKER_KEY, type TimelineItem } from './timeline';
 import type { MessageListHandle, MessageListProps } from './types';
 import { useHistorySentinel } from './useHistorySentinel';
 import { useScrollAnchor } from './useScrollAnchor';
@@ -161,6 +161,8 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   });
 
   const me = useMemo<RowMe>(() => ({ id: meId, displayName: member?.displayName ?? '', avatarKey: member?.avatarKey ?? null }), [meId, member?.displayName, member?.avatarKey]);
+  const exemptIds = room.meta?.moderationExempt;
+  const exempt = useMemo(() => new Set(exemptIds ?? []), [exemptIds]);
 
   const items = useMemo(
     () =>
@@ -530,7 +532,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
               mediaToken={mediaToken}
               capable={capable}
               canPost={canPost}
-              canModerate={canModerate}
+              canModerate={item.type === 'message' ? canModerateAuthor(canModerate, item.own, item.message.author.id, exempt) : canModerate}
               actions={actions}
               onReEdit={onReEdit}
             />

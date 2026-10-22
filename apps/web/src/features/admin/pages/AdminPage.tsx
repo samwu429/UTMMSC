@@ -21,7 +21,9 @@ interface Section {
 const SECTIONS: Section[] = [
   { key: 'approvals', label: '待审核', visible: (member) => hasPermission(member.role, 'members.approve'), render: () => <ApprovalsPanel /> },
   { key: 'roles', label: '成员身份', visible: (member) => hasPermission(member.role, 'members.assign_role'), render: () => <RolesPanel /> },
-  { key: 'advisors', label: '邀请顾问', visible: (member) => member.realRole === 'superadmin', render: () => <AdvisorsPanel /> },
+  // The viewed role, so a system admin testing another role sees exactly that role's tabs.
+  // 按当前视角的身份判断，系统管理员测试其他身份时看到的就是那个身份的标签。
+  { key: 'advisors', label: '邀请顾问', visible: (member) => member.role === 'superadmin', render: () => <AdvisorsPanel /> },
   { key: 'channels', label: '频道', visible: (member) => hasPermission(member.role, 'channels.manage'), render: () => <ChannelsPanel /> },
   { key: 'events', label: '活动', visible: (member) => hasPermission(member.role, 'events.manage'), render: () => <EventsPanel /> },
   { key: 'announcements', label: '公告', visible: (member) => hasPermission(member.role, 'announcements.send'), render: () => <AnnouncementsPanel /> },

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { canHoldEnrollment, enrollmentForRole, ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { recordEligibilityChange } from '../../../infrastructure/d1/channel-joins';
 import { listChannels } from '../../../infrastructure/d1/channels';
@@ -17,8 +17,7 @@ import {
   updateActingRole,
   officeHolderExists,
   correctEnrollment,
-  viewedRole,
-  type MemberRow,
+  viewedActor,
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
@@ -26,9 +25,9 @@ import { announcementMail, applicationApprovedMail, applicationRejectedMail, adv
 import { findYearRequest, listPendingYearRequests, reviewYearRequest } from '../../../infrastructure/d1/enrollment-requests';
 import { consumeAdvisorInvite, issueAdvisorInvite, listOpenInvites, retireOtherInvites } from '../../../infrastructure/d1/advisor-invites';
 import { rateLimit } from '../../middleware/rate-limit';
+import { recordJoinChanges } from '../../access';
 import { revokeMemberEverywhere } from '../../rooms';
 import type { AppEnv } from '../../context';
-import type { Env } from '../../../env';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
 import { optionalString, readJson, requireInteger, requireOneOf, requireString } from '../../validation';
@@ -49,24 +48,6 @@ adminRoutes.post('/acting-role', async (c) => {
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });
 });
-
-/**
- * Gives a member a real join time for every audience channel they can newly read after a role or
- * enrollment change, and drops it for channels they can no longer read. Runs before their sockets are
- * revoked, so the re-issued ticket already sees the new join time.
- * 身份或在读状态变化后，为成员新能阅读的每个受众频道记录真实的加入时间，并删除其不再能阅读的频道记录。在关闭其连接之前执行，重新签发的票据就能用上新的加入时间。
- */
-async function recordJoinChanges(env: Env, before: MemberRow): Promise<void> {
-  const after = await findMemberById(env.DB, before.id);
-  if (!after) return;
-  await recordEligibilityChange(
-    env.DB,
-    before.id,
-    { role: viewedRole(before), enrollmentStatus: before.enrollment_status },
-    { role: viewedRole(after), enrollmentStatus: after.enrollment_status },
-    await listChannels(env.DB),
-  );
-}
 
 function mailConfig(env: AppEnv['Bindings']) {
   return { apiKey: env.BREVO_API_KEY, fromEmail: env.MAIL_FROM_EMAIL, fromName: env.MAIL_FROM_NAME };
@@ -112,10 +93,19 @@ adminRoutes.post('/members/:id/role', requirePermission('members.assign_role'), 
   if (!canAssignRole(actor.role, role)) throw forbidden('无权分配该身份');
   if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   if (isOfficeRole(role) && (await officeHolderExists(c.env.DB, role, target.id))) throw badRequest('office_taken', '这个职位已经有人担任');
-  await updateMemberRole(c.env.DB, target.id, role);
-  await recordJoinChanges(c.env, target);
+  // 在校生 and 毕业生 are enrollment statuses as well as roles; channel access reads enrollment, so both move together.
+  // 在校生和毕业生既是身份也是在读状态；频道权限按在读状态判断，所以二者一起变更。
+  const implied = enrollmentForRole(role);
+  if (implied === 'student' && shouldGraduate(target.graduation_year, 'student')) {
+    throw badRequest('already_graduated', '入学已满五年，只能是毕业生');
+  }
+  const enrollmentStatus = implied ?? target.enrollment_status;
+  await updateMemberRole(c.env.DB, target.id, role, enrollmentStatus);
+  // A role change also ends any test identity, so access before the change is measured from the real role.
+  // 身份改变时测试身份也随之结束，因此变更之前的权限按真实身份计算。
+  await recordJoinChanges(c.env, role === target.role ? target : { ...target, acting_role: null });
   c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
-  return c.json({ ok: true });
+  return c.json({ ok: true, role, enrollmentStatus });
 });
 
 adminRoutes.post('/members/:id/status', requirePermission('members.assign_role'), async (c) => {
@@ -127,10 +117,19 @@ adminRoutes.post('/members/:id/status', requirePermission('members.assign_role')
   if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   const body = await readJson<Record<string, unknown>>(c);
   const status = requireOneOf<MemberStatus>(body.status, MEMBER_STATUSES, '状态');
+  // Holders who are not active do not block an appointment, so a restored holder may find their office taken.
+  // 非在用的任职者不占用职位，所以恢复的任职者可能发现职位已有他人担任。
+  if (status === 'active' && isOfficeRole(target.role) && (await officeHolderExists(c.env.DB, target.role, target.id))) {
+    throw badRequest('office_taken', '这个职位已经有人担任，请先给他换一个身份');
+  }
   await updateMemberStatus(c.env.DB, target.id, status);
   if (status !== 'active') {
     await revokeAllSessions(c.env.DB, target.id);
     c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
+  } else if (target.status !== 'active') {
+    // Audience changes skip members who are not active, so a restored member joins every audience channel they can read now.
+    // 受众变更会跳过非在用的成员，所以恢复的成员从现在起加入其当前能阅读的每个受众频道。
+    await recordEligibilityChange(c.env.DB, target.id, null, viewedActor(target), await listChannels(c.env.DB));
   }
   return c.json({ ok: true });
 });
@@ -148,6 +147,7 @@ adminRoutes.post('/members/:id/enrollment', async (c) => {
     ? target.enrollment_status
     : requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
   const status: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : requested;
+  if (!canHoldEnrollment(target.role, status)) throw badRequest('honorary_alumni', '荣誉顾问只能是毕业生');
   await correctEnrollment(c.env.DB, target, year, status);
   await recordJoinChanges(c.env, target);
   c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
@@ -187,7 +187,10 @@ adminRoutes.post('/enrollment-year-requests/:id/:decision', async (c) => {
     throw notFound('申请不存在或已处理');
   }
   if (target) {
-    const status: EnrollmentStatus = shouldGraduate(request.requested_year, 'student') ? 'alumni' : target.enrollment_status;
+    // An honorary advisor stays alumni even if their stored status still says otherwise.
+    // 荣誉顾问始终是毕业生，即使库中的状态仍是别的值。
+    const keep = canHoldEnrollment(target.role, target.enrollment_status) ? target.enrollment_status : 'alumni';
+    const status: EnrollmentStatus = shouldGraduate(request.requested_year, 'student') ? 'alumni' : keep;
     await correctEnrollment(c.env.DB, target, request.requested_year, status);
     await recordJoinChanges(c.env, target);
     c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));

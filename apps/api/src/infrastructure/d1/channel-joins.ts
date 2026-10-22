@@ -2,7 +2,7 @@ import type { ChannelAudience } from '@utmmsc/shared';
 import { canReadChannel, type ActorInput } from '../../domain/authorization/channel-access';
 import { audienceReaderChanges } from '../../domain/messaging/visibility';
 import { isMissingSchemaError, type ChannelRow } from './channels';
-import { viewedRole, type MemberAccessRow } from './members';
+import { viewedActor, type MemberAccessRow } from './members';
 import { nowIso } from './time';
 
 /** Ids per statement, with room left for the other bound values under D1's limit of 100. */
@@ -20,10 +20,10 @@ function placeholders(ids: readonly string[]): string {
 }
 
 /**
- * Join times for audience channels (everything except 'all' and 'custom'). A row exists only when an
- * admin change made the member newly eligible; otherwise the history policy falls back to account and
- * channel creation times.
- * 受众频道（'all' 和 'custom' 以外）的加入时间。只有管理员的修改使成员新获得资格时才有记录；否则历史策略按账号和频道的创建时间计算。
+ * Join times for audience channels (everything except 'all' and 'custom'). A row exists only when a role
+ * or enrollment change, or a restored account, made the member newly eligible; otherwise the history
+ * policy falls back to account and channel creation times.
+ * 受众频道（'all' 和 'custom' 以外）的加入时间。只有身份或在读状态的变化、或恢复账号使成员新获得资格时才有记录；否则历史策略按账号和频道的创建时间计算。
  */
 
 export async function listImplicitJoins(db: D1Database, memberId: string): Promise<Map<string, string>> {
@@ -56,13 +56,15 @@ export async function listChannelJoins(db: D1Database, channelId: string): Promi
 
 /**
  * Records join and leave for every audience channel whose readability changed between two versions
- * of the same member, for example after a promotion or an enrollment correction.
- * 对同一成员前后两个版本之间可读性发生变化的每个受众频道，记录加入或离开，例如升职或更正在读状态之后。
+ * of the same member, for example after a promotion or an enrollment correction. A null `before` means the
+ * member could read nothing, as when a disabled account is restored.
+ * 对同一成员前后两个版本之间可读性发生变化的每个受众频道，记录加入或离开，例如升职或更正在读状态之后。`before` 为 null
+ * 表示成员之前什么都不能读，例如恢复已停用的账号时。
  */
 export async function recordEligibilityChange(
   db: D1Database,
   memberId: string,
-  before: ActorInput,
+  before: ActorInput | null,
   after: ActorInput,
   channels: readonly Pick<ChannelRow, 'id' | 'audience' | 'post_policy'>[],
 ): Promise<void> {
@@ -71,7 +73,7 @@ export async function recordEligibilityChange(
   for (const channel of channels) {
     if (channel.audience === 'custom' || channel.audience === 'all') continue;
     const access = { audience: channel.audience, postPolicy: channel.post_policy, isMember: false };
-    const wasReader = canReadChannel(access, before);
+    const wasReader = before !== null && canReadChannel(access, before);
     const isReader = canReadChannel(access, after);
     if (!wasReader && isReader) {
       statements.push(
@@ -117,8 +119,7 @@ export async function recordAudienceChange(
     postPolicy: channel.post_policy,
     candidates: result.results.map((row) => ({
       id: row.id,
-      role: viewedRole(row),
-      enrollmentStatus: row.enrollment_status,
+      ...viewedActor(row),
       wasMember: memberships.before.has(row.id),
       isMember: memberships.after.has(row.id),
     })),

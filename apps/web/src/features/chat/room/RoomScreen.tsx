@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useNavigationType, type Location } from 'react-router-dom';
-import { hasPermission, parseRoomId, type QuotePreview } from '@utmmsc/shared';
+import { canModerateRoom, parseRoomId, type QuotePreview } from '@utmmsc/shared';
 import { formatDividerTime } from '../../../shared/format/time';
 import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -65,8 +65,10 @@ export function RoomScreen({ roomId }: { roomId: string }) {
   const { meta, status, retrying, fatalError, notice, clearNotice, markRead, mutedUntil, clockSkewMs } = room;
   const kind = meta?.kind ?? parseRoomId(roomId)?.kind ?? 'channel';
   const meId = member?.id ?? '';
-  const canModerate = meta?.canModerate ?? (member ? hasPermission(member.role, 'chat.moderate') : false);
-  const canMentionAll = kind === 'channel' && canModerate;
+  // Direct conversations have no moderation, even when an older cached meta says otherwise.
+  // 私聊没有管理操作，即使较早缓存的 meta 另有说法。
+  const canModerate = kind === 'channel' && (meta?.canModerate ?? (member ? canModerateRoom(kind, member.role) : false));
+  const canMentionAll = canModerate;
 
   const title = meta?.title ?? overviewRoom?.title ?? (kind === 'direct' ? tr('私聊', 'Direct') : tr('频道', 'Channel'));
   const count = kind === 'channel' && meta ? meta.memberCount : null;

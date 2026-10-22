@@ -370,7 +370,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
         ) : null}
         <Row label={tr('状态', 'Status')} value={status} />
         {campus ? <Row label={tr('专业', 'Program')} value={major(member.major) ?? tr('尚未选择专业', 'No program selected')} onClick={() => setScreen('programs')} /> : null}
-        {campus && !alumni ? (
+        {campus && !alumni && !member.actingRole ? (
           <button type="button" onClick={() => void graduate()} className="min-h-12 w-full px-4 text-left text-[16px] text-brand-800 active:bg-stone-50">
             {tr('我已毕业', 'I have graduated')}
           </button>

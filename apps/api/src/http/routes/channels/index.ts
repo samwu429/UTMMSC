@@ -25,7 +25,7 @@ import {
 } from '../../../infrastructure/d1/channels';
 import { carriedReaderJoins } from '../../../domain/messaging/visibility';
 import { listChannelJoins, recordAudienceChange } from '../../../infrastructure/d1/channel-joins';
-import { findAuthorCards, findMemberAccessRows, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
+import { findAuthorCards, findMemberAccessRows, viewedActor, type MemberRow } from '../../../infrastructure/d1/members';
 import { nowIso } from '../../../infrastructure/d1/time';
 import type { Env } from '../../../env';
 import type { AppEnv } from '../../context';
@@ -108,7 +108,7 @@ async function previousReaders(db: D1Database, channel: ChannelRow, memberIds: s
     previousAudience: channel.audience,
     postPolicy: channel.post_policy,
     channelCreatedAt: channel.created_at,
-    candidates: rows.map((row) => ({ id: row.id, role: viewedRole(row), enrollmentStatus: row.enrollment_status, createdAt: row.created_at })),
+    candidates: rows.map((row) => ({ id: row.id, ...viewedActor(row), createdAt: row.created_at })),
     implicitJoins,
   });
 }

@@ -7,6 +7,8 @@ import {
   MESSAGE_TEXT_MAX,
   REQUEST_ID_MAX,
   SYSTEM_AUTHOR_ID,
+  canModerateRoom,
+  decideModeration,
   decideRecall,
   hasPermission,
   parseClientFrame,
@@ -20,6 +22,7 @@ import {
   type HistoryDirection,
   type HistoryFrame,
   type HistoryResultFrame,
+  type ModerationDecision,
   type Role,
   type RoomAccess,
   type RoomMemberSummary,
@@ -31,7 +34,7 @@ import type { Env } from '../../env';
 import { conversationPreview, lastMessagePreview, parseSystemEvent } from '../../domain/messaging/preview';
 import { OPEN_ACCESS, coerceRoomAccess } from '../../domain/messaging/visibility';
 import { touchChannel } from '../../infrastructure/d1/channels';
-import { findAuthorCards, type AuthorCard } from '../../infrastructure/d1/members';
+import { findAuthorCards, findMemberRole, type AuthorCard } from '../../infrastructure/d1/members';
 import { touchDirect } from '../../infrastructure/d1/direct';
 import {
   buildQuotePreview,
@@ -426,7 +429,7 @@ export class ChatRoom extends DurableObject<Env> {
         this.handleHide(ws, identity, frame.messageId);
         return;
       case 'mute':
-        this.handleMute(ws, identity, frame.memberId, frame.minutes);
+        await this.handleMute(ws, identity, frame.memberId, frame.minutes);
         return;
     }
   }
@@ -616,20 +619,27 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   private async handleDelete(ws: WebSocket, identity: SocketIdentity, messageId: number): Promise<void> {
-    const row = this.visibleRow(identity, messageId);
-    if (!row) {
+    const found = this.visibleRow(identity, messageId);
+    if (!found) {
       this.sendError(ws, 'not_found', '消息不存在', { messageId });
       return;
     }
-    if (row.kind === 'system') {
+    if (found.kind === 'system') {
       this.sendError(ws, 'forbidden', '这条消息不能删除', { messageId });
       return;
     }
-    const ownMessage = row.author_id === identity.memberId;
-    if (!ownMessage && !hasPermission(identity.role, 'chat.moderate')) {
-      this.sendError(ws, 'forbidden', '只能删除自己的消息', { messageId });
-      return;
+    const ownMessage = found.author_id === identity.memberId;
+    if (!ownMessage) {
+      const decision = await this.moderationOf(identity, found.author_id);
+      if (decision !== 'ok') {
+        const message = decision === 'outranked' ? '不能删除这位成员的消息' : decision === 'unavailable' ? '出错了，请稍后再试' : '只能删除自己的消息';
+        this.sendError(ws, 'forbidden', message, { messageId });
+        return;
+      }
     }
+    // Other frames can run while the target's role is read, so the row is read again before it changes.
+    // 读取对方身份期间其他帧可能已经执行，所以修改之前重新读取该行。
+    const row = this.visibleRow(identity, messageId) ?? found;
     // A row that is already gone keeps its first outcome, so a late delete cannot relabel a recall or a moderator removal.
     // 已经消失的行保持最初的结果，迟到的删除不会改写撤回或管理员删除的标记。
     if (row.recalled === 1) {
@@ -706,9 +716,31 @@ export class ChatRoom extends DurableObject<Env> {
     this.ctx.waitUntil(this.env.FILES.delete(key).catch(() => undefined));
   }
 
-  private handleMute(ws: WebSocket, identity: SocketIdentity, memberId: string, minutes: number): void {
-    if (!hasPermission(identity.role, 'chat.moderate')) {
-      this.sendError(ws, 'forbidden', '没有禁言权限');
+  /**
+   * Whether this socket may remove another member's message or mute them. The target's real role is read
+   * only when the room and the actor's role allow moderation at all.
+   * 此连接能否删除另一成员的消息或禁言对方。只有在房间和操作者的身份允许管理操作时，才读取对方的真实身份。
+   */
+  private async moderationOf(identity: SocketIdentity, targetId: string): Promise<ModerationDecision | 'unavailable'> {
+    const roomKind = (this.roomId ? parseRoomId(this.roomId)?.kind : null) ?? 'channel';
+    let targetRole: Role | null = null;
+    if (canModerateRoom(roomKind, identity.role)) {
+      try {
+        targetRole = await findMemberRole(this.env.DB, targetId);
+      } catch (err) {
+        console.error('moderation target lookup failed', errorText(err));
+        return 'unavailable';
+      }
+    }
+    return decideModeration({ roomKind, actorRole: identity.role, targetRole });
+  }
+
+  private async handleMute(ws: WebSocket, identity: SocketIdentity, memberId: string, minutes: number): Promise<void> {
+    const decision = await this.moderationOf(identity, memberId);
+    if (decision !== 'ok') {
+      const message =
+        decision === 'outranked' ? '不能禁言这位成员' : decision === 'direct' ? '私聊中不能禁言' : decision === 'unavailable' ? '出错了，请稍后再试' : '没有禁言权限';
+      this.sendError(ws, 'forbidden', message);
       return;
     }
     const until = new Date(Date.now() + minutes * 60_000).toISOString();

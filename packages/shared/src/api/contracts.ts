@@ -170,6 +170,9 @@ export interface RoomMeta {
   historyVisibility?: HistoryVisibility;
   canPost: boolean;
   canModerate: boolean;
+  /** Members this viewer may not moderate here because they rank at or above them. Absent when nobody is exempt. */
+  /** 因档位不低于观看者、观看者在此不能处理的成员。没有这样的成员时不返回。 */
+  moderationExempt?: string[];
   canManage: boolean;
   prefs: ChatPrefs;
 }

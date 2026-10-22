@@ -5,6 +5,7 @@ import type {
   AnnouncementResponse,
   CreateChannelBody,
   CreateEventBody,
+  EnrollmentStatus,
   EventRecord,
   ManualApplication,
   MemberStatus,
@@ -18,7 +19,7 @@ export const adminApi = {
   applications: () => api<{ applications: ManualApplication[] }>('/admin/applications'),
   decide: (id: string, decision: 'approve' | 'reject') => api<{ ok: true }>(`/admin/applications/${encodeURIComponent(id)}/${decision}`, { method: 'POST' }),
   members: () => api<{ members: AdminMemberRow[] }>('/admin/members'),
-  setRole: (id: string, role: Role) => api<{ ok: true }>(`/admin/members/${encodeURIComponent(id)}/role`, { method: 'POST', body: { role } }),
+  setRole: (id: string, role: Role) => api<{ ok: true; role?: Role; enrollmentStatus?: EnrollmentStatus }>(`/admin/members/${encodeURIComponent(id)}/role`, { method: 'POST', body: { role } }),
   setStatus: (id: string, status: MemberStatus) => api<{ ok: true }>(`/admin/members/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
   setEnrollment: (id: string, graduationYear: number, enrollmentStatus: 'student' | 'alumni') =>
     api<{ ok: true; graduationYear: number; enrollmentStatus: 'student' | 'alumni' }>(`/admin/members/${encodeURIComponent(id)}/enrollment`, {

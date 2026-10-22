@@ -35,12 +35,12 @@ import {
   countMembers,
   createMember,
   findMemberByEmail,
-  settleEnrollment,
   toSelf,
   updatePasswordHash,
   type MemberRow,
 } from '../../../infrastructure/d1/members';
 import { createSession, revokeAllSessions, revokeOtherSessions, revokeSession } from '../../../infrastructure/d1/sessions';
+import { settleMember } from '../../access';
 import {
   checkSendGate,
   consumeVerification,
@@ -225,7 +225,7 @@ authRoutes.post('/login', rateLimit(20, 60_000), async (c) => {
   const valid = await verifyPassword(password, member ? member.password_hash : await timingDummyHash());
   if (!member || !valid) throw unauthorized('邮箱或密码不正确');
   if (member.status !== 'active') throw forbidden('账号已停用，请联系主席团');
-  return c.json(await startSession(c.env, await settleEnrollment(c.env.DB, member)));
+  return c.json(await startSession(c.env, await settleMember(c.env, c.executionCtx, member)));
 });
 
 authRoutes.post('/reset', rateLimit(10, 60_000), async (c) => {
@@ -240,7 +240,7 @@ authRoutes.post('/reset', rateLimit(10, 60_000), async (c) => {
   if (member.status !== 'active') throw forbidden('账号已停用，请联系主席团');
   await updatePasswordHash(c.env.DB, member.id, await hashPassword(password));
   await revokeAllSessions(c.env.DB, member.id);
-  return c.json(await startSession(c.env, await settleEnrollment(c.env.DB, member)));
+  return c.json(await startSession(c.env, await settleMember(c.env, c.executionCtx, member)));
 });
 
 authRoutes.post('/apply', rateLimit(5, 60_000), async (c) => {

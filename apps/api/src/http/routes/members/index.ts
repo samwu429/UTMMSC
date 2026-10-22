@@ -3,7 +3,7 @@ import { ENROLLMENT_STATUSES, type DirectoryResponse, type EnrollmentStatus, typ
 import { base64UrlToBytes, bytesToBase64Url, bytesToUtf8, utf8ToBytes } from '../../../domain/crypto/encoding';
 import { relation } from '../../../infrastructure/d1/friends';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
-import { findMemberById, listDirectory, toProfile, viewedRole } from '../../../infrastructure/d1/members';
+import { findMemberById, listDirectory, toProfile, viewedEnrollment, viewedRole } from '../../../infrastructure/d1/members';
 import { listExperiences, listMemberPosts } from '../../../infrastructure/d1/profile';
 import type { AppEnv } from '../../context';
 import { notFound } from '../../errors';
@@ -70,7 +70,10 @@ memberRoutes.get('/:id', async (c) => {
   ]);
   const viewer = c.get('member');
   const member = toProfile(row);
-  if (viewer.id === row.id) member.role = viewedRole(viewer);
+  if (viewer.id === row.id) {
+    member.role = viewedRole(viewer);
+    member.enrollmentStatus = viewedEnrollment(viewer);
+  }
   const response: MemberDetailResponse = {
     member,
     experiences,

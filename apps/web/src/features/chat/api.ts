@@ -20,8 +20,8 @@ function roomPath(roomId: string, rest: string): string {
 export const chatApi = {
   overview: () => api<ChatOverviewResponse>('/chat/overview'),
   openDirect: (memberId: string) => api<OpenDirectResponse>('/chat/direct', { method: 'POST', body: { memberId } }),
-  /** `meta` adds the room header data; only the first ticket of a screen needs it. */
-  /** `meta` 会附带房间头部信息；只有进入页面时的第一张票据需要。 */
+  /** `meta` adds the room header data; only the first ticket of a screen and the one after an access change need it. */
+  /** `meta` 会附带房间头部信息；只有进入页面时的第一张票据和权限变化之后的票据需要。 */
   ticket: (roomId: string, options: { meta?: boolean } = {}) =>
     api<RoomTicketResponse>(roomPath(roomId, options.meta ? 'ticket?meta=1' : 'ticket'), { method: 'POST' }),
   info: (roomId: string) => api<RoomMeta>(roomPath(roomId, 'info')),
