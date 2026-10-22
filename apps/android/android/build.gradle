@@ -1,0 +1,43 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    apply from: "variables.gradle"
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// @capacitor/filesystem asks for a Java 21 toolchain; build it with the JDK that runs Gradle and still emit Java 21 bytecode.
+// @capacitor/filesystem 要求 Java 21 工具链；改用运行 Gradle 的 JDK 编译，输出的仍是 Java 21 字节码。
+subprojects {
+    // Registered before the plugins' own hooks, so it runs before they read the toolchain.
+    // 先于插件自身的钩子注册，因此在它们读取工具链之前执行。
+    afterEvaluate {
+        if (plugins.hasPlugin('org.jetbrains.kotlin.android')) {
+            kotlin {
+                jvmToolchain(Integer.parseInt(JavaVersion.current().majorVersion))
+                compilerOptions.jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+            }
+        }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

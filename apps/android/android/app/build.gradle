@@ -1,0 +1,79 @@
+apply plugin: 'com.android.application'
+
+// Release signing reads apps/android/keystore.properties; it and the keystore it names stay out of git.
+// 发布签名读取 apps/android/keystore.properties；它和其中指向的密钥库都不进 git。
+def keystorePropertiesFile = rootProject.file('../keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.isFile()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+android {
+    namespace = "com.utmmsc.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.utmmsc.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0.0"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.isFile()) {
+                storeFile = new File(keystorePropertiesFile.parentFile, keystoreProperties.getProperty('storeFile', ''))
+                storePassword = keystoreProperties.getProperty('storePassword')
+                keyAlias = keystoreProperties.getProperty('keyAlias')
+                keyPassword = keystoreProperties.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+// Without this check a missing keystore would quietly produce an unsigned APK that phones refuse to install.
+// 没有这项检查时，缺少密钥库会悄悄产出手机拒绝安装的未签名 APK。
+def checkReleaseSigning = tasks.register('checkReleaseSigning') {
+    doLast {
+        if (!keystorePropertiesFile.isFile()) {
+            throw new GradleException("Release signing needs ${keystorePropertiesFile} (see apps/android/README.md).")
+        }
+        def missing = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].findAll { !keystoreProperties.getProperty(it) }
+        if (missing) {
+            throw new GradleException("${keystorePropertiesFile} is missing: ${missing.join(', ')}.")
+        }
+        def storeFile = new File(keystorePropertiesFile.parentFile, keystoreProperties.getProperty('storeFile'))
+        if (!storeFile.isFile()) {
+            throw new GradleException("Release keystore not found at ${storeFile} (see apps/android/README.md).")
+        }
+    }
+}
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn checkReleaseSigning }
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'

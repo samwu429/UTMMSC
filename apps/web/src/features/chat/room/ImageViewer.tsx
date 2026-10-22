@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTr } from '../../../shared/i18n/locale';
+import { extensionForMime } from '../../../shared/native/fileName';
+import { saveFile } from '../../../shared/native/native';
 import { ActionSheet } from '../../../shared/ui/ActionSheet';
 import { useBackToClose } from '../../../shared/ui/overlayHistory';
 import { toast } from '../../../shared/ui/toast';
@@ -48,13 +50,6 @@ const NO_ZOOM: Zoom = { scale: 1, x: 0, y: 0 };
 
 function reducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-}
-
-function extensionFor(type: string): string {
-  if (type === 'image/png') return 'png';
-  if (type === 'image/gif') return 'gif';
-  if (type === 'image/webp') return 'webp';
-  return 'jpg';
 }
 
 /**
@@ -391,14 +386,7 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
       const res = await fetch(src);
       if (!res.ok) throw new Error(String(res.status));
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `utmmsc-${current.id}.${extensionFor(blob.type)}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      await saveFile(blob, `utmmsc-${current.id}.${extensionForMime(blob.type) ?? 'jpg'}`, blob.type || 'image/jpeg');
     } catch {
       toast(tr('保存失败', 'Couldn’t save the image'));
     }

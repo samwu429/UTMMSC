@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#F7F4EE" />
+    <title>UTMMSC</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --purple: #3c165f;
+        --purple-soft: #5b2a86;
+        --gold: #ffd23f;
+        --canvas: #f7f4ee;
+        --muted: #6b6475;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: calc(24px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
+          calc(24px + env(safe-area-inset-left));
+        background: var(--canvas);
+        color: var(--purple);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
+          Arial, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+      main {
+        width: 100%;
+        max-width: 320px;
+        text-align: center;
+      }
+      svg {
+        width: 88px;
+        height: 88px;
+      }
+      .rule {
+        width: 40px;
+        height: 4px;
+        margin: 20px auto 24px;
+        border-radius: 2px;
+        background: var(--gold);
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      h1 span,
+      p span {
+        display: block;
+      }
+      h1 span[lang='en'] {
+        margin-top: 2px;
+        font-size: 17px;
+        font-weight: 500;
+        color: var(--purple-soft);
+      }
+      p {
+        margin: 16px 0 32px;
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      button {
+        width: 100%;
+        height: 48px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--purple);
+        color: #fff;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      button:active {
+        background: #2a1044;
+      }
+      button:disabled {
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg viewBox="76 114 360 290" aria-hidden="true">
+        <g transform="translate(76.00 114.57) scale(2.14286)">
+          <path d="M 0 132 L 0 6 L 74 30 L 74 132 Z" fill="#5B2A86" />
+          <path d="M 94 132 L 94 30 L 168 6 L 168 132 Z" fill="#5B2A86" />
+          <rect x="16" y="46" width="40" height="3.4" fill="#FFD23F" />
+          <rect x="16" y="64" width="40" height="3.4" fill="#FFD23F" />
+          <rect x="16" y="82" width="40" height="3.4" fill="#FFD23F" />
+          <rect x="112" y="46" width="40" height="3.4" fill="#FFD23F" />
+          <rect x="112" y="64" width="40" height="3.4" fill="#FFD23F" />
+          <rect x="112" y="82" width="40" height="3.4" fill="#FFD23F" />
+        </g>
+      </svg>
+      <div class="rule"></div>
+      <h1><span>无法连接</span><span lang="en">Can't connect</span></h1>
+      <p>
+        <span>请检查网络后重试。</span>
+        <span lang="en">Check your connection and try again.</span>
+      </p>
+      <button id="retry" type="button">重试 · Retry</button>
+    </main>
+    <script>
+      const APP_URL = 'https://utmmsc.com/UTMMSC/';
+      const button = document.getElementById('retry');
+      const label = button.textContent;
+      let checking = false;
+
+      // The phone reports "online" a moment before requests get through, so check the site before leaving this page.
+      // 手机报告“已联网”时请求往往还发不出去，因此先确认网站可达再离开本页。
+      async function reachable() {
+        try {
+          await fetch(APP_URL, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(8000) });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      async function openApp(showProgress) {
+        if (showProgress) {
+          button.disabled = true;
+          button.textContent = '连接中… · Connecting…';
+        }
+        if (checking) return;
+        checking = true;
+        if (await reachable()) {
+          location.replace(APP_URL);
+          return;
+        }
+        checking = false;
+        button.disabled = false;
+        button.textContent = label;
+      }
+
+      button.addEventListener('click', () => openApp(true));
+      window.addEventListener('online', () => openApp(false));
+      setInterval(() => {
+        if (navigator.onLine && !document.hidden) openApp(false);
+      }, 3000);
+    </script>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import { isHonoraryRole, showsEnrollment } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
 import { formatEventTime } from '../../../shared/format/time';
+import { AndroidAppBanner } from '../../../shared/native/AndroidAppBanner';
 import { useSessionStore } from '../../../shared/session/store';
 import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
 import { MemberAvatar } from '../../profile/InitialAvatar';
@@ -57,6 +58,8 @@ export function HomePage() {
           </Link>
         ) : null}
       </header>
+
+      <AndroidAppBanner />
 
       {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
       {!card && !error ? <Spinner /> : null}

@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ROLE_GROUPS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isStaffRole, isValidPassword, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels, useLocaleStore } from '../../../shared/i18n/locale';
+import { useOffersAndroidApp } from '../../../shared/native/AndroidAppBanner';
+import { isNativeApp } from '../../../shared/native/native';
+import { ANDROID_APP_URL } from '../../../shared/native/platform';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
@@ -31,15 +34,22 @@ function Group({ label, children, footer }: { label?: string; children: ReactNod
   );
 }
 
-function Row({ label, value, onClick }: { label: string; value?: string; onClick?: () => void }) {
+function Row({ label, value, onClick, href }: { label: string; value?: string; onClick?: () => void; href?: string }) {
   const className = 'flex min-h-12 w-full items-center gap-3 px-4 text-left text-[16px] active:bg-stone-50';
   const inner = (
     <>
       <span className="shrink-0 text-brand-800">{label}</span>
       {value ? <span className="min-w-0 flex-1 truncate text-right text-sm text-stone-400">{value}</span> : <span className="flex-1" />}
-      {onClick ? <span className="shrink-0 text-stone-300"><ChevronIcon /></span> : null}
+      {onClick || href ? <span className="shrink-0 text-stone-300"><ChevronIcon /></span> : null}
     </>
   );
+  if (href) {
+    return (
+      <a href={href} className={className}>
+        {inner}
+      </a>
+    );
+  }
   if (!onClick) return <div className={className}>{inner}</div>;
   return (
     <button type="button" onClick={onClick} className={className}>
@@ -263,7 +273,8 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   const ask = useConfirm();
   const { tr, role, group, enrollment, year, major } = useLabels();
   const locale = useLocaleStore((s) => s.locale);
-  const installed = isStandalone();
+  const installed = isStandalone() || isNativeApp();
+  const offersAndroidApp = useOffersAndroidApp();
 
   useEffect(() => {
     onPushed(screen !== 'list');
@@ -381,6 +392,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
 
       <Group label={tr('通用', 'General')}>
         <Row label={tr('语言', 'Language')} value={locale === 'en' ? 'English' : '中文'} onClick={() => setScreen('language')} />
+        {offersAndroidApp ? <Row label={tr('下载安卓 App', 'Get the Android app')} href={ANDROID_APP_URL} /> : null}
         {installed ? null : <Row label={tr('添加到主屏幕', 'Add to Home Screen')} onClick={() => setScreen('install')} />}
       </Group>
 

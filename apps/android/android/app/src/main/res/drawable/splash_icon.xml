@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The UTMMSC mark from apps/web/public/brand/icon.svg, laid out like the launcher foreground. -->
+<!-- 取自 apps/web/public/brand/icon.svg 的 UTMMSC 标志，排版与启动器图标前景一致。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.297619"
+        android:scaleY="0.297619"
+        android:translateX="29"
+        android:translateY="33.4643">
+        <path
+            android:fillColor="#5B2A86"
+            android:pathData="M0,132 L0,6 L74,30 L74,132 Z" />
+        <path
+            android:fillColor="#5B2A86"
+            android:pathData="M94,132 L94,30 L168,6 L168,132 Z" />
+        <path
+            android:fillColor="#FFD23F"
+            android:pathData="M16,46h40v3.4h-40z M16,64h40v3.4h-40z M16,82h40v3.4h-40z M112,46h40v3.4h-40z M112,64h40v3.4h-40z M112,82h40v3.4h-40z" />
+    </group>
+</vector>

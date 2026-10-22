@@ -1,0 +1,20 @@
+ext {
+    minSdkVersion = 24
+    // Capacitor 8 defaults to API 36, but only the API 35 platform is installed on the build machine.
+    // AndroidX activity and core are held at their last releases that still compile against API 35.
+    // Capacitor 8 默认 API 36，但构建机器只装了 API 35 平台；AndroidX activity 和 core 停在仍能以 API 35 编译的最后版本。
+    compileSdkVersion = 35
+    targetSdkVersion = 35
+    androidxActivityVersion = '1.10.1'
+    androidxAppCompatVersion = '1.7.1'
+    androidxCoordinatorLayoutVersion = '1.3.0'
+    androidxCoreVersion = '1.16.0'
+    androidxFragmentVersion = '1.8.9'
+    coreSplashScreenVersion = '1.2.0'
+    androidxWebkitVersion = '1.14.0'
+    junitVersion = '4.13.2'
+    androidxJunitVersion = '1.3.0'
+    androidxEspressoCoreVersion = '3.7.0'
+    cordovaAndroidVersion = '14.0.1'
+    kotlin_version = '2.2.20'
+}

@@ -3,6 +3,7 @@ import { FILE_CATEGORIES, FILE_MAX_BYTES, hasPermission, type FileCategory, type
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
 import { formatBytes, formatRelative } from '../../../shared/format/time';
+import { saveFile } from '../../../shared/native/native';
 import { useSessionStore } from '../../../shared/session/store';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
@@ -65,20 +66,19 @@ export function FilesPage() {
     }
   }
 
-  // Downloads require the bearer token, so the blob is fetched then handed to a temporary link.
-  // The row says 下载中… meanwhile, so a large file is not tapped again.
-  // 下载需要 Bearer 令牌，因此先取回 blob 再交给临时链接。期间该行显示「下载中…」，大文件不会被重复点击。
+  // Downloads require the bearer token, so the blob is fetched first, then saved by the browser or, in
+  // the Android app, handed to the share sheet. The row says 下载中… meanwhile, so a large file is not tapped again.
+  // 下载需要 Bearer 令牌，因此先取回 blob，再由浏览器保存，安卓 App 内则交给分享面板。期间该行显示「下载中…」，大文件不会被重复点击。
   async function download(file: FileRecord) {
     if (downloadingId) return;
     setDownloadingId(file.id);
     try {
       const blob = await filesApi.download(file.id);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.fileName;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const saved = await saveFile(blob, file.fileName, file.contentType).then(
+        () => true,
+        () => false,
+      );
+      if (!saved) toast(tr('保存失败', 'Couldn’t save the file'), { ms: 2500 });
     } catch (err) {
       toast(errorMessage(err), { ms: 2500 });
     } finally {

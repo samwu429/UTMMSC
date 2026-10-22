@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Dark navigation bar icons only exist from Android 8.1, so the light bar color starts here too. -->
+    <!-- 深色导航栏图标从 Android 8.1 才有，浅色导航栏也从这里开始。 -->
+    <style name="AppTheme.NoActionBar" parent="Base.AppTheme.NoActionBar">
+        <item name="android:navigationBarColor">@color/utmmsc_canvas</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

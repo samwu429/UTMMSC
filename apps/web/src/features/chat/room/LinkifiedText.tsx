@@ -32,6 +32,9 @@ export const LinkifiedText = memo(function LinkifiedText({ text, own }: { text: 
             </button>
           );
         }
+        // The Android app's WebView has a single window, so a _blank link still passes its address check, which
+        // hands addresses outside utmmsc.com and mailto to the browser or mail app.
+        // 安卓 App 的 WebView 只有一个窗口，_blank 链接同样经过它的地址检查，utmmsc.com 以外的地址和 mailto 会交给浏览器或邮件应用。
         return (
           <a key={index} href={segment.href} target="_blank" rel="noopener noreferrer nofollow" className={`${linkClass} [overflow-wrap:anywhere]`} data-interactive>
             {segment.text}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="utmmsc_purple">#3C165F</color>
+    <color name="utmmsc_purple_dark">#2A1044</color>
+    <color name="utmmsc_purple_light">#5B2A86</color>
+    <color name="utmmsc_canvas">#F7F4EE</color>
+
+    <color name="colorPrimary">@color/utmmsc_purple</color>
+    <color name="colorPrimaryDark">@color/utmmsc_purple_dark</color>
+    <color name="colorAccent">@color/utmmsc_purple_light</color>
+</resources>

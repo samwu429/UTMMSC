@@ -14,6 +14,17 @@ apps/site/public/
 .dev.vars
 .dev.vars.*
 
+# Android release signing key and its passwords. Back them up outside git; see apps/android/README.md.
+# 安卓发布签名密钥及其密码。请在 git 之外备份，见 apps/android/README.md。
+apps/android/keystore/
+apps/android/keystore.properties
+apps/android/**/*.jks
+apps/android/**/*.keystore
+
+# Local emulator screenshots. Gradle output is ignored by apps/android/android/.gitignore.
+# 本地模拟器截图。Gradle 构建产物由 apps/android/android/.gitignore 忽略。
+apps/android/build-check/
+
 # Editor and OS
 .vscode/
 .idea/
