@@ -22,6 +22,7 @@ import { useLocaleStore } from '../shared/i18n/locale';
 import { useSessionStore } from '../shared/session/store';
 import { ConfirmProvider } from '../shared/ui/confirm';
 import { AppShell } from './layout/AppShell';
+import { StatusBarScrim } from './layout/StatusBarScrim';
 import { SplashScreen } from './SplashScreen';
 
 /**
@@ -105,6 +106,7 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <StatusBarScrim />
       <SplashScreen />
       </ConfirmProvider>
     </BrowserRouter>

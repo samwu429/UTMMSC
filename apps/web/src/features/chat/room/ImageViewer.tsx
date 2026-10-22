@@ -471,7 +471,7 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
         type="button"
         onClick={close}
         className="sr-only rounded-full bg-black/60 px-4 py-2 text-sm text-white focus:not-sr-only focus:absolute focus:right-3 focus:top-3"
-        style={{ marginTop: 'env(safe-area-inset-top)' }}
+        style={{ marginTop: 'var(--safe-top)', marginRight: 'var(--safe-right)' }}
       >
         {tr('关闭', 'Close')}
       </button>

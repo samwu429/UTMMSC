@@ -125,9 +125,9 @@ function ChatInfoScreen({ roomId }: { roomId: string }) {
   }
 
   return (
-    <div className="min-h-[100dvh] overflow-x-clip bg-wx-canvas">
+    <div className="min-h-[100dvh] overflow-x-clip bg-wx-canvas" style={{ paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}>
       <div className={`mx-auto min-h-[100dvh] max-w-2xl bg-wx-canvas ${slideIn ? 'wx-push-in' : ''}`}>
-        <div className="sticky top-0 z-20 bg-white" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="sticky top-0 z-20 bg-white" style={{ paddingTop: 'var(--safe-top)' }}>
           <BackHeader flush onBack={goBack} label={tr('聊天', 'Chat')} title={tr('聊天信息', 'Chat info')} />
         </div>
 
@@ -147,7 +147,7 @@ function ChatInfoScreen({ roomId }: { roomId: string }) {
             )}
           </div>
         ) : (
-          <div className="pb-[max(24px,env(safe-area-inset-bottom))]">
+          <div className="pb-[max(24px,var(--safe-bottom))]">
             {kind === 'channel' ? <ChannelSection roomId={roomId} info={info} onViewAll={() => setMembersOpen(true)} /> : <DirectSection info={info} />}
             <InfoGroup>
               <SwitchCell label={tr('消息免打扰', 'Mute notifications')} checked={prefs.muted} onChange={(next) => setPref('muted', next)} />

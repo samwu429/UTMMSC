@@ -25,7 +25,7 @@ export function PlusPanel({ height, onChoosePhotos, onTakePhoto }: { height: num
       role="group"
       aria-label={tr('更多功能', 'More')}
       className="box-border shrink-0 overflow-hidden border-t-[0.5px] border-wx-line bg-wx-bar"
-      style={{ height, paddingBottom: 'env(safe-area-inset-bottom)' }}
+      style={{ height, paddingBottom: 'var(--safe-bottom)' }}
     >
       <div className="grid grid-cols-4 gap-y-5 px-5 pt-6">
         <Tile label={tr('相册', 'Photos')} icon={<PhotoIcon />} onClick={onChoosePhotos} />

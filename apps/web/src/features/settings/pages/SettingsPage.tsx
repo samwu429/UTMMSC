@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTr } from '../../../shared/i18n/locale';
+import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
 import { AccountPanel } from '../panels/AccountPanel';
 import { ProfilePanel } from '../panels/ProfilePanel';
 
@@ -22,6 +23,7 @@ export function SettingsPage() {
   const tab = tabFromQuery(params.get('tab'));
   const [pushed, setPushed] = useState(false);
   const tr = useTr();
+  useStatusBarColor('#FFFFFF');
 
   function select(next: Tab) {
     setPushed(false);
@@ -31,7 +33,7 @@ export function SettingsPage() {
   return (
     <div className="-mx-4 -mt-5">
       {pushed ? null : (
-        <div className="sticky top-0 z-20 flex border-b border-stone-200 bg-white" role="tablist">
+        <div className="sticky top-[var(--safe-top)] z-20 flex border-b border-stone-200 bg-white" role="tablist">
           {TABS.map((item) => {
             const on = item.id === tab;
             return (
@@ -54,7 +56,7 @@ export function SettingsPage() {
       )}
       {tab === 'profile' ? <ProfilePanel onShowActivity={() => navigate('/discover/feed')} /> : null}
       {tab === 'settings' ? (
-        <div className="px-4 py-4">
+        <div className={`px-4 pb-4 ${pushed ? 'pt-5' : 'pt-4'}`}>
           <AccountPanel onOpenProfile={() => select('profile')} onPushed={setPushed} />
         </div>
       ) : null}

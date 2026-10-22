@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTr } from '../i18n/locale';
+import { useStatusBarColor } from './useStatusBarColor';
 
 function Chevron() {
   return (
@@ -29,6 +30,7 @@ export function BackHeader({
 }) {
   const navigate = useNavigate();
   const tr = useTr();
+  useStatusBarColor('#FFFFFF');
 
   function go() {
     if (onBack) onBack();
@@ -36,7 +38,7 @@ export function BackHeader({
   }
 
   return (
-    <header className={`sticky top-0 z-20 flex min-h-12 items-center border-b border-stone-200 bg-white ${flush ? 'px-1' : '-mx-4 mb-4 px-1'}`}>
+    <header className={`sticky top-[var(--safe-top)] z-20 flex min-h-12 items-center border-b border-stone-200 bg-white ${flush ? 'px-1' : '-mx-4 -mt-5 mb-4 px-1'}`}>
       <button type="button" onClick={go} className="flex min-h-11 items-center gap-0.5 rounded-lg px-2 text-[16px] font-medium text-brand-800 active:bg-stone-100" aria-label={tr(`返回${label}`, `Back to ${label}`)}>
         <Chevron />
         {label}

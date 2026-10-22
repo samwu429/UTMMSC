@@ -14,7 +14,7 @@ function ensureRoot(): { element: HTMLDivElement; created: boolean } {
   element.setAttribute('role', 'status');
   element.setAttribute('aria-live', 'polite');
   element.setAttribute('aria-atomic', 'true');
-  element.className = 'pointer-events-none fixed inset-0 z-[80] flex items-center justify-center px-8';
+  element.className = 'pointer-events-none fixed inset-0 z-[80] flex items-center justify-center px-8 pb-[var(--safe-bottom)] pt-[var(--safe-top)]';
   document.body.appendChild(element);
   root = element;
   return { element, created: true };

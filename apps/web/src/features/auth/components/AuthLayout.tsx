@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useLocaleStore } from '../../../shared/i18n/locale';
+import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
 
 const logo = `${import.meta.env.BASE_URL}brand/logo.svg`;
 
@@ -16,8 +17,17 @@ export function AuthLayout({
 }) {
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
+  useStatusBarColor('#FFFFFF');
   return (
-    <div className={`mx-auto flex min-h-full w-full max-w-md flex-col bg-white px-7 pb-12 ${centered ? 'justify-center py-12' : 'pt-12'}`}>
+    <div
+      className={`mx-auto flex min-h-full w-full max-w-md flex-col bg-white ${centered ? 'justify-center' : ''}`}
+      style={{
+        paddingTop: 'calc(3rem + var(--safe-top))',
+        paddingBottom: 'calc(3rem + var(--safe-bottom))',
+        paddingLeft: 'max(1.75rem, var(--safe-left))',
+        paddingRight: 'max(1.75rem, var(--safe-right))',
+      }}
+    >
       <div className="mb-4 flex justify-end gap-4 text-sm">
         <button type="button" onClick={() => setLocale('zh')} className={locale === 'zh' ? 'font-medium text-brand-800' : 'text-stone-400'}>
           中文

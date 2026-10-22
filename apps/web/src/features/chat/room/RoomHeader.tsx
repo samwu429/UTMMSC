@@ -1,4 +1,6 @@
 import { useTr } from '../../../shared/i18n/locale';
+import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
+import { WX_COLORS } from '../../../shared/ui/wxTokens';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import type { RoomStatus } from './types';
 
@@ -57,6 +59,7 @@ function BellSlash() {
  */
 export function RoomHeader({ title, count, status, retrying, othersUnread, muted, onBack, onMore }: RoomHeaderProps) {
   const tr = useTr();
+  useStatusBarColor(WX_COLORS.canvas);
   const offline = status === 'closed' && !retrying;
   const statusLabel =
     status === null || status === 'open' ? null : status === 'catching_up' ? tr('收取中…', 'Updating…') : offline ? tr('未连接', 'Offline') : tr('连接中…', 'Connecting…');
@@ -65,7 +68,7 @@ export function RoomHeader({ title, count, status, retrying, othersUnread, muted
   return (
     <header
       className="sticky top-0 z-20 shrink-0 border-b-[0.5px] border-wx-line bg-wx-canvas"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+      style={{ paddingTop: 'var(--safe-top)', paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}
     >
       <div className="relative flex h-11 items-center">
         <button type="button" onClick={onBack} aria-label={backLabel} className="flex h-11 min-w-11 items-center pl-2 pr-2 text-wx-ink active:opacity-60">

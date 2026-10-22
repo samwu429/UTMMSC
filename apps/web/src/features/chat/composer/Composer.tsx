@@ -477,13 +477,13 @@ function RoomComposer({
   }));
 
   const holding = inputVisible && activePanel === 'none' && handoff;
-  const bottomInset = activePanel !== 'none' || holding || keyboardOpen ? '0px' : 'env(safe-area-inset-bottom)';
+  const bottomInset = activePanel !== 'none' || holding || keyboardOpen ? '0px' : 'var(--safe-bottom)';
   const panelBox = { height: besideKeyboard(panelHeight) };
 
   return (
     <div
       className="shrink-0 border-t-[0.5px] border-wx-line bg-wx-bar"
-      style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)', paddingBottom: inputVisible ? bottomInset : 'env(safe-area-inset-bottom)' }}
+      style={{ paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)', paddingBottom: inputVisible ? bottomInset : 'var(--safe-bottom)' }}
     >
       {disabledNotice ? (
         <p className="flex h-[52px] items-center justify-center px-4 text-center text-[13px] leading-snug text-wx-meta">{disabledNotice}</p>

@@ -510,7 +510,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           smoothUntilRef.current = 0;
         }}
       >
-        <div ref={contentRef} className="pb-2 pt-1">
+        <div ref={contentRef} className="pb-2 pt-1" style={{ paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}>
           <div ref={sentinelRef} className="h-px" aria-hidden />
           {loadingOlder ? (
             <div className="flex h-11 items-center justify-center">

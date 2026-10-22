@@ -143,7 +143,7 @@ export function MemberListSheet({ roomId, total, onClose }: { roomId: string; to
       aria-modal="true"
       aria-labelledby={titleId}
       className="wx-slide-up fixed inset-x-0 top-0 z-[60] flex h-full flex-col bg-wx-canvas"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+      style={{ paddingTop: 'var(--safe-top)', paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}
     >
       <header className="relative flex h-11 shrink-0 items-center">
         <button ref={backRef} type="button" onClick={onClose} aria-label={tr('返回聊天信息', 'Back to chat info')} className="flex h-11 w-11 items-center justify-center text-wx-ink active:opacity-60">

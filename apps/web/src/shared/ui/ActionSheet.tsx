@@ -120,7 +120,7 @@ export function ActionSheet({ title, options, cancelLabel, onClose }: Props) {
           ))}
         </div>
         <div className="h-2" aria-hidden />
-        <div className="bg-white" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="bg-white" style={{ paddingBottom: 'var(--safe-bottom)' }}>
           <button type="button" onClick={onClose} className={`${ROW} text-wx-ink`}>
             {cancelLabel ?? tr('取消', 'Cancel')}
           </button>

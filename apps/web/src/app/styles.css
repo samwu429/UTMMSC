@@ -2,8 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Safe-area insets. Capacitor's css inset mode also sets --safe-area-inset-* on <html> for Android WebViews that report env() as 0, so the larger value wins. */
+/* 安全区边距。Capacitor 的 css 模式会在 <html> 上设置 --safe-area-inset-*，用于 env() 报为 0 的安卓 WebView，因此取两者中较大的值。 */
 :root {
   color-scheme: light;
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
 }
 
 html,
@@ -25,6 +31,19 @@ summary {
 :focus-visible {
   outline: 2px solid #5B2A86;
   outline-offset: 2px;
+}
+
+/* Backs the system status bar with the colour of the header under it (--status-bg, set by useStatusBarColor). It has no height where there is no top inset. */
+/* 用其下方标题栏的颜色（--status-bg，由 useStatusBarColor 设置）衬在系统状态栏后面。没有顶部安全区时高度为 0。 */
+.status-bar-scrim {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 40;
+  height: var(--safe-top);
+  pointer-events: none;
+  background-color: var(--status-bg, theme('colors.canvas'));
 }
 
 /* Prevent iOS from zooming when focusing inputs smaller than 16px. */

@@ -146,7 +146,7 @@ export function MentionPicker({ roomId, meId, canMentionAll, onSelect, onClose }
       aria-modal="true"
       aria-labelledby={titleId}
       className="wx-slide-up fixed inset-x-0 top-0 z-[60] flex h-full flex-col bg-wx-canvas"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+      style={{ paddingTop: 'var(--safe-top)', paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}
     >
       <header className="relative flex h-12 shrink-0 items-center">
         <button type="button" onClick={onClose} className="min-h-11 px-4 text-[16px] text-wx-ink active:opacity-60">

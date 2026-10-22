@@ -45,7 +45,7 @@ export function EmojiPanel({ height, canSend, onInsert, onBackspace, onSend }: P
       role="group"
       aria-label={tr('表情', 'Emoji')}
       className="relative box-border shrink-0 border-t-[0.5px] border-wx-line bg-wx-bar"
-      style={{ height, paddingBottom: 'env(safe-area-inset-bottom)' }}
+      style={{ height, paddingBottom: 'var(--safe-bottom)' }}
     >
       <div className="h-full touch-pan-y overflow-y-auto overscroll-contain px-3 pb-16 pt-3">
         {recent.length ? (
@@ -59,7 +59,7 @@ export function EmojiPanel({ height, canSend, onInsert, onBackspace, onSend }: P
       </div>
       <div
         className="pointer-events-none absolute right-0 flex items-center gap-2 bg-gradient-to-l from-wx-bar from-60% to-transparent py-2 pl-8 pr-3"
-        style={{ bottom: 'env(safe-area-inset-bottom)' }}
+        style={{ bottom: 'var(--safe-bottom)' }}
       >
         <button
           type="button"

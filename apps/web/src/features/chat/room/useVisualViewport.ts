@@ -106,7 +106,7 @@ export function useVisualViewport(rootRef: RefObject<HTMLElement>): void {
  * area, which needs no room while the keyboard covers it.
  * 由 useVisualViewportOverlay 固定的浮层中滚动列表的底部留白：即主屏幕指示条区域，键盘盖住它时无需留出空间。
  */
-export const OVERLAY_BOTTOM_INSET = `max(0px, calc(env(safe-area-inset-bottom) - var(${KEYBOARD_VAR}, 0px)))`;
+export const OVERLAY_BOTTOM_INSET = `max(0px, calc(var(--safe-bottom) - var(${KEYBOARD_VAR}, 0px)))`;
 
 /**
  * Fits a full-screen overlay to the visible part of the screen, so its bottom rows can be scrolled into view

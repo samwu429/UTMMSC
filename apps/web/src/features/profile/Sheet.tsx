@@ -11,7 +11,7 @@ export function Sheet({ title, closeLabel, onClose, children }: { title: string;
     <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
       <div
         className="max-h-[88vh] w-full overflow-y-auto rounded-t-2xl bg-white px-4 pt-3"
-        style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+        style={{ paddingBottom: 'max(1.25rem, var(--safe-bottom))' }}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-200" />

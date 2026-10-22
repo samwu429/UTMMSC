@@ -190,7 +190,7 @@ export function RoomScreen({ roomId }: { roomId: string }) {
           onMore={fatalError ? undefined : openInfo}
         />
         {fatalError ? (
-          <div className="flex min-h-0 flex-1 flex-col justify-center" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="flex min-h-0 flex-1 flex-col justify-center" style={{ paddingBottom: 'var(--safe-bottom)' }}>
             <SystemTip text={fatalError} />
           </div>
         ) : (

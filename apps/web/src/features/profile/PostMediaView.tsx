@@ -40,7 +40,13 @@ export function PostMediaView({ media }: { media: PostMedia[] }) {
         </div>
       ) : null}
       {open && openUrl ? (
-        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black" onClick={() => setOpen(null)} aria-label={tr('关闭', 'Close')}>
+        <button
+          type="button"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black"
+          style={{ padding: 'var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left)' }}
+          onClick={() => setOpen(null)}
+          aria-label={tr('关闭', 'Close')}
+        >
           <img src={openUrl} alt="" className="max-h-full max-w-full object-contain" />
         </button>
       ) : null}

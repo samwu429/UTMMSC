@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
@@ -237,6 +237,18 @@ function useUnreadIndicators() {
   );
 }
 
+/**
+ * Content padding: below the status bar, above the tab bar and the home indicator under it. The sides stay
+ * 1rem unless a landscape cutout reaches past the margin the centred 42rem column already has.
+ * 内容区留白：顶部让出状态栏，底部让出标签栏及其下方的主屏幕指示条。左右保持 1rem，除非横屏时刘海超出了居中的 42rem 内容栏本身的边距。
+ */
+const MAIN_PADDING: CSSProperties = {
+  paddingTop: 'calc(1.25rem + var(--safe-top))',
+  paddingBottom: 'calc(7rem + var(--safe-bottom))',
+  paddingLeft: 'max(1rem, calc(var(--safe-left) - max(0px, (100vw - 42rem) / 2)))',
+  paddingRight: 'max(1rem, calc(var(--safe-right) - max(0px, (100vw - 42rem) / 2)))',
+};
+
 /** Mobile-first shell: scrolling content above a fixed bottom tab bar. */
 /** 手机优先的外壳：内容区在上，固定的底部标签栏在下。 */
 export function AppShell() {
@@ -249,7 +261,7 @@ export function AppShell() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">
-      <main className="flex-1 px-4 pb-28 pt-5">
+      <main className="flex-1" style={MAIN_PADDING}>
         {member?.realRole === 'superadmin' && member.actingRole ? (
           <div className="-mx-4 mb-5 flex items-center justify-between gap-3 bg-brand-800 px-4 py-2 text-sm text-white">
             <span className="min-w-0 truncate">{tr(`正在以${role(member.actingRole)}测试`, `Testing as ${role(member.actingRole)}`)}</span>
@@ -266,7 +278,10 @@ export function AppShell() {
         ) : null}
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 overflow-visible border-t border-stone-200 bg-white" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav
+        className="fixed inset-x-0 bottom-0 z-30 overflow-visible border-t border-stone-200 bg-white"
+        style={{ paddingBottom: 'var(--safe-bottom)', paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}
+      >
         <div className="mx-auto grid max-w-2xl grid-cols-5 items-end">
           {LEFT_NAV.map((item) => (
             <SideTab key={item.to} item={item} />

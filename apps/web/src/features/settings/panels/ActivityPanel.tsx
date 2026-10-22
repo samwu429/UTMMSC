@@ -161,7 +161,9 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
   }
 
   return (
-    <div className="-mb-28 min-h-[100dvh] bg-white">
+    // The negative margin cancels the shell's bottom padding: 7rem plus the bottom inset.
+    // 负外边距抵消外壳的底部留白：7rem 加上底部安全区。
+    <div className="min-h-[100dvh] bg-white" style={{ marginBottom: 'calc(-7rem - var(--safe-bottom))' }}>
       <div className="flex items-center justify-between border-b border-stone-200 px-4">
         <button type="button" onClick={() => void cancel()} className="min-h-11 text-[16px] text-stone-600">
           {tr('取消', 'Cancel')}

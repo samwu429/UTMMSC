@@ -4,6 +4,8 @@ import { useTr } from '../../../shared/i18n/locale';
 import { BackHeader } from '../../../shared/ui/BackHeader';
 import { Button } from '../../../shared/ui/Button';
 import { EmptyState, Notice } from '../../../shared/ui/Card';
+import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
+import { WX_COLORS } from '../../../shared/ui/wxTokens';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import { DirectoryPage } from '../../directory/pages/DirectoryPage';
 import { ConversationList, useConversationRows } from '../list/ConversationList';
@@ -70,8 +72,9 @@ function useSettledFlag(value: boolean, delayMs: number): boolean {
 function NavBar({ unread, syncing }: { unread: number; syncing: boolean }) {
   const tr = useTr();
   const showSync = useSettledFlag(syncing, 300);
+  useStatusBarColor(WX_COLORS.canvas);
   return (
-    <header className="sticky top-0 z-20 -mx-4 -mt-5 bg-wx-canvas" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <header className="sticky top-[var(--safe-top)] z-20 -mx-4 -mt-5 bg-wx-canvas">
       <div className="relative flex h-11 items-center justify-center px-14">
         {showSync ? (
           <h1 className="flex items-center gap-1.5 text-[17px] font-semibold text-wx-ink">

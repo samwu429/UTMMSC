@@ -20,7 +20,7 @@ function Pill({ position, onClick, children }: { position: 'top' | 'bottom'; onC
     <button
       type="button"
       onClick={onClick}
-      className={`wx-fade absolute right-0 z-10 flex h-11 items-center gap-1 rounded-l-full bg-white pl-4 pr-3 text-[14px] font-medium text-brand-700 shadow-[0_1px_6px_rgba(0,0,0,0.12)] active:bg-wx-pressed ${position === 'top' ? 'top-3' : 'bottom-3'}`}
+      className={`wx-fade absolute right-[var(--safe-right)] z-10 flex h-11 items-center gap-1 rounded-l-full bg-white pl-4 pr-3 text-[14px] font-medium text-brand-700 shadow-[0_1px_6px_rgba(0,0,0,0.12)] active:bg-wx-pressed ${position === 'top' ? 'top-3' : 'bottom-3'}`}
     >
       {children}
     </button>

@@ -51,7 +51,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-[70] flex items-end bg-black/40" onClick={() => finish(false)}>
           <div
             className="w-full rounded-t-2xl bg-white px-4 pt-3"
-            style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+            style={{ paddingBottom: 'max(1.25rem, var(--safe-bottom))' }}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-200" />

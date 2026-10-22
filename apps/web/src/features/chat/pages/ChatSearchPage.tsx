@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { MemberProfile } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
+import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
+import { WX_COLORS } from '../../../shared/ui/wxTokens';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import { directoryApi } from '../../directory/api';
 import { MemberAvatar } from '../../profile/InitialAvatar';
@@ -81,6 +83,7 @@ export function ChatSearchPage() {
   const [contacts, setContacts] = useState<ContactSearch | null>(null);
   const data = useOverviewStore((s) => s.data);
   const query = q.trim();
+  useStatusBarColor(WX_COLORS.canvas);
 
   useEffect(() => {
     void useOverviewStore.getState().refresh();
@@ -118,8 +121,8 @@ export function ChatSearchPage() {
   }
 
   return (
-    <div className="mx-auto min-h-[100dvh] max-w-2xl bg-wx-canvas">
-      <header className="sticky top-0 z-20 bg-wx-canvas" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className="mx-auto min-h-[100dvh] max-w-2xl bg-wx-canvas" style={{ paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}>
+      <header className="sticky top-0 z-20 bg-wx-canvas" style={{ paddingTop: 'var(--safe-top)' }}>
         <form
           role="search"
           className="flex h-14 items-center gap-1 pl-2"
@@ -151,7 +154,7 @@ export function ChatSearchPage() {
         </form>
       </header>
 
-      <div className="pb-[max(24px,env(safe-area-inset-bottom))]">
+      <div className="pb-[max(24px,var(--safe-bottom))]">
         {query && !contactsReady && members.length === 0 && matches.length === 0 ? (
           <div className="flex justify-center py-8">
             <WxSpinner />

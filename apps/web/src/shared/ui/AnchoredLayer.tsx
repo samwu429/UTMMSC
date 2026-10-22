@@ -60,7 +60,7 @@ function clamp(value: number, min: number, max: number): number {
 function safeAreaInsets(): Box {
   const probe = document.createElement('div');
   probe.style.cssText =
-    'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+    'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;padding:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left)';
   document.body.appendChild(probe);
   const style = getComputedStyle(probe);
   const insets = {
