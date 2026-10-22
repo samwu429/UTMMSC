@@ -40,6 +40,14 @@ describe('room tickets', () => {
     expect(await readRoomTicket(SECRET, ticket, later)).toBeNull();
   });
 
+  it('gives every ticket its own id so a room can refuse replays', async () => {
+    const input = { roomId: 'channel:ch_all', memberId: 'mem_1', displayName: 'Sam', role: 'student' as const, canPost: true };
+    const a = await readRoomTicket(SECRET, await issueRoomTicket(SECRET, input));
+    const b = await readRoomTicket(SECRET, await issueRoomTicket(SECRET, input));
+    expect(a?.jti).toBeTruthy();
+    expect(a?.jti).not.toBe(b?.jti);
+  });
+
   it('does not accept a session token as a room ticket', async () => {
     const token = await issueSessionToken(SECRET, 'ses_1', 'mem_1', new Date(Date.now() + 60_000));
     expect(await readRoomTicket(SECRET, token)).toBeNull();

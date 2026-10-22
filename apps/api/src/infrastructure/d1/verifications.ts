@@ -1,5 +1,5 @@
 import { randomId } from '../../domain/crypto/encoding';
-import { CODE_HOURLY_LIMIT, CODE_RESEND_INTERVAL_MS, CODE_TTL_MS } from '../../domain/identity/verification-code';
+import { CODE_HOURLY_LIMIT, CODE_MAX_ATTEMPTS, CODE_RESEND_INTERVAL_MS, CODE_TTL_MS } from '../../domain/identity/verification-code';
 import { isoAfter, nowIso } from './time';
 
 export type VerificationPurpose = 'register' | 'reset';
@@ -49,10 +49,22 @@ export async function latestVerification(db: D1Database, email: string, purpose:
     .first<VerificationRow>();
 }
 
-export async function recordAttempt(db: D1Database, id: string): Promise<void> {
-  await db.prepare('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?').bind(id).run();
+/**
+ * Takes one attempt in a single statement so parallel guesses cannot all read the same count.
+ * Returns false when the code has no attempts left or was already used.
+ * 用一条语句占用一次尝试，并发猜测无法读到同一个计数。没有剩余次数或已被使用时返回 false。
+ */
+export async function recordAttempt(db: D1Database, id: string): Promise<boolean> {
+  const row = await db
+    .prepare('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ? AND attempts < ? AND consumed_at IS NULL RETURNING attempts')
+    .bind(id, CODE_MAX_ATTEMPTS)
+    .first<{ attempts: number }>();
+  return row !== null;
 }
 
-export async function consumeVerification(db: D1Database, id: string): Promise<void> {
-  await db.prepare('UPDATE email_verifications SET consumed_at = ? WHERE id = ?').bind(nowIso(), id).run();
+/** Returns false if another request consumed the code first. */
+/** 若验证码已被另一请求先用掉则返回 false。 */
+export async function consumeVerification(db: D1Database, id: string): Promise<boolean> {
+  const result = await db.prepare('UPDATE email_verifications SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL').bind(nowIso(), id).run();
+  return (result.meta.changes ?? 0) === 1;
 }

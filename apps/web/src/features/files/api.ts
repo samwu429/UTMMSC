@@ -9,6 +9,6 @@ export const filesApi = {
       rawBody: file,
       headers: { 'content-type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
     }),
-  download: (id: string) => api<Blob>(`/files/${encodeURIComponent(id)}/download`),
+  download: (id: string) => api<Blob>(`/files/${encodeURIComponent(id)}/download`, { responseType: 'blob' }),
   remove: (id: string) => api<{ ok: true }>(`/files/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

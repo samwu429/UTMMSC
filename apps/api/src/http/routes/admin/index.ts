@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
 import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
@@ -20,7 +20,9 @@ import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
 import { sendMail } from '../../../infrastructure/email/brevo';
 import { announcementMail, applicationApprovedMail, applicationRejectedMail, advisorInviteMail, enrollmentYearDecisionMail } from '../../../infrastructure/email/templates';
 import { findYearRequest, listPendingYearRequests, reviewYearRequest } from '../../../infrastructure/d1/enrollment-requests';
-import { consumeAdvisorInvite, issueAdvisorInvite, listOpenInvites } from '../../../infrastructure/d1/advisor-invites';
+import { consumeAdvisorInvite, issueAdvisorInvite, listOpenInvites, retireOtherInvites } from '../../../infrastructure/d1/advisor-invites';
+import { rateLimit } from '../../middleware/rate-limit';
+import { revokeMemberEverywhere } from '../../rooms';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
@@ -37,6 +39,7 @@ adminRoutes.post('/acting-role', async (c) => {
   const raw = body.role;
   const acting = raw === null || raw === 'superadmin' ? null : requireOneOf<Role>(raw, ROLES, '身份');
   await updateActingRole(c.env.DB, actor.id, acting);
+  c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, actor.id));
   const updated = await findMemberById(c.env.DB, actor.id);
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });
@@ -58,7 +61,7 @@ adminRoutes.post('/applications/:id/:decision', requirePermission('members.appro
   const application = await findApplication(c.env.DB, c.req.param('id'));
   if (!application || application.status !== 'pending') throw notFound('申请不存在或已处理');
   const status = decision === 'approve' ? 'approved' : 'rejected';
-  await reviewApplication(c.env.DB, application.id, status, c.get('member').id);
+  if (!(await reviewApplication(c.env.DB, application.id, status, c.get('member').id))) throw notFound('申请不存在或已处理');
   const mail =
     status === 'approved'
       ? applicationApprovedMail(application.email, application.display_name, c.env.APP_BASE_URL)
@@ -87,6 +90,7 @@ adminRoutes.post('/members/:id/role', requirePermission('members.assign_role'), 
   if (roleTier(target.role) >= roleTier(actor.role) && actor.role !== 'superadmin') throw forbidden('无权修改该成员');
   if (isOfficeRole(role) && (await officeHolderExists(c.env.DB, role, target.id))) throw badRequest('office_taken', '这个职位已经有人担任');
   await updateMemberRole(c.env.DB, target.id, role);
+  c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
   return c.json({ ok: true });
 });
 
@@ -100,7 +104,10 @@ adminRoutes.post('/members/:id/status', requirePermission('members.assign_role')
   const body = await readJson<Record<string, unknown>>(c);
   const status = requireOneOf<MemberStatus>(body.status, MEMBER_STATUSES, '状态');
   await updateMemberStatus(c.env.DB, target.id, status);
-  if (status !== 'active') await revokeAllSessions(c.env.DB, target.id);
+  if (status !== 'active') {
+    await revokeAllSessions(c.env.DB, target.id);
+    c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
+  }
   return c.json({ ok: true });
 });
 
@@ -112,12 +119,13 @@ adminRoutes.post('/members/:id/enrollment', async (c) => {
   if (target.role === 'honorary_external') throw badRequest('external_advisor', '校外荣誉顾问没有入学年份');
   const body = await readJson<Record<string, unknown>>(c);
   const year = requireInteger(body.graduationYear, '入学年份');
-  if (!isValidEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
+  if (!isValidAdminEnrollmentYear(year)) throw badRequest('invalid_year', '入学年份无效');
   const requested = body.enrollmentStatus === undefined
     ? target.enrollment_status
     : requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
   const status: EnrollmentStatus = shouldGraduate(year, 'student') ? 'alumni' : requested;
   await correctEnrollment(c.env.DB, target, year, status);
+  c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
   return c.json({ ok: true, graduationYear: year, enrollmentStatus: status });
 });
 
@@ -143,14 +151,21 @@ adminRoutes.post('/enrollment-year-requests/:id/:decision', async (c) => {
   const decision = requireOneOf(c.req.param('decision'), ['approve', 'reject'] as const, '决定');
   const request = await findYearRequest(c.env.DB, c.req.param('id'));
   if (!request || request.status !== 'pending') throw notFound('申请不存在或已处理');
+  const target = decision === 'approve' ? await findMemberById(c.env.DB, request.member_id) : null;
   if (decision === 'approve') {
     if (!isValidEnrollmentYear(request.requested_year)) throw badRequest('invalid_year', '入学年份无效');
-    const target = await findMemberById(c.env.DB, request.member_id);
     if (!target) throw notFound('成员不存在');
+  }
+  // Claim the request first so a double click or a racing reject cannot apply it twice.
+  // 先占下这条申请，双击或同时拒绝都不会让它生效两次。
+  if (!(await reviewYearRequest(c.env.DB, request.id, decision === 'approve' ? 'approved' : 'rejected', actor.id))) {
+    throw notFound('申请不存在或已处理');
+  }
+  if (target) {
     const status: EnrollmentStatus = shouldGraduate(request.requested_year, 'student') ? 'alumni' : target.enrollment_status;
     await correctEnrollment(c.env.DB, target, request.requested_year, status);
+    c.executionCtx.waitUntil(revokeMemberEverywhere(c.env, target.id));
   }
-  await reviewYearRequest(c.env.DB, request.id, decision === 'approve' ? 'approved' : 'rejected', actor.id);
   const mail = enrollmentYearDecisionMail(request.email, request.display_name, request.requested_year, decision === 'approve');
   c.executionCtx.waitUntil(sendMail(mailConfig(c.env), mail));
   return c.json({ ok: true, status: decision === 'approve' ? 'approved' : 'rejected' });
@@ -188,7 +203,7 @@ adminRoutes.delete('/events/:id', requirePermission('events.manage'), async (c) 
 
 const EMAIL_BATCH = 50;
 
-adminRoutes.post('/announcements', requirePermission('announcements.send'), async (c) => {
+adminRoutes.post('/announcements', rateLimit(5, 60_000), requirePermission('announcements.send'), async (c) => {
   const body = await readJson<Record<string, unknown>>(c);
   const title = requireString(body.title, '标题', 80);
   const text = requireString(body.body, '正文', 5000);
@@ -205,7 +220,12 @@ adminRoutes.post('/announcements', requirePermission('announcements.send'), asyn
       const slice = recipients.slice(i, i + EMAIL_BATCH).map((r) => ({ email: r.email, name: r.display_name }));
       batches.push(sendMail(config, announcementMail(slice, title, text, c.env.APP_BASE_URL)));
     }
-    c.executionCtx.waitUntil(Promise.all(batches));
+    c.executionCtx.waitUntil(
+      Promise.all(batches).then((results) => {
+        const failed = results.filter((ok) => !ok).length;
+        if (failed > 0) console.error(`announcement mail: ${failed} of ${results.length} batches failed`);
+      }),
+    );
   }
 
   await recordAnnouncement(c.env.DB, { title, body: text, sentBy: c.get('member').id, recipientCount: recipients.length, emailed: sendEmail });
@@ -234,8 +254,11 @@ adminRoutes.post('/advisor-invites', async (c) => {
   const link = `${c.env.APP_BASE_URL}register?invite=${encodeURIComponent(invite.token)}`;
   const sent = await sendMail(mailConfig(c.env), advisorInviteMail(email, link, lang));
   if (!sent) {
+    // The earlier invite, if any, still works because it is retired only after a successful send.
+    // 之前的邀请仍然有效，只有新邮件发送成功后才作废旧邀请。
     await consumeAdvisorInvite(c.env.DB, invite.id);
     throw badRequest('mail_failed', '邮件发送失败，请稍后再试');
   }
+  await retireOtherInvites(c.env.DB, email, invite.id);
   return c.json({ ok: true, email, expiresAt: invite.expiresAt }, 201);
 });

@@ -6,7 +6,9 @@ import { deleteObject, getObject, libraryObjectKey, putObject } from '../../../i
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
+import { rateLimit } from '../../middleware/rate-limit';
 import { requirePermission, requireSession } from '../../middleware/session';
+import { decodeKeyPath } from '../../validation';
 
 export const fileRoutes = new Hono<AppEnv>();
 
@@ -29,19 +31,24 @@ fileRoutes.get('/category/:category', requirePermission('files.view'), async (c)
  * the Worker's memory footprint flat.
  * 上传为原始请求体，文件名放在请求头；避免 multipart 解析并保持 Worker 内存平稳。
  */
-fileRoutes.post('/category/:category', requirePermission('files.upload'), async (c) => {
+fileRoutes.post('/category/:category', rateLimit(20, 60_000), requirePermission('files.upload'), async (c) => {
   const category = categoryParam(c.req.param('category'));
   const rawName = c.req.header('x-file-name');
-  const fileName = rawName ? decodeURIComponent(rawName).trim() : '';
+  const fileName = rawName ? decodeKeyPath(rawName).trim() : '';
   if (!fileName || fileName.length > 200) throw badRequest('missing_file_name', '缺少文件名');
   const contentType = c.req.header('content-type') || 'application/octet-stream';
-  const sizeBytes = Number(c.req.header('content-length') ?? '0');
-  if (!sizeBytes) throw badRequest('empty_file', '文件为空');
-  if (sizeBytes > FILE_MAX_BYTES) throw badRequest('too_large', '文件不能超过 25MB');
+  const declared = Number(c.req.header('content-length') ?? '0');
+  if (declared > FILE_MAX_BYTES) throw badRequest('too_large', '文件不能超过 25MB');
 
   const bucket = requireBucket(c.env);
+  // The header can lie or be absent (chunked uploads), so the real body size is what counts.
+  // 请求头可能不准或缺失（分块上传），以实际正文大小为准。
+  const bytes = await c.req.arrayBuffer();
+  const sizeBytes = bytes.byteLength;
+  if (!sizeBytes) throw badRequest('empty_file', '文件为空');
+  if (sizeBytes > FILE_MAX_BYTES) throw badRequest('too_large', '文件不能超过 25MB');
   const objectKey = libraryObjectKey(category, fileName);
-  await putObject(bucket, objectKey, await c.req.arrayBuffer(), contentType);
+  await putObject(bucket, objectKey, bytes, contentType);
   const row = await createFile(c.env.DB, { category, objectKey, fileName, contentType, sizeBytes, uploadedBy: c.get('member').id });
   return c.json({ file: toFileRecord(row) }, 201);
 });
@@ -56,6 +63,7 @@ fileRoutes.get('/:id/download', requirePermission('files.view'), async (c) => {
       'content-type': row.content_type,
       'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(row.file_name)}`,
       'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
     },
   });
 });

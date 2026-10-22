@@ -41,7 +41,48 @@ const ENGLISH: Record<string, string> = {
   '频道不存在': 'That channel does not exist.',
   '网络连接失败，请检查网络后重试': 'The network request failed. Check your connection and try again.',
   '出错了，请稍后再试': 'Something went wrong. Try again in a moment.',
+  '你不在这个频道里': 'You are not in this channel.',
+  '房间不存在': 'That room does not exist.',
+  '会话不存在': 'That conversation does not exist.',
+  '你不在这个会话里': 'You are not in this conversation.',
+  '成员不存在': 'That member does not exist.',
+  '票据无效或已过期': 'The connection ticket expired. Reconnecting.',
+  '媒体链接已过期': 'This media link has expired.',
+  '文件不存在': 'That file does not exist.',
+  '只能删除自己上传的文件': 'You can only delete files you uploaded.',
+  '接口不存在': 'That could not be found.',
+  '请求格式错误': 'The request was not valid.',
+  '路径格式错误': 'The request was not valid.',
+  '申请不存在或已处理': 'That request does not exist or was already handled.',
+  '这个职位已经有人担任': 'Someone already holds this office.',
+  '成员列表里有不存在的成员': 'The member list includes someone who does not exist.',
+  '图片不能超过 8MB': 'Images must be 8MB or smaller.',
+  '文件不能超过 25MB': 'Files must be 25MB or smaller.',
+  '只支持 JPEG、PNG、WebP、GIF': 'Only JPEG, PNG, WebP, and GIF images are supported.',
+  '发送太快，请稍候': 'You are sending too fast. Wait a moment.',
+  '你已被禁言': 'You have been muted.',
+  '消息不能为空': 'The message is empty.',
+  '消息格式错误': 'The message was not valid.',
+  '消息过大': 'The message is too large.',
+  '图片无效': 'That image is not valid.',
+  '消息不存在': 'That message no longer exists.',
+  '只能删除自己的消息': 'You can only delete your own messages.',
+  '只能撤回自己的消息': 'You can only recall your own messages.',
+  '已超过 3 分钟，无法撤回': 'Messages can only be recalled within 3 minutes.',
+  '这条消息不能撤回': 'This message cannot be recalled.',
+  '没有禁言权限': 'You do not have permission to mute members.',
+  '消息最多 2000 字': 'Messages can be at most 2000 characters.',
 };
+
+/** Patterns for server messages that embed a number or a field name. */
+/** 含数字或字段名的服务端消息。 */
+const ENGLISH_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^你已被禁言 (\d+) 分钟$/, (m) => `You have been muted for ${m[1]} minutes.`],
+  [/^请求失败（(\d+)）$/, (m) => `The request failed (${m[1]}).`],
+  [/^缺少 (.+)$/, () => 'A required field is missing.'],
+  [/^(.+) 过长$/, () => 'A field is too long.'],
+  [/^(.+) 格式错误$/, () => 'A field is not valid.'],
+];
 
 export class ApiClientError extends Error {
   constructor(
@@ -55,7 +96,19 @@ export class ApiClientError extends Error {
 
 function inLocale(message: string): string {
   if (useLocaleStore.getState().locale !== 'en') return message;
-  return ENGLISH[message] ?? message;
+  const exact = ENGLISH[message];
+  if (exact) return exact;
+  for (const [pattern, render] of ENGLISH_PATTERNS) {
+    const match = message.match(pattern);
+    if (match) return render(match);
+  }
+  return message;
+}
+
+/** Translates a message that arrived outside an HTTP error, such as a socket error frame. */
+/** 翻译不经 HTTP 错误到达的消息，例如连接上的错误帧。 */
+export function localizedMessage(message: string): string {
+  return inLocale(message);
 }
 
 export function errorMessage(error: unknown): string {

@@ -18,7 +18,20 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    homeApi.daily(locale).then(setCard).catch((err) => setError(errorMessage(err)));
+    let cancelled = false;
+    homeApi
+      .daily(locale)
+      .then((res) => {
+        if (cancelled) return;
+        setCard(res);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [locale]);
 
   return (

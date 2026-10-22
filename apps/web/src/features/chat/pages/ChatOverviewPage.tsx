@@ -28,7 +28,11 @@ export function ChatOverviewPage() {
     const load = () =>
       chatApi
         .overview()
-        .then((res) => !cancelled && setData(res))
+        .then((res) => {
+          if (cancelled) return;
+          setData(res);
+          setError(null);
+        })
         .catch((err) => !cancelled && setError(errorMessage(err)));
     void load();
     // Refresh unread counts while the list is on screen.

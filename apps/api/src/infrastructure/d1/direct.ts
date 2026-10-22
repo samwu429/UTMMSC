@@ -24,12 +24,16 @@ export async function openDirect(db: D1Database, a: string, b: string): Promise<
     .bind(low, high)
     .first<DirectRow>();
   if (existing) return existing;
-  const id = randomId('dm');
+  // Two first messages at once must not both insert; the loser reads the winner's row.
+  // 两人同时首次发起时不能都插入；后到者读取先到者的那一行。
   await db
-    .prepare('INSERT INTO direct_conversations (id, member_low, member_high, created_at) VALUES (?, ?, ?, ?)')
-    .bind(id, low, high, nowIso())
+    .prepare('INSERT INTO direct_conversations (id, member_low, member_high, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (member_low, member_high) DO NOTHING')
+    .bind(randomId('dm'), low, high, nowIso())
     .run();
-  const created = await findDirect(db, id);
+  const created = await db
+    .prepare('SELECT * FROM direct_conversations WHERE member_low = ? AND member_high = ?')
+    .bind(low, high)
+    .first<DirectRow>();
   if (!created) throw new Error('direct conversation insert did not persist');
   return created;
 }

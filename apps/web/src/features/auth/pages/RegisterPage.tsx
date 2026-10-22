@@ -13,9 +13,9 @@ import { CodeField } from '../components/CodeField';
 import { EMPTY_PROFILE, ProfileFields, type ProfileValues } from '../components/ProfileFields';
 
 /**
- * University addresses verify with a code. Approved manual applicants arrive via the emailed link
- * with `approved=1` and skip the code step. An advisor invite can only create an external advisor.
- * 学校邮箱用验证码验证。人工审核通过者通过邮件链接（`approved=1`）进入，跳过验证码。荣誉顾问邀请只能注册成校外荣誉顾问。
+ * Every registration proves the inbox with a code. Approved manual applicants arrive via the
+ * emailed link with `approved=1`. An advisor invite can only create an external advisor.
+ * 每次注册都用验证码证明邮箱归属。人工审核通过者通过邮件链接（`approved=1`）进入。荣誉顾问邀请只能注册成校外荣誉顾问。
  */
 export function RegisterPage() {
   const [params] = useSearchParams();
@@ -33,7 +33,7 @@ export function RegisterPage() {
 
   const approvedFlow = !inviteToken && params.get('approved') === '1';
   const university = isUniversityEmail(email);
-  const needsCode = inviteToken ? inviteReady : !approvedFlow && university;
+  const needsCode = inviteToken ? inviteReady : approvedFlow || university;
   const showManualHint = !inviteToken && email.includes('@') && !university && !approvedFlow;
   const programsReady = programChoiceState(profile.programs).ready;
 

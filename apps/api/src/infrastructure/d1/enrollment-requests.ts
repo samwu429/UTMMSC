@@ -80,9 +80,12 @@ export async function findYearRequest(db: D1Database, id: string): Promise<Enrol
     .first<EnrollmentYearRequestRow>();
 }
 
-export async function reviewYearRequest(db: D1Database, id: string, status: 'approved' | 'rejected', reviewerId: string): Promise<void> {
-  await db
+/** Returns false if the request was no longer pending. */
+/** 若申请已不是待审状态则返回 false。 */
+export async function reviewYearRequest(db: D1Database, id: string, status: 'approved' | 'rejected', reviewerId: string): Promise<boolean> {
+  const result = await db
     .prepare(`UPDATE enrollment_year_requests SET status = ?, reviewed_at = ?, reviewer_id = ? WHERE id = ? AND status = 'pending'`)
     .bind(status, nowIso(), reviewerId, id)
     .run();
+  return (result.meta.changes ?? 0) === 1;
 }

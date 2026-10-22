@@ -65,15 +65,18 @@ export async function findApplication(db: D1Database, id: string): Promise<Appli
   return db.prepare('SELECT * FROM manual_applications WHERE id = ?').bind(id).first<ApplicationRow>();
 }
 
-export async function reviewApplication(db: D1Database, id: string, status: 'approved' | 'rejected', reviewerId: string): Promise<void> {
-  await db
+/** Returns false if the application was no longer pending (someone else reviewed it first). */
+/** 若申请已不是待审状态（已被他人处理）则返回 false。 */
+export async function reviewApplication(db: D1Database, id: string, status: 'approved' | 'rejected', reviewerId: string): Promise<boolean> {
+  const result = await db
     .prepare("UPDATE manual_applications SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'")
     .bind(status, reviewerId, nowIso(), id)
     .run();
+  return (result.meta.changes ?? 0) === 1;
 }
 
-/** An approved application may register once with any password; the row proves identity instead of a code. */
-/** 已批准的申请可凭任意密码注册一次；该记录代替验证码证明身份。 */
+/** An approved application lets a non-university address register; the inbox is still proven by a code. */
+/** 已批准的申请允许非学校邮箱注册；邮箱归属仍需验证码证明。 */
 export async function findApprovedApplicationByEmail(db: D1Database, email: string): Promise<ApplicationRow | null> {
   return db
     .prepare("SELECT * FROM manual_applications WHERE email = ? AND status = 'approved' ORDER BY reviewed_at DESC LIMIT 1")

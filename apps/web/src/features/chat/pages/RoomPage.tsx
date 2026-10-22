@@ -48,10 +48,18 @@ export function RoomPage() {
     prevFirstIdRef.current = firstId;
   }, [room.messages, stickToBottom]);
 
+  const { markRead, messages, lastReadId } = room;
   useEffect(() => {
-    const last = room.messages[room.messages.length - 1];
-    if (last && last.id > room.lastReadId && document.visibilityState === 'visible') room.markRead(last.id);
-  }, [room, room.messages, room.lastReadId]);
+    // Also runs when the tab becomes visible again, so messages that arrived while hidden get marked.
+    // 标签页重新可见时也会执行，隐藏期间到达的消息才会被标为已读。
+    const flush = () => {
+      const last = messages[messages.length - 1];
+      if (last && last.id > lastReadId && document.visibilityState === 'visible') markRead(last.id);
+    };
+    flush();
+    document.addEventListener('visibilitychange', flush);
+    return () => document.removeEventListener('visibilitychange', flush);
+  }, [messages, lastReadId, markRead]);
 
   function onScroll() {
     const list = listRef.current;

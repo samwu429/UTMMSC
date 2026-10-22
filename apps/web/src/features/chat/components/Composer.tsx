@@ -8,12 +8,18 @@ interface Props {
   roomId: string;
   disabled: boolean;
   placeholder?: string;
-  onSend: (text: string, imageKey?: string) => void;
+  /** Returns false when the socket is not open and nothing was sent. */
+  /** 连接未打开、未发送时返回 false。 */
+  onSend: (text: string, imageKey?: string) => boolean;
   onError: (message: string) => void;
 }
 
 export function Composer({ roomId, disabled, placeholder, onSend, onError }: Props) {
   const [text, setText] = useState('');
+  // The image path finishes after an upload; it must send what is typed by then, not when it started.
+  // 图片发送在上传完成后才执行，要发送那时的文字，而不是开始上传时的。
+  const textRef = useRef(text);
+  textRef.current = text;
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const tr = useTr();
@@ -22,8 +28,8 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
     e?.preventDefault();
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
-    onSend(trimmed);
-    setText('');
+    if (onSend(trimmed)) setText('');
+    else onError(tr('连接已断开，消息未发送', 'Disconnected. The message was not sent.'));
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -45,8 +51,8 @@ export function Composer({ roomId, disabled, placeholder, onSend, onError }: Pro
     setUploading(true);
     try {
       const res = await chatApi.uploadImage(roomId, file);
-      onSend(text.trim(), res.imageKey);
-      setText('');
+      if (onSend(textRef.current.trim(), res.imageKey)) setText('');
+      else onError(tr('连接已断开，消息未发送', 'Disconnected. The message was not sent.'));
     } catch (err) {
       onError(errorMessage(err));
     } finally {

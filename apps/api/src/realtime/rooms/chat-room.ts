@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
+  CLIENT_FRAME_MAX,
   HISTORY_PAGE_SIZE,
   MESSAGE_TEXT_MAX,
   decideRecall,
@@ -58,6 +59,9 @@ export class ChatRoom extends DurableObject<Env> {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.ensureSchema();
+    // Heartbeats are answered by the runtime without waking the object, so idle rooms can hibernate.
+    // 心跳由运行时直接应答，不唤醒对象，空闲房间才能真正休眠。
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(JSON.stringify({ type: 'ping' }), JSON.stringify({ type: 'pong' })));
     ctx.blockConcurrencyWhile(async () => {
       this.roomId = (await ctx.storage.get<string>('roomId')) ?? null;
     });
@@ -84,6 +88,10 @@ export class ChatRoom extends DurableObject<Env> {
         member_id TEXT PRIMARY KEY,
         until TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS used_tickets (
+        jti TEXT PRIMARY KEY,
+        exp INTEGER NOT NULL
+      );
     `);
     this.addColumn('ALTER TABLE messages ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0');
     this.addColumn('ALTER TABLE messages ADD COLUMN avatar_key TEXT');
@@ -106,9 +114,26 @@ export class ChatRoom extends DurableObject<Env> {
   async getUnread(memberId: string): Promise<number> {
     const cursor = this.lastReadOf(memberId);
     const row = this.sql
-      .exec<{ n: number }>('SELECT COUNT(*) AS n FROM messages WHERE id > ? AND deleted = 0 AND author_id != ?', cursor, memberId)
+      .exec<{ n: number }>('SELECT COUNT(*) AS n FROM messages WHERE id > ? AND deleted = 0 AND recalled = 0 AND author_id != ?', cursor, memberId)
       .one();
     return row.n;
+  }
+
+  /**
+   * Closes every socket of one member, or of everyone when memberId is omitted. The Worker calls
+   * this when access changes; clients then ask for a fresh ticket, which re-checks access.
+   * 关闭某个成员（未指定时为所有人）的全部连接。权限变化时由 Worker 调用；客户端随后重新领取票据，届时重新校验权限。
+   */
+  async revoke(memberId?: string): Promise<void> {
+    const sockets = memberId ? this.ctx.getWebSockets(memberId) : this.ctx.getWebSockets();
+    for (const socket of sockets) {
+      try {
+        socket.close(4003, 'access changed');
+      } catch {
+        // Already closing.
+        // 已在关闭中。
+      }
+    }
   }
 
   /* WebSocket upgrade */
@@ -119,8 +144,18 @@ export class ChatRoom extends DurableObject<Env> {
     }
     const identityHeader = request.headers.get('x-room-identity');
     const roomIdHeader = request.headers.get('x-room-id');
-    if (!identityHeader || !roomIdHeader) return new Response('missing identity', { status: 400 });
+    const ticketId = request.headers.get('x-room-ticket-id');
+    const ticketExp = Number(request.headers.get('x-room-ticket-exp'));
+    if (!identityHeader || !roomIdHeader || !ticketId || !Number.isFinite(ticketExp)) {
+      return new Response('missing identity', { status: 400 });
+    }
     const identity = JSON.parse(identityHeader) as SocketIdentity;
+
+    // Each ticket opens one socket; a replayed URL is refused.
+    // 每张票据只能打开一个连接；重放的链接会被拒绝。
+    this.sql.exec('DELETE FROM used_tickets WHERE exp <= ?', Date.now());
+    const fresh = this.sql.exec('INSERT OR IGNORE INTO used_tickets (jti, exp) VALUES (?, ?)', ticketId, ticketExp).rowsWritten;
+    if (!fresh) return new Response('ticket already used', { status: 401 });
 
     if (this.roomId !== roomIdHeader) {
       this.roomId = roomIdHeader;
@@ -151,6 +186,10 @@ export class ChatRoom extends DurableObject<Env> {
       ws.close(1008, 'no identity');
       return;
     }
+    if ((typeof raw === 'string' ? raw.length : raw.byteLength) > CLIENT_FRAME_MAX) {
+      this.sendError(ws, 'invalid_frame', '消息过大');
+      return;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));
@@ -166,7 +205,15 @@ export class ChatRoom extends DurableObject<Env> {
     await this.handleFrame(ws, identity, frame);
   }
 
-  async webSocketClose(ws: WebSocket): Promise<void> {
+  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    // Finish the close handshake; 1005/1006 are reserved and cannot be sent back.
+    // 完成关闭握手；1005/1006 为保留码，不能回发。
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code, reason);
+    } catch {
+      // Already closed.
+      // 已关闭。
+    }
     this.broadcastPresence(ws);
   }
 
@@ -185,7 +232,9 @@ export class ChatRoom extends DurableObject<Env> {
         this.sendHistory(ws, frame.beforeId);
         return;
       case 'read':
-        this.markRead(identity.memberId, frame.messageId);
+        // Never past the newest message, or a bad client would hide all future unread counts.
+        // 不能超过最新消息，否则异常客户端会让之后的未读数永远为零。
+        this.markRead(identity.memberId, Math.min(frame.messageId, this.latestId()));
         return;
       case 'send':
         await this.handleSend(ws, identity, frame.clientId, frame.text, frame.imageKey ?? null);
@@ -291,6 +340,7 @@ export class ChatRoom extends DurableObject<Env> {
     }
     this.sql.exec("UPDATE messages SET recalled = 1, text = '', image_key = NULL WHERE id = ?", messageId);
     this.broadcast({ type: 'recalled', messageId });
+    this.discardImage(row.image_key);
     this.ctx.waitUntil(this.recordActivity());
   }
 
@@ -307,6 +357,15 @@ export class ChatRoom extends DurableObject<Env> {
     }
     this.sql.exec("UPDATE messages SET deleted = 1, text = '', image_key = NULL WHERE id = ?", messageId);
     this.broadcast({ type: 'deleted', messageId });
+    this.discardImage(row.image_key);
+    this.ctx.waitUntil(this.recordActivity());
+  }
+
+  /** A withdrawn image must stop being downloadable, not just disappear from history. */
+  /** 撤回或删除的图片要真正不可下载，而不只是从历史里隐藏。 */
+  private discardImage(key: string | null): void {
+    if (!key || !this.env.FILES) return;
+    this.ctx.waitUntil(this.env.FILES.delete(key).catch(() => undefined));
   }
 
   private handleMute(ws: WebSocket, identity: SocketIdentity, memberId: string, minutes: number): void {
@@ -351,6 +410,10 @@ export class ChatRoom extends DurableObject<Env> {
       deleted,
       recalled,
     });
+  }
+
+  private latestId(): number {
+    return this.sql.exec<{ m: number }>('SELECT COALESCE(MAX(id), 0) AS m FROM messages').one().m;
   }
 
   private lastReadOf(memberId: string): number {
@@ -425,9 +488,10 @@ export class ChatRoom extends DurableObject<Env> {
 
   /* Fan-out */
 
-  private onlineCount(): number {
+  private onlineCount(except?: WebSocket): number {
     const members = new Set<string>();
     for (const socket of this.ctx.getWebSockets()) {
+      if (socket === except) continue;
       const identity = socket.deserializeAttachment() as SocketIdentity | null;
       if (identity) members.add(identity.memberId);
     }
@@ -448,10 +512,15 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   private broadcastPresence(except?: WebSocket): void {
-    this.broadcast({ type: 'presence', onlineCount: this.onlineCount() }, except);
+    this.broadcast({ type: 'presence', onlineCount: this.onlineCount(except) }, except);
   }
 
   private sendError(ws: WebSocket, code: Extract<ServerFrame, { type: 'error' }>['code'], message: string): void {
-    ws.send(JSON.stringify({ type: 'error', code, message } satisfies ServerFrame));
+    try {
+      ws.send(JSON.stringify({ type: 'error', code, message } satisfies ServerFrame));
+    } catch {
+      // Socket closed meanwhile.
+      // 连接已关闭。
+    }
   }
 }

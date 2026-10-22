@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_STATUSES, enrollmentYearMax, type EnrollmentStatus, type FriendSummary, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
@@ -96,14 +96,29 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
     };
   }, [q, enrollment, year]);
 
+  const filterKey = `${q}|${enrollment}|${year}`;
+  const filterKeyRef = useRef(filterKey);
+  filterKeyRef.current = filterKey;
+  const loadingMoreRef = useRef(false);
+
   async function loadMore() {
-    if (!cursor) return;
+    if (!cursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    const requestedFor = filterKey;
     try {
       const res = await directoryApi.list({ q: q || undefined, enrollmentStatus: enrollment || undefined, graduationYear: year ? Number(year) : undefined, cursor });
-      setMembers((prev) => [...prev, ...res.members]);
+      // Drop the page if the filters changed while it loaded.
+      // 加载期间筛选条件变了，就丢弃这一页。
+      if (filterKeyRef.current !== requestedFor) return;
+      setMembers((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        return [...prev, ...res.members.filter((m) => !seen.has(m.id))];
+      });
       setCursor(res.nextCursor);
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      loadingMoreRef.current = false;
     }
   }
 

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
-import { authApi } from '../../features/auth/api';
 import { useSessionStore } from '../../shared/session/store';
 
 type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me' | 'discover' | 'apps';
@@ -160,17 +159,6 @@ export function AppShell() {
   const { tr, role } = useLabels();
   const setMember = useSessionStore((s) => s.setMember);
   const member = useSessionStore((s) => s.member);
-  const setMediaToken = useSessionStore((s) => s.setMediaToken);
-
-  useEffect(() => {
-    authApi
-      .me()
-      .then((res) => {
-        setMember(res.member);
-        setMediaToken(res.mediaToken);
-      })
-      .catch(() => undefined);
-  }, [setMember, setMediaToken]);
   const right = RIGHT_NAV;
 
   return (

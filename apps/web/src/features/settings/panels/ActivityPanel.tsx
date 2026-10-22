@@ -74,6 +74,11 @@ function Composer({ onCancel, onPosted }: { onCancel: () => void; onPosted: (pos
   const imageRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
   const ready = (text.trim().length > 0 || draft.length > 0) && !busy;
+  // Free preview URLs if the composer closes with a draft still open.
+  // 编辑器关闭时若还有草稿，释放预览地址。
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  useEffect(() => () => draftRef.current.forEach((item) => URL.revokeObjectURL(item.url)), []);
 
   function clearDraft(next: DraftMedia[] = []) {
     for (const item of draft) URL.revokeObjectURL(item.url);

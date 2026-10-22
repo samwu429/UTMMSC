@@ -16,18 +16,21 @@ export interface RoomTicketClaims {
   role: Role;
   canPost: boolean;
   avatarKey?: string | null;
+  /** Unique id; the room accepts each ticket once. */
+  /** 唯一编号；房间对每张票据只接受一次。 */
+  jti: string;
   exp: number;
 }
 
-export async function issueRoomTicket(secret: string, claims: Omit<RoomTicketClaims, 'kind' | 'exp'>, now: Date = new Date()): Promise<string> {
-  const full: RoomTicketClaims = { kind: 'room', ...claims, exp: now.getTime() + ROOM_TICKET_TTL_MS };
+export async function issueRoomTicket(secret: string, claims: Omit<RoomTicketClaims, 'kind' | 'exp' | 'jti'>, now: Date = new Date()): Promise<string> {
+  const full: RoomTicketClaims = { kind: 'room', ...claims, jti: crypto.randomUUID(), exp: now.getTime() + ROOM_TICKET_TTL_MS };
   return signPayload(secret, full);
 }
 
 export async function readRoomTicket(secret: string, ticket: string, now: Date = new Date()): Promise<RoomTicketClaims | null> {
   const claims = await verifyPayload<RoomTicketClaims>(secret, ticket);
   if (!claims || claims.kind !== 'room') return null;
-  if (typeof claims.roomId !== 'string' || typeof claims.memberId !== 'string') return null;
+  if (typeof claims.roomId !== 'string' || typeof claims.memberId !== 'string' || typeof claims.jti !== 'string') return null;
   if (typeof claims.exp !== 'number' || claims.exp <= now.getTime()) return null;
   return claims;
 }

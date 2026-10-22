@@ -27,6 +27,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // pwa.ts registers the worker itself; the plugin's own registerSW.js would register it twice.
+      // pwa.ts 自行注册 Service Worker；插件自带的 registerSW.js 会重复注册。
+      injectRegister: false,
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'UTMMSC 成员网络',

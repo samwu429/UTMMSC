@@ -22,12 +22,24 @@ export function FilesPage() {
   const { tr, fileCategory } = useLabels();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const categoryRef = useRef(category);
+  categoryRef.current = category;
+
   useEffect(() => {
+    let cancelled = false;
     setFiles(null);
+    setError(null);
     filesApi
       .list(category)
-      .then((res) => setFiles(res.files))
-      .catch((err) => setError(errorMessage(err)));
+      .then((res) => {
+        if (!cancelled) setFiles(res.files);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [category]);
 
   async function upload(file: File) {
@@ -38,8 +50,11 @@ export function FilesPage() {
     setError(null);
     setUploading(true);
     try {
-      const res = await filesApi.upload(category, file);
-      setFiles((prev) => [res.file, ...(prev ?? [])]);
+      const target = category;
+      const res = await filesApi.upload(target, file);
+      // The user may have switched tabs during the upload.
+      // 上传期间用户可能已切换分类。
+      if (categoryRef.current === target) setFiles((prev) => [res.file, ...(prev ?? [])]);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

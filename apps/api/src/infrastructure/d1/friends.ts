@@ -1,7 +1,7 @@
 import type { FriendCard, FriendEdge, FriendSummary, FriendshipState } from '@utmmsc/shared';
 import { friendshipState } from '@utmmsc/shared';
 import { randomId } from '../../domain/crypto/encoding';
-import { findMemberById, toProfile } from './members';
+import { toProfile, type MemberRow } from './members';
 import { nowIso } from './time';
 
 interface FriendRow {
@@ -79,16 +79,16 @@ export async function friendSummary(db: D1Database, memberId: string): Promise<F
     .prepare("SELECT * FROM friend_requests WHERE status = 'pending' AND (to_id = ? OR from_id = ?)")
     .bind(memberId, memberId)
     .all<FriendRow>();
-  const incoming: FriendCard[] = [];
-  const outgoingIds: string[] = [];
-  for (const row of pending.results) {
-    const otherId = row.to_id === memberId ? row.from_id : row.to_id;
-    if (row.to_id === memberId) {
-      const member = await findMemberById(db, otherId);
-      if (member) incoming.push({ member: toProfile(member), requestedAt: row.created_at });
-    } else {
-      outgoingIds.push(otherId);
-    }
-  }
+  const outgoingIds = pending.results.filter((row) => row.from_id === memberId).map((row) => row.to_id);
+  const requesters = await db
+    .prepare(
+      `SELECT m.*, fr.created_at AS requested_at FROM friend_requests fr
+       JOIN members m ON m.id = fr.from_id
+       WHERE fr.to_id = ? AND fr.status = 'pending'
+       ORDER BY fr.created_at DESC`,
+    )
+    .bind(memberId)
+    .all<MemberRow & { requested_at: string }>();
+  const incoming: FriendCard[] = requesters.results.map((row) => ({ member: toProfile(row), requestedAt: row.requested_at }));
   return { incoming, outgoingIds, friendIds: await listFriendIds(db, memberId) };
 }

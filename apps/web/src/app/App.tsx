@@ -15,14 +15,32 @@ import { FilesPage } from '../features/files/pages/FilesPage';
 import { HomePage } from '../features/home/pages/HomePage';
 import { MiniappsPage } from '../features/miniapps/pages/MiniappsPage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
+import { authApi } from '../features/auth/api';
 import { useLocaleStore } from '../shared/i18n/locale';
 import { useSessionStore } from '../shared/session/store';
 import { ConfirmProvider } from '../shared/ui/confirm';
 import { AppShell } from './layout/AppShell';
 import { SplashScreen } from './SplashScreen';
 
+/**
+ * Also refreshes the stored member and media token once per sign-in, for every signed-in route,
+ * including rooms opened straight from a link outside the tab shell.
+ * 每次登录后为所有需登录的页面刷新一次本地成员资料与媒体令牌，包括从链接直接打开、不在标签外壳里的房间。
+ */
 function RequireSession() {
   const token = useSessionStore((s) => s.token);
+  const setMember = useSessionStore((s) => s.setMember);
+  const setMediaToken = useSessionStore((s) => s.setMediaToken);
+  useEffect(() => {
+    if (!token) return;
+    authApi
+      .me()
+      .then((res) => {
+        setMember(res.member);
+        setMediaToken(res.mediaToken);
+      })
+      .catch(() => undefined);
+  }, [token, setMember, setMediaToken]);
   return token ? <Outlet /> : <Navigate to="/login" replace />;
 }
 

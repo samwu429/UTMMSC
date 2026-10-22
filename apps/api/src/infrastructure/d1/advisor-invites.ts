@@ -50,14 +50,16 @@ export async function listOpenInvites(db: D1Database, now: string = nowIso()): P
   return result.results;
 }
 
-/** Replaces any open invite for the same email. Returns the raw token once; only its hash is stored. */
-/** 替换同一邮箱尚未使用的邀请。原始令牌只返回这一次，库存的是哈希。 */
+/**
+ * Adds a new invite. Returns the raw token once; only its hash is stored. Older open invites stay
+ * usable until the caller confirms the new mail went out and calls retireOtherInvites.
+ * 新增一条邀请。原始令牌只返回这一次，库存的是哈希。旧的未用邀请保持可用，直到调用方确认新邮件已发出并调用 retireOtherInvites。
+ */
 export async function issueAdvisorInvite(db: D1Database, email: string, createdBy: string): Promise<{ id: string; token: string; expiresAt: string }> {
   const now = nowIso();
   const expiresAt = new Date(Date.now() + INVITE_MS).toISOString();
   const token = bytesToBase64Url(randomBytes(32));
   const id = randomId('inv');
-  await db.prepare('UPDATE advisor_invites SET consumed_at = ? WHERE email = ? AND consumed_at IS NULL').bind(now, email).run();
   await db
     .prepare(
       `INSERT INTO advisor_invites (id, email, token_hash, expires_at, created_by, created_at)
@@ -66,6 +68,10 @@ export async function issueAdvisorInvite(db: D1Database, email: string, createdB
     .bind(id, email, await hashInviteToken(token), expiresAt, createdBy, now)
     .run();
   return { id, token, expiresAt };
+}
+
+export async function retireOtherInvites(db: D1Database, email: string, keepId: string): Promise<void> {
+  await db.prepare('UPDATE advisor_invites SET consumed_at = ? WHERE email = ? AND id != ? AND consumed_at IS NULL').bind(nowIso(), email, keepId).run();
 }
 
 export async function consumeAdvisorInvite(db: D1Database, id: string): Promise<void> {

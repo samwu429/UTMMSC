@@ -32,6 +32,13 @@ export async function revokeSession(db: D1Database, sessionId: string): Promise<
   await db.prepare('UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').bind(nowIso(), sessionId).run();
 }
 
+export async function revokeOtherSessions(db: D1Database, memberId: string, keepSessionId: string): Promise<void> {
+  await db
+    .prepare('UPDATE sessions SET revoked_at = ? WHERE member_id = ? AND id != ? AND revoked_at IS NULL')
+    .bind(nowIso(), memberId, keepSessionId)
+    .run();
+}
+
 export async function revokeAllSessions(db: D1Database, memberId: string): Promise<void> {
   await db.prepare('UPDATE sessions SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL').bind(nowIso(), memberId).run();
 }

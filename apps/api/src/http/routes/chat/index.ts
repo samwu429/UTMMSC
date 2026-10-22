@@ -22,14 +22,14 @@ import { areFriends, listFriendIds } from '../../../infrastructure/d1/friends';
 import { findMemberById, viewedRole, type MemberRow } from '../../../infrastructure/d1/members';
 import { fetchTranslation, takeTranslateSlot } from '../../../domain/messaging/translate';
 import { chatImageKey, getObject, putObject } from '../../../infrastructure/r2/objects';
-import type { ChatRoom } from '../../../realtime/rooms/chat-room';
 import type { Env } from '../../../env';
 import { requireBucket } from '../../bindings';
+import { roomStub } from '../../rooms';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound, serviceUnavailable, tooMany, unauthorized } from '../../errors';
 import { rateLimit } from '../../middleware/rate-limit';
 import { requireSession } from '../../middleware/session';
-import { readJson, requireString } from '../../validation';
+import { decodeKeyPath, readJson, requireString } from '../../validation';
 
 export const chatRoutes = new Hono<AppEnv>();
 
@@ -39,10 +39,6 @@ interface MediaClaims {
   kind: 'media';
   roomId: string;
   exp: number;
-}
-
-function roomStub(env: Env, roomId: string): DurableObjectStub<ChatRoom> {
-  return env.CHAT_ROOMS.get(env.CHAT_ROOMS.idFromName(roomId)) as DurableObjectStub<ChatRoom>;
 }
 
 interface RoomGrant {
@@ -187,6 +183,8 @@ chatRoutes.get('/rooms/:roomId/socket', async (c) => {
 
   const headers = new Headers(c.req.raw.headers);
   headers.set('x-room-id', roomId);
+  headers.set('x-room-ticket-id', claims.jti);
+  headers.set('x-room-ticket-exp', String(claims.exp));
   headers.set(
     'x-room-identity',
     JSON.stringify({
@@ -202,7 +200,7 @@ chatRoutes.get('/rooms/:roomId/socket', async (c) => {
 
 /* Chat images */
 
-chatRoutes.post('/rooms/:roomId/images', requireSession, async (c) => {
+chatRoutes.post('/rooms/:roomId/images', rateLimit(20, 60_000), requireSession, async (c) => {
   const member = c.get('member');
   const roomId = c.req.param('roomId');
   const grant = await resolveRoomAccess(c.env, member, roomId);
@@ -213,7 +211,9 @@ chatRoutes.post('/rooms/:roomId/images', requireSession, async (c) => {
   if (!length || length > CHAT_IMAGE_MAX_BYTES) throw badRequest('too_large', '图片不能超过 8MB');
   const bucket = requireBucket(c.env);
   const key = chatImageKey(roomId, contentType);
-  await putObject(bucket, key, await c.req.arrayBuffer(), contentType);
+  const bytes = await c.req.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > CHAT_IMAGE_MAX_BYTES) throw badRequest('too_large', '图片不能超过 8MB');
+  await putObject(bucket, key, bytes, contentType);
   return c.json({ imageKey: key }, 201);
 });
 
@@ -221,7 +221,7 @@ chatRoutes.get('/media/*', async (c) => {
   const token = c.req.query('t') ?? '';
   const claims = await verifyPayload<MediaClaims>(c.env.SESSION_SECRET, token);
   if (!claims || claims.kind !== 'media' || claims.exp <= Date.now()) throw unauthorized('媒体链接已过期');
-  const key = decodeURIComponent(c.req.path.replace(/^\/chat\/media\//, ''));
+  const key = decodeKeyPath(c.req.path.replace(/^\/chat\/media\//, ''));
   if (!key.startsWith(`chat/${claims.roomId.replace(':', '/')}/`)) throw forbidden();
   const object = await getObject(requireBucket(c.env), key);
   if (!object) throw notFound();
@@ -229,6 +229,7 @@ chatRoutes.get('/media/*', async (c) => {
     headers: {
       'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
       'cache-control': 'private, max-age=3600',
+      'x-content-type-options': 'nosniff',
     },
   });
 });

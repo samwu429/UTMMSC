@@ -148,11 +148,25 @@ export async function graduateDueMembers(db: D1Database, now: Date = new Date())
     .run();
 }
 
-/** Refreshes due alumni, then returns this member with that change applied. */
-/** 先处理已满五年的成员，再返回这个人更新后的状态。 */
-export async function settleEnrollment(db: D1Database, member: MemberRow, now: Date = new Date()): Promise<MemberRow> {
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+let lastSweepAt = 0;
+
+/**
+ * Runs the full-table graduation sweep at most once an hour per isolate, so ordinary requests do
+ * not each pay for a write. The member making the request is settled individually.
+ * 每个隔离实例每小时最多做一次全表毕业处理，普通请求不必每次都写库。发起请求的成员单独处理。
+ */
+export async function sweepGraduations(db: D1Database, now: Date = new Date()): Promise<void> {
+  if (now.getTime() - lastSweepAt < SWEEP_INTERVAL_MS) return;
+  lastSweepAt = now.getTime();
   await graduateDueMembers(db, now);
+}
+
+/** Graduates this member if due and returns the row with that change applied. */
+/** 若该成员已满五年则写成毕业生，并返回更新后的行。 */
+export async function settleEnrollment(db: D1Database, member: MemberRow, now: Date = new Date()): Promise<MemberRow> {
   if (!shouldGraduate(member.graduation_year, member.enrollment_status, now)) return member;
+  await markGraduated(db, member.id);
   return {
     ...member,
     enrollment_status: 'alumni',
@@ -190,7 +204,7 @@ export async function correctEnrollment(db: D1Database, member: MemberRow, year:
 }
 
 export async function officeHolderExists(db: D1Database, role: string, exceptId: string): Promise<boolean> {
-  const row = await db.prepare('SELECT id FROM members WHERE role = ? AND id != ? LIMIT 1').bind(role, exceptId).first<{ id: string }>();
+  const row = await db.prepare("SELECT id FROM members WHERE role = ? AND id != ? AND status = 'active' LIMIT 1").bind(role, exceptId).first<{ id: string }>();
   return Boolean(row);
 }
 

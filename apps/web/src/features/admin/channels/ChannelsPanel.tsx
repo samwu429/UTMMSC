@@ -57,7 +57,9 @@ export function ChannelsPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
-    const [channelRes, memberRes] = await Promise.all([adminApi.channels(), adminApi.members()]);
+    // The member list needs a separate permission; a channel manager without it still gets channels.
+    // 成员列表需要另一项权限；没有该权限的频道管理者仍能看到频道。
+    const [channelRes, memberRes] = await Promise.all([adminApi.channels(), adminApi.members().catch(() => ({ members: [] }))]);
     setChannels(channelRes.channels);
     setMembers(memberRes.members.filter((item) => item.status === 'active'));
   }

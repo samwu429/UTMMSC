@@ -150,6 +150,14 @@ function isPositiveInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
+/** Image keys are server-generated paths; anything longer is not one of ours. */
+/** 图片键由服务端生成，超出此长度的一定不是合法键。 */
+const IMAGE_KEY_MAX = 200;
+
+/** Largest raw inbound frame the room accepts, in characters. */
+/** 房间接受的单条入站帧最大长度（字符）。 */
+export const CLIENT_FRAME_MAX = 16_384;
+
 /**
  * Parses an inbound frame. Returns null for anything that does not match the protocol so the
  * server can reject it without trusting any field.
@@ -163,7 +171,7 @@ export function parseClientFrame(raw: unknown): ClientFrame | null {
         return null;
       }
       if (typeof raw.text !== 'string') return null;
-      if (raw.imageKey !== undefined && typeof raw.imageKey !== 'string') return null;
+      if (raw.imageKey !== undefined && (typeof raw.imageKey !== 'string' || raw.imageKey.length > IMAGE_KEY_MAX)) return null;
       const frame: SendFrame = { type: 'send', clientId: raw.clientId, text: raw.text };
       if (typeof raw.imageKey === 'string') frame.imageKey = raw.imageKey;
       return frame;
@@ -181,7 +189,7 @@ export function parseClientFrame(raw: unknown): ClientFrame | null {
     case 'recall':
       return isPositiveInt(raw.messageId) ? { type: 'recall', messageId: raw.messageId } : null;
     case 'mute':
-      if (typeof raw.memberId !== 'string' || !isPositiveInt(raw.minutes) || raw.minutes > 60 * 24 * 30) {
+      if (typeof raw.memberId !== 'string' || raw.memberId.length === 0 || raw.memberId.length > 64 || !isPositiveInt(raw.minutes) || raw.minutes > 60 * 24 * 30) {
         return null;
       }
       return { type: 'mute', memberId: raw.memberId, minutes: raw.minutes };

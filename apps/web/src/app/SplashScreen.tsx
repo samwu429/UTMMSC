@@ -28,6 +28,13 @@ export function SplashScreen() {
       finish();
     });
 
+    // A stalled first download of the film must not hold the app behind a black screen.
+    // 首次下载开屏视频卡住时，不能让应用一直停在黑屏后面。
+    const cap = window.setTimeout(() => {
+      videoDone.current = true;
+      finish();
+    }, 4000);
+
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const video = videoRef.current;
     if (reduce || !video) {
@@ -35,6 +42,7 @@ export function SplashScreen() {
       finish();
       return () => {
         cancel = true;
+        window.clearTimeout(cap);
       };
     }
     if (Number.isFinite(video.duration) && video.duration > 0) video.playbackRate = video.duration;
@@ -51,6 +59,7 @@ export function SplashScreen() {
     }
     return () => {
       cancel = true;
+      window.clearTimeout(cap);
     };
   }, []);
 

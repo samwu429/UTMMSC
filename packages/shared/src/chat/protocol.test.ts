@@ -16,6 +16,13 @@ describe('parseClientFrame', () => {
     });
   });
 
+  it('rejects oversized image keys and mute targets', () => {
+    expect(parseClientFrame({ type: 'send', clientId: 'a', text: '', imageKey: 'k'.repeat(201) })).toBeNull();
+    expect(parseClientFrame({ type: 'mute', memberId: '', minutes: 10 })).toBeNull();
+    expect(parseClientFrame({ type: 'mute', memberId: 'm'.repeat(65), minutes: 10 })).toBeNull();
+    expect(parseClientFrame({ type: 'mute', memberId: 'mem_1', minutes: 10 })).toEqual({ type: 'mute', memberId: 'mem_1', minutes: 10 });
+  });
+
   it('rejects send frames with missing or malformed fields', () => {
     expect(parseClientFrame({ type: 'send', text: 'hi' })).toBeNull();
     expect(parseClientFrame({ type: 'send', clientId: '', text: 'hi' })).toBeNull();

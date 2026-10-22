@@ -1,6 +1,16 @@
 import type { Context } from 'hono';
 import { badRequest } from './errors';
 
+/** Decodes a percent-encoded storage key; malformed input is a 400, not a crash. */
+/** 解码百分号编码的存储键；格式错误返回 400 而不是崩溃。 */
+export function decodeKeyPath(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw badRequest('invalid_path', '路径格式错误');
+  }
+}
+
 /** Reads a JSON body and guarantees an object; field checks happen in each route. */
 /** 读取 JSON 请求体并保证为对象；字段校验在各路由中进行。 */
 export async function readJson<T extends object>(c: Context): Promise<T> {
