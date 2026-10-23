@@ -180,3 +180,143 @@ export async function closeAllNativeNotifications(): Promise<void> {
   const { push } = await pushPlugin();
   await push.removeAllDeliveredNotifications();
 }
+
+/** App builds from 1.2.0 (versionCode 3) on have openSettings(). */
+/** 1.2.0（versionCode 3）起的 App 版本带有 openSettings()。 */
+const SETTINGS_BUILD = 3;
+let buildPromise: Promise<number> | null = null;
+
+function appBuild(): Promise<number> {
+  buildPromise ??= import('@capacitor/app')
+    .then(({ App }) => App.getInfo())
+    .then((info) => Number(info.build) || 0)
+    .catch(() => 0);
+  return buildPromise;
+}
+
+/**
+ * Whether this app can open its own notification settings. Asked by build, because the plugin proxy of an
+ * older build answers the call too and only then refuses it.
+ * 这个 App 能否打开自己的通知设置。按版本号判断，因为旧版本的插件代理同样会接受这个调用，之后才拒绝。
+ */
+export async function canOpenNativeSettings(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications') || !Capacitor.isPluginAvailable('App')) return false;
+  return (await appBuild()) >= SETTINGS_BUILD;
+}
+
+/** Opens Android's notification settings for this app; false when it could not. */
+/** 打开安卓中本应用的通知设置；无法打开时返回 false。 */
+export async function openNativeSettings(): Promise<boolean> {
+  try {
+    const { push } = await pushPlugin();
+    await (push as unknown as { openSettings(): Promise<void> }).openSettings();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a notice with this tag is in the shade now. */
+/** 通知栏里现在是否有这个 tag 的通知。 */
+export async function hasNativeNotification(tag: string): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) return false;
+  const { push } = await pushPlugin();
+  const { notifications } = await push.getDeliveredNotifications();
+  return notifications.some((notification) => notification.tag === tag);
+}
+
+/**
+ * How the member set a channel in system settings: off, or so low that notices arrive with no sound and no
+ * banner. Android's importance runs from 0 (off) to 5; 3 still makes a sound.
+ * 成员在系统设置里对某个渠道的设定：已关闭，或级别低到通知到达时既无声音也无横幅。安卓的重要性从 0（关闭）到 5；3 仍会发出声音。
+ */
+export type ChannelIssue = 'off' | 'quiet';
+
+export interface ChannelIssues {
+  messages: ChannelIssue | null;
+  events: ChannelIssue | null;
+}
+
+export function channelIssue(importance: number | undefined): ChannelIssue | null {
+  if (importance === undefined) return null;
+  if (importance <= 0) return 'off';
+  return importance <= 2 ? 'quiet' : null;
+}
+
+/** Null before Android 8, which has no channels, and when the plugin cannot say. */
+/** Android 8 以前没有通知渠道，插件无法回答时也返回 null。 */
+export async function nativeChannelIssues(): Promise<ChannelIssues | null> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) return null;
+  try {
+    const { push } = await pushPlugin();
+    const { channels } = await push.listChannels();
+    const importance = (id: string) => channels.find((channel) => channel.id === id)?.importance;
+    return { messages: channelIssue(importance('messages')), events: channelIssue(importance('events')) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sends the app to the home screen, so a push that arrives next goes to the shade, which Android only uses
+ * while the app is in the background. Resolves true once the app is in the background, false when it could
+ * not leave.
+ * 把 App 退到桌面，接下来到达的推送就会进入通知栏：安卓只在 App 处于后台时才使用通知栏。App 进入后台后返回 true，无法离开时返回 false。
+ */
+export async function leaveApp(waitMs = 1200): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('App')) return false;
+  try {
+    const { App } = await import('@capacitor/app');
+    let settle: (left: boolean) => void = () => undefined;
+    const left = new Promise<boolean>((resolve) => {
+      settle = resolve;
+    });
+    const handle = await App.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) settle(true);
+    });
+    const timer = setTimeout(() => settle(false), waitMs);
+    await App.minimizeApp();
+    const result = await left;
+    clearTimeout(timer);
+    void handle.remove();
+    return result;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether the app is in the foreground; always true in a browser or when the App plugin cannot say. */
+/** App 是否在前台；在浏览器中或 App 插件无法回答时总是 true。 */
+export async function appIsActive(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('App')) return true;
+  try {
+    const { App } = await import('@capacitor/app');
+    return (await App.getState()).isActive;
+  } catch {
+    return true;
+  }
+}
+
+/** Resolves once the app is in the foreground again; at once in a browser or when it already is. */
+/** App 回到前台后完成；在浏览器中或本来就在前台时立即完成。 */
+export async function untilAppActive(): Promise<void> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('App')) return;
+  try {
+    const { App } = await import('@capacitor/app');
+    let settle: () => void = () => undefined;
+    const back = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    // Listening comes first, so a return between the two calls is not missed.
+    // 先开始监听，两次调用之间回到前台也不会漏掉。
+    const handle = await App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) settle();
+    });
+    if ((await App.getState()).isActive) settle();
+    await back;
+    void handle.remove();
+  } catch {
+    // Without the App plugin there is no way to tell; carry on as if back.
+    // 没有 App 插件就无从判断，按已经回来处理。
+  }
+}

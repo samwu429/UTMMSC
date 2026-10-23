@@ -1,14 +1,18 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { tr } from '../../shared/i18n/locale';
 import { toast } from '../../shared/ui/toast';
 import { useOverviewStore } from '../chat/state/overviewStore';
-import { appPathFromUrl } from './links';
+import { appPathFromUrl, isSameScreen } from './links';
 import { listenForNativeNotifications } from './nativePush';
-import { closeNotificationsOnSignOut, refreshNotificationStatus } from './notifications';
+import { closeNotificationsOnSignOut, refreshAfterReturn, refreshNotificationStatus } from './notifications';
+import { noteTestArrival } from './testRun';
 
 const NAVIGATE = 'utmmsc:navigate';
 const WHERE = 'utmmsc:where';
+/** Sent by the service worker after it shows a notice. */
+/** Service Worker 显示通知后发出。 */
+const SHOWN = 'utmmsc:shown';
 const FOREGROUND_TOAST_MS = 3000;
 
 /**
@@ -21,15 +25,18 @@ const FOREGROUND_TOAST_MS = 3000;
  */
 export function NotificationBridge() {
   const navigate = useNavigate();
+  const location = useLocation();
   // The router hands out a new navigate after each move; the listeners below are added only once.
   // 路由每次跳转后都会给出新的 navigate；下面的监听只添加一次。
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+  const locationRef = useRef(location);
+  locationRef.current = location;
 
   useEffect(() => {
     const open = (url: unknown) => {
       const path = appPathFromUrl(url);
-      if (path) navigateRef.current(path);
+      if (path) navigateRef.current(path, { replace: isSameScreen(path, locationRef.current) });
     };
 
     const onWorkerMessage = (event: MessageEvent) => {
@@ -38,6 +45,10 @@ export function NotificationBridge() {
       // Service Worker 看不到应用内的跳转，所以在跳过推送之前先询问当前打开的页面。
       if (data?.type === WHERE) {
         event.ports[0]?.postMessage(window.location.href);
+        return;
+      }
+      if (data?.type === SHOWN) {
+        if ((data as { kind?: unknown }).kind === 'test') noteTestArrival('web');
         return;
       }
       if (!data || data.type !== NAVIGATE) return;
@@ -50,14 +61,19 @@ export function NotificationBridge() {
     let stopNative: (() => void) | null = null;
     let cancelled = false;
     listenForNativeNotifications({
-      onTap: (data) => open(data.url),
+      onTap: (data) => {
+        if (data.kind === 'test') noteTestArrival('tap');
+        open(data.url);
+      },
       onForeground: (notification) => {
         const kind = (notification.data as Record<string, unknown> | undefined)?.kind;
-        // In the foreground Android shows nothing, so the app answers for itself.
-        // 前台时安卓不会显示通知，所以由应用自己反馈。
+        // In the foreground Android shows nothing, so the app answers for itself. A test that is waiting for
+        // this push reports it on its own screen.
+        // 前台时安卓不会显示通知，所以由应用自己反馈。正在等这条推送的测试会在自己的页面上说明。
         if (kind === 'message' || kind === 'recall') void useOverviewStore.getState().refresh({ force: true });
-        else if (kind === 'test') toast(tr('收到测试通知。App 在后台时，通知会出现在通知栏。', 'Test notification received. When the app is in the background, it shows in the notification shade.'), { ms: FOREGROUND_TOAST_MS });
-        else if (notification.title) toast([notification.title, notification.body].filter(Boolean).join('\n'), { ms: FOREGROUND_TOAST_MS });
+        else if (kind === 'test') {
+          if (!noteTestArrival('foreground')) toast(tr('测试通知已到达。App 开着时，安卓不会把通知放进通知栏。', 'The test notification arrived. While the app is open, Android keeps notifications out of the shade.'), { ms: FOREGROUND_TOAST_MS });
+        } else if (notification.title) toast([notification.title, notification.body].filter(Boolean).join('\n'), { ms: FOREGROUND_TOAST_MS });
       },
     })
       .then((stop) => {
@@ -69,9 +85,13 @@ export function NotificationBridge() {
     const stopClosing = closeNotificationsOnSignOut();
     void refreshNotificationStatus();
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void refreshNotificationStatus();
+      if (document.visibilityState === 'visible') void refreshAfterReturn();
     };
+    // The Android app keeps its page visible in the background and fires resume on the way back instead.
+    // 安卓 App 在后台时页面仍保持可见，回到前台时改为触发 resume。
+    const onResume = () => void refreshAfterReturn();
     document.addEventListener('visibilitychange', onVisible);
+    document.addEventListener('resume', onResume);
 
     return () => {
       cancelled = true;
@@ -79,6 +99,7 @@ export function NotificationBridge() {
       stopNative?.();
       stopClosing();
       document.removeEventListener('visibilitychange', onVisible);
+      document.removeEventListener('resume', onResume);
     };
   }, []);
 

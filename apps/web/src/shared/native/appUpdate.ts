@@ -12,8 +12,15 @@ export interface AndroidRelease {
 
 export interface AppUpdate {
   currentName: string;
+  /** The installed versionCode. */
+  /** 已安装版本的 versionCode。 */
+  currentCode: number;
   latest: AndroidRelease;
 }
+
+/** The first build that can receive push, 1.1.0. */
+/** 第一个能接收推送的版本，1.1.0。 */
+export const PUSH_BUILD = 2;
 
 export function parseRelease(raw: unknown): AndroidRelease | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -46,7 +53,7 @@ export function checkAppUpdate(): Promise<AppUpdate | null> {
       if (!response.ok) return null;
       const latest = parseRelease(await response.json());
       if (!latest || !isOutdated(info.build, latest)) return null;
-      return { currentName: info.version, latest };
+      return { currentName: info.version, currentCode: Number(info.build), latest };
     } catch {
       return null;
     }

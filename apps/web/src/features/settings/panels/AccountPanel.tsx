@@ -23,6 +23,13 @@ import { deviceStatusText } from '../../notifications/statusText';
 
 export type Screen = 'list' | 'password' | 'install' | 'programs' | 'year' | 'language' | 'notifications';
 
+/** A request from the address to open a screen; a new id repeats it. */
+/** 来自地址的打开某个页面的请求；id 变化即再次请求。 */
+export interface ScreenRequest {
+  screen: Screen;
+  id: number;
+}
+
 function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
@@ -268,16 +275,20 @@ function InstallScreen({ onBack }: { onBack: () => void }) {
 export function AccountPanel({
   onOpenProfile,
   onPushed,
-  initialScreen = 'list',
+  openRequest = null,
 }: {
   onOpenProfile: () => void;
   onPushed: (pushed: boolean) => void;
-  initialScreen?: Screen;
+  openRequest?: ScreenRequest | null;
 }) {
   const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
   const clear = useSessionStore((s) => s.clear);
-  const [screen, setScreen] = useState<Screen>(initialScreen);
+  const [screen, setScreen] = useState<Screen>(openRequest?.screen ?? 'list');
+
+  useEffect(() => {
+    if (openRequest) setScreen(openRequest.screen);
+  }, [openRequest]);
   const pushCapability = useNotificationStore((s) => s.capability);
   const pushDevice = useNotificationStore((s) => s.device);
   const pushServerReady = useNotificationStore((s) => s.serverReady);

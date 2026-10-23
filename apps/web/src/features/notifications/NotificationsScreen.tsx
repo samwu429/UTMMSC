@@ -9,8 +9,10 @@ import { useAppUpdate } from '../../shared/native/AppUpdateBanner';
 import { ANDROID_APP_URL } from '../../shared/native/platform';
 import { Switch } from '../chat/info/Switch';
 import { notificationsApi } from './api';
-import { disableOnThisDevice, enableNotifications, refreshNotificationStatus, useNotificationStore } from './notifications';
-import { canTurnOnHere, deviceStatusText, testResultText, type TestResultText } from './statusText';
+import { openNativeSettings, type ChannelIssue } from './nativePush';
+import { disableOnThisDevice, enableNotifications, refreshAfterReturn, refreshNotificationStatus, useNotificationStore } from './notifications';
+import { canTurnOnHere, deviceStatusText, type TestResultText } from './statusText';
+import { TEST_DELAY_SECONDS, clearStaleTestResult, clearTestResult, runNativeTest, runTest, useTestRun } from './testRun';
 
 function Section({ label, footer, children }: { label: string; footer?: ReactNode; children: ReactNode }) {
   return (
@@ -37,6 +39,42 @@ function ToggleRow({ label, hint, checked, disabled, onChange }: { label: string
   );
 }
 
+function ResultNotice({ result }: { result: TestResultText }) {
+  return (
+    <Notice tone={result.tone}>
+      <p>{result.text}</p>
+      {result.tips?.length ? (
+        <ul className="mt-1.5 list-disc space-y-1 pl-5">
+          {result.tips.map((tip) => (
+            <li key={tip}>{tip}</li>
+          ))}
+        </ul>
+      ) : null}
+    </Notice>
+  );
+}
+
+/** Opens Android's notification settings for UTMMSC, in builds that can. */
+/** 在支持的版本中打开安卓里 UTMMSC 的通知设置。 */
+function SystemSettingsButton() {
+  const tr = useTr();
+  const canOpen = useNotificationStore((s) => s.canOpenSettings);
+  if (!canOpen) return null;
+  return (
+    <Button block variant="secondary" onClick={() => void openNativeSettings()}>
+      {tr('打开系统通知设置', 'Open notification settings')}
+    </Button>
+  );
+}
+
+/** A channel the member turned off or down in Android settings, said where it can be turned back on. */
+/** 成员在安卓设置里关闭或调低的通知渠道，并说明在哪里改回来。 */
+function channelWarning(name: { zh: string; en: string }, issue: ChannelIssue | null, tr: (zh: string, en: string) => string): string | null {
+  if (issue === 'off') return tr(`「${name.zh}」类通知在系统设置里被关闭了，不会提醒你。请到手机的「设置 → 应用 → UTMMSC → 通知」里打开。`, `${name.en} notifications are off in system settings, so they will not alert you. Turn them on in Settings → Apps → UTMMSC → Notifications.`);
+  if (issue === 'quiet') return tr(`「${name.zh}」类通知被设成了静默，到达时没有声音和横幅。可以在「设置 → 应用 → UTMMSC → 通知」里调高。`, `${name.en} notifications are set to silent, with no sound or banner. Raise them in Settings → Apps → UTMMSC → Notifications.`);
+  return null;
+}
+
 function Steps({ items }: { items: string[] }) {
   return (
     <ol className="space-y-1.5 text-[15px] leading-relaxed text-stone-700">
@@ -56,7 +94,7 @@ function Steps({ items }: { items: string[] }) {
 /** 按能力与状态，说明这台设备上该怎么做。 */
 function DeviceHelp() {
   const tr = useTr();
-  const { capability, device, serverReady, busy, error } = useNotificationStore();
+  const { capability, device, serverReady, channels, busy, error } = useNotificationStore();
   const [notice, setNotice] = useState<string | null>(null);
   // An app that cannot receive push is an old build; when a newer one is published, offer it right here.
   // 不能接收推送的 App 是旧版本；有新版本时直接在这里提供更新。
@@ -109,11 +147,22 @@ function DeviceHelp() {
                 : null;
 
   const canEnable = (capability === 'webpush' && serverReady !== false && device === 'off') || (capability === 'native' && (device === 'off' || device === 'failed'));
+  const channelWarnings =
+    capability === 'native' && device === 'on'
+      ? [channelWarning({ zh: '消息', en: 'Message' }, channels?.messages ?? null, tr), channelWarning({ zh: '活动', en: 'Event' }, channels?.events ?? null, tr)].filter(
+          (warning): warning is string => warning !== null,
+        )
+      : [];
 
   return (
     <div className="space-y-3 px-4 py-3">
       {message ? <p className="text-[15px] leading-relaxed text-stone-700">{message}</p> : null}
       {device === 'on' ? <p className="text-[15px] leading-relaxed text-stone-700">{tr('这台设备会收到新消息和活动通知。', 'This device gets new messages and event notices.')}</p> : null}
+      {channelWarnings.map((warning) => (
+        <Notice key={warning} tone="error">
+          {warning}
+        </Notice>
+      ))}
       {canEnable && device === 'off' && !message ? (
         <p className="text-[15px] leading-relaxed text-stone-700">{tr('开启后，有新消息和活动时这台设备会收到通知。', 'Turn them on to get new messages and event notices on this device.')}</p>
       ) : null}
@@ -145,8 +194,9 @@ function DeviceHelp() {
           {tr('在这台设备上关闭', 'Turn off on this device')}
         </Button>
       ) : null}
+      {capability === 'native' && (device === 'denied' || channelWarnings.length > 0) ? <SystemSettingsButton /> : null}
       {device === 'denied' ? (
-        <Button block variant="secondary" onClick={() => void refreshNotificationStatus()}>
+        <Button block variant="secondary" onClick={() => void refreshAfterReturn()}>
           {tr('我已允许，重新检查', 'I allowed it. Check again')}
         </Button>
       ) : null}
@@ -164,8 +214,16 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
   const { capability, device, serverReady } = useNotificationStore();
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [prefsError, setPrefsError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestResultText | null>(null);
+  const testing = useTestRun((s) => s.running);
+  const testResult = useTestRun((s) => s.result);
+  // The app's test needs this device registered; elsewhere the push goes to the member's other devices.
+  // App 内的测试需要这台设备已登记；其他情况下推送发往成员的其他设备。
+  const nativeTest = capability === 'native' && device === 'on';
+
+  useEffect(() => {
+    clearStaleTestResult();
+    return clearTestResult;
+  }, []);
 
   useEffect(() => {
     void refreshNotificationStatus();
@@ -199,19 +257,16 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function sendTest() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      setTestResult(testResultText(await notificationsApi.test(), capability, serverReady, tr));
-    } catch (err) {
-      setTestResult({ tone: 'error', text: errorMessage(err) });
-    } finally {
-      setTesting(false);
-    }
+  function sendTest() {
+    void (nativeTest ? runNativeTest(tr) : runTest(tr));
   }
 
   const status = deviceStatusText(capability, device, serverReady, tr);
+  const testFooter = nativeTest
+    ? tr(`点发送后 App 会回到桌面，${TEST_DELAY_SECONDS} 秒后通知栏会出现一条测试通知，和真实通知一样。点开它会回到这里看结果。`, `After you tap send, the app goes to the home screen and a test notice appears in the shade ${TEST_DELAY_SECONDS} seconds later, just like a real one. Tap it to come back here for the result.`)
+    : canTurnOnHere(capability, serverReady)
+      ? tr('发到你所有开启了通知的设备。', 'Goes to every device where you turned notifications on.')
+      : tr('发到你其他开启了通知的设备。', 'Goes to your other devices that have notifications on.');
   const loading = prefs === null;
 
   return (
@@ -262,19 +317,13 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
           ) : null}
         </Section>
 
-        <Section
-          label={tr('测试', 'Test')}
-          footer={
-            canTurnOnHere(capability, serverReady)
-              ? tr('发到你所有开启了通知的设备。', 'Goes to every device where you turned notifications on.')
-              : tr('发到你其他开启了通知的设备。', 'Goes to your other devices that have notifications on.')
-          }
-        >
+        <Section label={tr('测试', 'Test')} footer={testFooter}>
           <div className="space-y-3 px-4 py-3">
-            <Button block variant="secondary" loading={testing} onClick={() => void sendTest()}>
+            <Button block variant="secondary" loading={testing} onClick={sendTest}>
               {tr('发送测试通知', 'Send a test notification')}
             </Button>
-            {testResult ? <Notice tone={testResult.tone}>{testResult.text}</Notice> : null}
+            {testResult ? <ResultNotice result={testResult} /> : null}
+            {nativeTest && testResult?.tips?.length ? <SystemSettingsButton /> : null}
           </div>
         </Section>
       </div>

@@ -94,6 +94,9 @@ export interface DeliveryDevice {
   endpoint: string;
   keys: WebPushKeys | null;
   failureCount: number;
+  /** The sign-in the device was registered under; always live for a listed device. */
+  /** 设备登记时所属的登录；列出的设备的登录一定有效。 */
+  sessionId: string;
   prefs: NotificationPrefs;
 }
 
@@ -104,6 +107,7 @@ interface DeliveryDeviceRow extends PrefColumns {
   endpoint: string;
   keys_json: string | null;
   failure_count: number;
+  session_id: string;
 }
 
 function parseKeys(raw: string | null): WebPushKeys | null {
@@ -127,7 +131,7 @@ const LIVE_DEVICES = `
   JOIN sessions s ON s.id = d.session_id AND s.member_id = d.member_id AND s.revoked_at IS NULL AND s.expires_at > ?
   LEFT JOIN notification_prefs p ON p.member_id = d.member_id`;
 
-const DEVICE_COLUMNS = 'd.id, d.member_id, d.kind, d.endpoint, d.keys_json, d.failure_count, p.messages AS pref_messages, p.events AS pref_events, p.preview AS pref_preview';
+const DEVICE_COLUMNS = 'd.id, d.member_id, d.kind, d.endpoint, d.keys_json, d.failure_count, d.session_id, p.messages AS pref_messages, p.events AS pref_events, p.preview AS pref_preview';
 
 function toDeliveryDevice(row: DeliveryDeviceRow): DeliveryDevice {
   return {
@@ -137,6 +141,7 @@ function toDeliveryDevice(row: DeliveryDeviceRow): DeliveryDevice {
     endpoint: row.endpoint,
     keys: parseKeys(row.keys_json),
     failureCount: row.failure_count,
+    sessionId: row.session_id,
     prefs: prefsFromColumns(row),
   };
 }

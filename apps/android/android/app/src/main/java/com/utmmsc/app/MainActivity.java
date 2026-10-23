@@ -17,6 +17,14 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // A tapped notification that started the app stays in the launch intent, and Capacitor reads that intent
+        // again whenever the activity is created anew, for example after Android reclaimed it in the background or
+        // when it is reopened from Recents. Without the message id the old tap is not replayed as a new one.
+        // 启动应用的那次通知点击会留在启动 Intent 中，而每当 Activity 重新创建时（例如安卓在后台回收后，或从最近任务重新打开），
+        // Capacitor 都会再读一次这个 Intent。去掉消息 id 后，旧的点击就不会被当作新的点击重放。
+        if (savedInstanceState != null || (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) {
+            getIntent().removeExtra("google.message_id");
+        }
         // initialPlugins register after the plugins Capacitor lists from npm, so this one replaces the stock
         // PushNotifications under the same name; registerPlugin() would register first and be replaced instead.
         // initialPlugins 在 Capacitor 从 npm 列出的插件之后注册，因此它会以同名替换原版 PushNotifications；

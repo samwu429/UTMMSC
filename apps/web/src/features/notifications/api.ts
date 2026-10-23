@@ -2,6 +2,7 @@ import type {
   NotificationPrefsResponse,
   PushDeviceRegistration,
   RemovePushDeviceBody,
+  TestNotificationBody,
   TestNotificationResponse,
   UpdateNotificationPrefsBody,
   VapidKeyResponse,
@@ -14,5 +15,5 @@ export const notificationsApi = {
   removeDevice: (body: RemovePushDeviceBody) => api<{ ok: true; removed: boolean }>('/notifications/devices', { method: 'DELETE', body }),
   prefs: () => api<NotificationPrefsResponse>('/notifications/prefs'),
   updatePrefs: (body: UpdateNotificationPrefsBody) => api<NotificationPrefsResponse>('/notifications/prefs', { method: 'PATCH', body }),
-  test: () => api<TestNotificationResponse>('/notifications/test', { method: 'POST' }),
+  test: (body?: TestNotificationBody) => api<TestNotificationResponse>('/notifications/test', body ? { method: 'POST', body } : { method: 'POST' }),
 };

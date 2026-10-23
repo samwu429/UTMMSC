@@ -5,6 +5,7 @@ import {
   GOOGLE_TOKEN_URL,
   buildFcmMessage,
   classifyFcmResponse,
+  describeFcmError,
   fcmAccessToken,
   fcmJwtClaims,
   forgetFcmAccessToken,
@@ -114,7 +115,15 @@ describe('buildFcmMessage', () => {
           priority: 'HIGH',
           ttl: '86400s',
           collapse_key: 'channel:ch_all',
-          notification: { channel_id: 'messages', tag: 'channel:ch_all', icon: 'ic_stat_notify', color: '#3C165F' },
+          notification: {
+            channel_id: 'messages',
+            tag: 'channel:ch_all',
+            icon: 'ic_stat_notify',
+            color: '#3C165F',
+            notification_priority: 'PRIORITY_HIGH',
+            default_sound: true,
+            default_vibrate_timings: true,
+          },
         },
         data: { url: 'https://utmmsc.com/UTMMSC/chat/room/channel%3Ach_all', kind: 'message', tag: 'channel:ch_all', roomId: 'channel:ch_all' },
       },
@@ -137,9 +146,17 @@ describe('classifyFcmResponse', () => {
     error: { status, message, details: [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode }, ...extra] },
   });
 
-  it('removes unregistered tokens and tokens from another project', () => {
+  it('removes unregistered tokens at once', () => {
     expect(classifyFcmResponse(404, fcmError('NOT_FOUND', 'UNREGISTERED'))).toBe('gone');
-    expect(classifyFcmResponse(403, fcmError('PERMISSION_DENIED', 'SENDER_ID_MISMATCH'))).toBe('gone');
+  });
+
+  it('counts a token from another project as a refusal, since a wrong-project service account says the same', () => {
+    expect(classifyFcmResponse(403, fcmError('PERMISSION_DENIED', 'SENDER_ID_MISMATCH'))).toBe('failed');
+  });
+
+  it('does not blame the device for a 404 about our project', () => {
+    expect(classifyFcmResponse(404, { error: { status: 'NOT_FOUND', message: 'Requested entity was not found.' } })).toBe('transient');
+    expect(classifyFcmResponse(404, null)).toBe('transient');
   });
 
   it('removes a token only when INVALID_ARGUMENT is about the token', () => {
@@ -154,5 +171,13 @@ describe('classifyFcmResponse', () => {
     expect(classifyFcmResponse(503, null)).toBe('transient');
     expect(classifyFcmResponse(401, null)).toBe('transient');
     expect(classifyFcmResponse(200, null)).toBe('sent');
+  });
+});
+
+describe('describeFcmError', () => {
+  it('names the status, the error codes and FCM’s message for the log', () => {
+    const body = { error: { status: 'PERMISSION_DENIED', message: 'SenderId mismatch', details: [{ errorCode: 'SENDER_ID_MISMATCH' }] } };
+    expect(describeFcmError(403, body)).toBe('403 SENDER_ID_MISMATCH PERMISSION_DENIED SenderId mismatch');
+    expect(describeFcmError(503, null)).toBe('503');
   });
 });

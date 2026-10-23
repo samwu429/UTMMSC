@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTr } from '../i18n/locale';
-import { checkAppUpdate, type AppUpdate } from './appUpdate';
+import { PUSH_BUILD, checkAppUpdate, type AppUpdate } from './appUpdate';
 import { ANDROID_APP_URL } from './platform';
 
 const DISMISSED_KEY = 'utmmsc.app-update-dismissed';
@@ -49,6 +49,12 @@ export function AppUpdateBanner() {
   const [hiddenCode, setHiddenCode] = useState(dismissedCode);
   if (!update || hiddenCode >= update.latest.versionCode) return null;
   const { versionCode, versionName } = update.latest;
+  // Only builds before 1.1.0 lack notifications; later ones are simply told there is something newer.
+  // 只有 1.1.0 之前的版本没有通知功能；之后的版本只提示有更新的版本。
+  const text =
+    update.currentCode < PUSH_BUILD
+      ? tr(`有新版本 ${versionName}，更新后可接收通知等新功能`, `Version ${versionName} is out, with notifications and more`)
+      : tr(`有新版本 ${versionName}，建议更新`, `Version ${versionName} is out`);
 
   function dismiss() {
     rememberDismissed(versionCode);
@@ -58,9 +64,7 @@ export function AppUpdateBanner() {
   return (
     <section className="-mx-4 mb-4 flex items-center gap-2 bg-white py-1.5 pl-4 pr-1">
       <span className="h-8 w-[3px] shrink-0 bg-gold" aria-hidden />
-      <p className="min-w-0 flex-1 text-sm leading-snug text-brand-800">
-        {tr(`有新版本 ${versionName}，更新后可接收通知等新功能`, `Version ${versionName} is out, with notifications and more`)}
-      </p>
+      <p className="min-w-0 flex-1 text-sm leading-snug text-brand-800">{text}</p>
       <a href={ANDROID_APP_URL} className="shrink-0 rounded-lg bg-brand-800 px-3 py-1.5 text-sm font-medium text-white active:bg-brand-900">
         {tr('更新', 'Update')}
       </a>

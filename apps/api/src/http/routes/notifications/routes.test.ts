@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiHttpError } from '../../errors';
-import { notificationRoutes, readDeviceRegistration, readWebPushEndpoint } from './index';
+import { notificationRoutes, readDeviceRegistration, readTestDelay, readWebPushEndpoint } from './index';
 
 const keys = { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' };
 
@@ -23,6 +23,22 @@ describe('notification routes', () => {
     expect(paths).toContain('GET /prefs');
     expect(paths).toContain('PATCH /prefs');
     expect(paths).toContain('POST /test');
+  });
+});
+
+describe('readTestDelay', () => {
+  it('sends at once without a body, as older clients call it', () => {
+    expect(readTestDelay(null)).toBe(0);
+    expect(readTestDelay({})).toBe(0);
+  });
+
+  it('accepts whole seconds up to the limit and refuses anything else', () => {
+    expect(readTestDelay({ delaySeconds: 4 })).toBe(4);
+    expect(readTestDelay({ delaySeconds: 10 })).toBe(10);
+    expect(code(() => readTestDelay({ delaySeconds: 11 }))).toBe('invalid_field');
+    expect(code(() => readTestDelay({ delaySeconds: -1 }))).toBe('invalid_field');
+    expect(code(() => readTestDelay({ delaySeconds: 1.5 }))).toBe('invalid_field');
+    expect(code(() => readTestDelay({ delaySeconds: '4' }))).toBe('invalid_field');
   });
 });
 

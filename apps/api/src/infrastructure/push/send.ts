@@ -1,8 +1,8 @@
-import type { NotificationPrefs, PushPayload } from '@utmmsc/shared';
+import type { NotificationPrefs, PushPayload, TestDeviceOutcome, TestNotificationResponse } from '@utmmsc/shared';
 import type { Env } from '../../env';
 import { listDeliveryDevices, recordDeliveryResults, type DeliveryDevice } from '../d1/push-devices';
 import { deliverJobs } from './deliver';
-import type { DeliveryJob, JobOutcome } from './types';
+import type { DeliveryJob, DeliveryOutcome, JobOutcome } from './types';
 
 /** What the member should see, or null to send them nothing. Called once per member. */
 /** 该成员应看到的内容；返回 null 表示不发送。每位成员调用一次。 */
@@ -51,12 +51,23 @@ async function runJobs(env: Env, jobs: DeliveryJob[]): Promise<JobOutcome[]> {
   return parts.flat();
 }
 
+interface DeliveryRun {
+  summary: DeliverySummary;
+  /** Outcome per device id, for every device a push was attempted on or that was removed. */
+  /** 每台设备的结果，按设备 id 记录，包括尝试推送的设备和被删除的设备。 */
+  outcomes: Map<string, DeliveryOutcome>;
+}
+
 /**
  * Builds one payload per member, pushes it to each of their devices, then prunes devices the push
  * services reject. Rows whose stored keys cannot be read are removed as gone.
  * 为每位成员生成一份内容并推送到其每台设备，然后清理被推送服务拒绝的设备。无法读取已存密钥的记录按失效删除。
  */
 export async function deliverToDevices(env: Env, devices: readonly DeliveryDevice[], payloadFor: PayloadFor): Promise<DeliverySummary> {
+  return (await deliver(env, devices, payloadFor)).summary;
+}
+
+async function deliver(env: Env, devices: readonly DeliveryDevice[], payloadFor: PayloadFor): Promise<DeliveryRun> {
   const payloads = new Map<string, PushPayload | null>();
   const jobs: DeliveryJob[] = [];
   const broken: string[] = [];
@@ -91,7 +102,37 @@ export async function deliverToDevices(env: Env, devices: readonly DeliveryDevic
     const memberId = byId.get(outcome.deviceId)?.memberId;
     if (memberId) reached.add(memberId);
   }
-  return { devices: jobs.length, sent, failed: jobs.length - sent, recipients: reached.size };
+  return {
+    summary: { devices: jobs.length, sent, failed: jobs.length - sent, recipients: reached.size },
+    outcomes: new Map(results.map((r) => [r.deviceId, r.outcome])),
+  };
+}
+
+/** When one sign-in has several rows (an old token beside its replacement), the best outcome speaks for it. */
+/** 同一登录有多条记录时（旧令牌和替换它的新令牌并存），以最好的结果为准。 */
+const OUTCOME_RANK: Record<DeliveryOutcome, number> = { sent: 0, skipped: 1, transient: 1, failed: 2, gone: 3 };
+
+function isServiceSide(outcome: DeliveryOutcome): outcome is 'skipped' | 'transient' {
+  return outcome === 'skipped' || outcome === 'transient';
+}
+
+/**
+ * The test push: to every live device of the member, whatever their switches say. It reports how the push
+ * went for the devices registered under `sessionId`, the sign-in that asked, so the screen can speak about
+ * the device in the member's hand, and whether a failure lay with the server or the push service.
+ * 测试推送：发到成员的每台有效设备，不受通知开关影响。返回在 `sessionId`（发出请求的那次登录）下登记的设备的结果，
+ * 页面因此能说明成员手中这台设备的情况；同时说明失败是否出在服务器或推送服务一侧。
+ */
+export async function sendTestPush(env: Env, memberId: string, sessionId: string, payload: PushPayload): Promise<TestNotificationResponse> {
+  const devices = await listDeliveryDevices(env.DB, [memberId]);
+  const { summary, outcomes } = await deliver(env, devices, () => payload);
+  let here: DeliveryOutcome | null = null;
+  for (const device of devices) {
+    const outcome = device.sessionId === sessionId ? outcomes.get(device.id) : undefined;
+    if (outcome && (here === null || OUTCOME_RANK[outcome] < OUTCOME_RANK[here])) here = outcome;
+  }
+  const thisDevice: TestDeviceOutcome = here === null ? 'none' : isServiceSide(here) ? 'unavailable' : here;
+  return { devices: summary.devices, sent: summary.sent, failed: summary.failed, thisDevice, serviceProblem: [...outcomes.values()].some(isServiceSide) };
 }
 
 /** Pushes to these members' live devices. Inactive members and signed-out devices get nothing. */

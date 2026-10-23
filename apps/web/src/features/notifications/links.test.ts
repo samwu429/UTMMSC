@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appPathFromUrl, roomIdFromPath } from './links';
+import { appPathFromUrl, isSameScreen, roomIdFromPath } from './links';
 import { base64UrlToBytes, sameKey } from './vapid';
 
 describe('appPathFromUrl', () => {
@@ -17,6 +17,19 @@ describe('appPathFromUrl', () => {
     expect(appPathFromUrl('')).toBeNull();
     expect(appPathFromUrl(undefined)).toBeNull();
     expect(appPathFromUrl(42)).toBeNull();
+  });
+});
+
+describe('isSameScreen', () => {
+  it('treats a link to the open screen as the same, ignoring the one-shot screen parameter', () => {
+    expect(isSameScreen('/settings?tab=settings&screen=notifications', { pathname: '/settings', search: '?tab=settings' })).toBe(true);
+    expect(isSameScreen('/settings?screen=notifications&tab=settings', { pathname: '/settings', search: '?tab=settings&screen=notifications' })).toBe(true);
+  });
+
+  it('tells other screens apart', () => {
+    expect(isSameScreen('/settings?tab=settings&screen=notifications', { pathname: '/settings', search: '' })).toBe(false);
+    expect(isSameScreen('/settings?tab=settings&screen=notifications', { pathname: '/chat', search: '' })).toBe(false);
+    expect(isSameScreen('/chat/room/channel%3Aa', { pathname: '/chat/room/channel%3Ab', search: '' })).toBe(false);
   });
 });
 

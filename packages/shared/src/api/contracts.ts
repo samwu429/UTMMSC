@@ -343,12 +343,40 @@ export interface NotificationPrefsResponse {
 
 export type UpdateNotificationPrefsBody = Partial<NotificationPrefs>;
 
+/** Longest wait POST /notifications/test accepts before sending. */
+/** POST /notifications/test 发送前可等待的最长秒数。 */
+export const TEST_NOTIFICATION_DELAY_MAX = 10;
+
+/**
+ * Optional body of POST /notifications/test. A short delay lets the member leave the app first: Android
+ * only puts a push in the notification shade while the app is in the background.
+ * POST /notifications/test 的可选请求体。短暂等待让成员先离开 App：安卓只在 App 处于后台时才把推送放进通知栏。
+ */
+export interface TestNotificationBody {
+  delaySeconds?: number;
+}
+
+/**
+ * How the push went for the device making the request: sent; refused by the push service (failed); the
+ * push service no longer knows it (gone, and the server dropped it); not attempted because of the server
+ * or the push service (unavailable); or this device is not registered under the current sign-in (none).
+ * 发出请求的这台设备的推送结果：已发送（sent）；被推送服务拒绝（failed）；推送服务已不认识它（gone，服务器已删除）；
+ * 因服务器或推送服务的问题没有尝试（unavailable）；或这台设备没有在当前登录下登记（none）。
+ */
+export type TestDeviceOutcome = 'sent' | 'failed' | 'gone' | 'unavailable' | 'none';
+
 /** Result of POST /notifications/test: devices tried, and how many accepted the push. */
 /** POST /notifications/test 的结果：尝试的设备数，以及其中接受推送的数量。 */
 export interface TestNotificationResponse {
   sent: number;
   failed: number;
   devices: number;
+  /** Absent from servers older than this field. */
+  /** 早于此字段的服务器不返回。 */
+  thisDevice?: TestDeviceOutcome;
+  /** Some devices were not tried because of the server or the push service, not the devices themselves. */
+  /** 有设备因服务器或推送服务的问题没有尝试，而不是设备本身的问题。 */
+  serviceProblem?: boolean;
 }
 
 /* Admin */

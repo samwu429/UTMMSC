@@ -13,6 +13,7 @@
   var BADGE = SCOPE + 'icons/badge-96.png';
   var NAVIGATE = 'utmmsc:navigate';
   var WHERE = 'utmmsc:where';
+  var SHOWN = 'utmmsc:shown';
   var WHERE_WAIT_MS = 500;
 
   function readPayload(event) {
@@ -132,6 +133,39 @@
     });
   }
 
+  /**
+   * A second test replaces the first notice under the same tag, which browsers do without alerting, so a
+   * test first closes the one still on screen.
+   * 第二次测试会以相同 tag 替换第一条通知，而浏览器替换时不会提醒，所以测试先关掉仍在屏幕上的那条。
+   */
+  function showAfresh(payload) {
+    if (payload.kind !== 'test' || typeof self.registration.getNotifications !== 'function') return show(payload);
+    return self.registration
+      .getNotifications({ tag: payload.tag })
+      .then(function (list) {
+        list.forEach(function (notification) {
+          notification.close();
+        });
+      })
+      .catch(function () {})
+      .then(function () {
+        return show(payload);
+      });
+  }
+
+  /**
+   * Tells the open windows that a test notice was shown, so the settings screen can confirm it.
+   * 告诉已打开的窗口测试通知已经显示，设置页因此可以确认。
+   */
+  function announceShown(payload) {
+    if (payload.kind !== 'test') return undefined;
+    return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windows) {
+      windows.forEach(function (client) {
+        if (client.url.indexOf(SCOPE) === 0) client.postMessage({ type: SHOWN, kind: payload.kind });
+      });
+    });
+  }
+
   self.addEventListener('push', function (event) {
     var payload = readPayload(event);
     event.waitUntil(
@@ -142,7 +176,11 @@
           return viewingRoom(windows, payload.roomId);
         })
         .then(function (viewing) {
-          if (!viewing) return show(payload);
+          if (!viewing) {
+            return showAfresh(payload).then(function () {
+              return announceShown(payload);
+            });
+          }
           return strictPushService().then(function (strict) {
             if (!strict) return undefined;
             return show(payload)

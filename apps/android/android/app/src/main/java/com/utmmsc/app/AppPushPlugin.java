@@ -3,9 +3,15 @@ package com.utmmsc.app;
 import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
+import androidx.core.app.NotificationManagerCompat;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
@@ -13,13 +19,17 @@ import com.getcapacitor.annotation.Permission;
 import com.google.firebase.FirebaseApp;
 
 /**
- * @capacitor/push-notifications under its own name "PushNotifications", with two changes:
+ * @capacitor/push-notifications under its own name "PushNotifications", with these changes:
  * register() rejects with code UNAVAILABLE when the APK was built without google-services.json, where the stock
- * plugin throws and Capacitor turns that into an app crash; and the "messages" and "events" channels exist from
- * the first launch, so a push never lands in Android's generic channel before the web has created them.
- * 以 "PushNotifications" 原名提供的 @capacitor/push-notifications，有两处改动：
+ * plugin throws and Capacitor turns that into an app crash; the "messages" and "events" channels exist from
+ * the first launch, so a push never lands in Android's generic channel before the web has created them; before
+ * Android 13 the permission reads "denied" when the member turned the app's notifications off, where the stock
+ * plugin always says "granted"; and openSettings() opens the app's notification settings.
+ * 以 "PushNotifications" 原名提供的 @capacitor/push-notifications，有以下改动：
  * APK 构建时没有 google-services.json 时，register() 以 UNAVAILABLE 拒绝，而原插件会抛出异常并被 Capacitor 变成应用崩溃；
- * 以及首次启动就建好 "messages" 和 "events" 两个通知渠道，网页创建渠道之前收到的推送也不会落入安卓的通用渠道。
+ * 首次启动就建好 "messages" 和 "events" 两个通知渠道，网页创建渠道之前收到的推送也不会落入安卓的通用渠道；
+ * Android 13 以前，成员关闭了本应用的通知时权限显示为 "denied"，而原插件总是回答 "granted"；
+ * 以及 openSettings() 打开本应用的通知设置。
  */
 @CapacitorPlugin(
     name = "PushNotifications",
@@ -63,6 +73,62 @@ public class AppPushPlugin extends PushNotificationsPlugin {
 
     private boolean isFirebaseConfigured() {
         return !FirebaseApp.getApps(getContext()).isEmpty();
+    }
+
+    @Override
+    @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            resolveSwitch(call);
+            return;
+        }
+        super.checkPermissions(call);
+    }
+
+    /**
+     * Before Android 13 there is no dialog to show: notifications are on unless the member switched them off in
+     * settings, which only they can undo there.
+     * Android 13 以前没有可弹出的对话框：除非成员在设置中关闭，通知默认开启，而关闭后也只能由成员在设置中重新打开。
+     */
+    @Override
+    @PluginMethod
+    public void requestPermissions(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            resolveSwitch(call);
+            return;
+        }
+        super.requestPermissions(call);
+    }
+
+    private void resolveSwitch(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("receive", NotificationManagerCompat.from(getContext()).areNotificationsEnabled() ? "granted" : "denied");
+        call.resolve(result);
+    }
+
+    /**
+     * Opens this app's notification settings, where the member allows notifications and sets each channel. A ROM
+     * without that page gets the app's details page, which links to it.
+     * 打开本应用的通知设置，成员可在那里允许通知并设置各个渠道。没有该页面的系统改为打开应用详情页，那里有通往通知设置的入口。
+     */
+    @PluginMethod
+    public void openSettings(PluginCall call) {
+        String app = getContext().getPackageName();
+        Intent details = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", app, null));
+        Intent notifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app)
+            : details;
+        for (Intent intent : new Intent[] { notifications, details }) {
+            try {
+                getActivity().startActivity(intent);
+                call.resolve();
+                return;
+            } catch (ActivityNotFoundException ignored) {
+                // Try the next page.
+                // 尝试下一个页面。
+            }
+        }
+        call.unavailable("No settings page for this app");
     }
 
     /**

@@ -122,9 +122,12 @@ async function requestAccessToken(account: ServiceAccount, now: number): Promise
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    const body = (await response.json().catch(() => null)) as { access_token?: unknown; expires_in?: unknown } | null;
+    const body = (await response.json().catch(() => null)) as { access_token?: unknown; expires_in?: unknown; error?: unknown; error_description?: unknown } | null;
     if (!response.ok || typeof body?.access_token !== 'string') {
-      console.error(`fcm: token exchange failed with status ${response.status}`);
+      // Google's reason, such as invalid_grant for a revoked key or a clock problem; it never contains the key.
+      // Google 给出的原因，例如密钥已吊销或时间不对时的 invalid_grant；其中不含密钥本身。
+      const reason = [body?.error, body?.error_description].filter((part) => typeof part === 'string').join(': ').slice(0, 200);
+      console.error(`fcm: token exchange failed with status ${response.status}${reason ? ` (${reason})` : ''}`);
       return null;
     }
     const lifetime = typeof body.expires_in === 'number' && body.expires_in > 0 ? body.expires_in * 1000 : ASSERTION_SECONDS * 1000;
@@ -154,6 +157,10 @@ export async function fcmAccessToken(account: ServiceAccount, now: number = Date
  * chat, and the notice for a withdrawn message replaces the queued original instead of following it.
  * FCM v1 消息。data 的值必须是字符串；应用在后台时，notification 消息显示在通知栏。聊天推送按房间合并：离线的手机每个聊天只收到最新的一条，
  * 已撤回消息的替换通知会取代排队中的原通知，而不是排在它后面。
+ *
+ * Android 7 has no channels, so sound, vibration and the banner come from the message itself; Android 8 and
+ * later ignore these three fields in favour of the channel.
+ * Android 7 没有通知渠道，声音、振动和横幅都取决于消息本身；Android 8 及以上忽略这三个字段，以渠道设置为准。
  */
 export function buildFcmMessage(token: string, payload: PushPayload, options: DeliveryOptions): Record<string, unknown> {
   const data: Record<string, string> = { url: payload.url, kind: payload.kind, tag: payload.tag };
@@ -173,6 +180,9 @@ export function buildFcmMessage(token: string, payload: PushPayload, options: De
           tag: payload.tag,
           icon: ANDROID_NOTIFICATION_ICON,
           color: ANDROID_NOTIFICATION_COLOR,
+          notification_priority: 'PRIORITY_HIGH',
+          default_sound: true,
+          default_vibrate_timings: true,
         },
       },
       data,
@@ -180,26 +190,41 @@ export function buildFcmMessage(token: string, payload: PushPayload, options: De
   };
 }
 
-interface FcmErrorBody {
-  error?: {
-    status?: string;
-    message?: string;
-    details?: { '@type'?: string; errorCode?: string; fieldViolations?: { field?: string }[] }[];
-  };
+interface FcmErrorDetail {
+  '@type'?: string;
+  errorCode?: string;
+  fieldViolations?: { field?: string }[];
 }
 
-/**
- * UNREGISTERED and a token from another Firebase project are permanent. INVALID_ARGUMENT counts as gone
- * only when it is about the token; otherwise the message itself was refused.
- * UNREGISTERED 和属于其他 Firebase 项目的令牌是永久性错误。INVALID_ARGUMENT 只有在针对令牌时才视为设备失效，否则是消息本身被拒绝。
- */
-export function classifyFcmResponse(status: number, body: unknown): DeliveryOutcome {
-  if (status >= 200 && status < 300) return 'sent';
-  const error = (body as FcmErrorBody | null)?.error;
+interface FcmError {
+  status?: string;
+  message?: string;
+  details?: FcmErrorDetail[];
+}
+
+function fcmErrorCodes(body: unknown): { error: FcmError | undefined; details: FcmErrorDetail[]; codes: Set<string> } {
+  const error = (body as { error?: FcmError } | null)?.error;
   const details = Array.isArray(error?.details) ? error.details : [];
   const codes = new Set(details.map((d) => d?.errorCode).filter((c): c is string => typeof c === 'string'));
   if (error?.status) codes.add(error.status);
-  if (status === 404 || codes.has('UNREGISTERED') || codes.has('SENDER_ID_MISMATCH')) return 'gone';
+  return { error, details, codes };
+}
+
+/**
+ * UNREGISTERED is permanent, and INVALID_ARGUMENT counts as gone only when it is about the token; otherwise
+ * the message itself was refused. A token from another Firebase project counts as a refusal, removed after
+ * five like any other: it also follows from a service account of the wrong project, which must not wipe
+ * every phone on the first push. A 404 without UNREGISTERED names our project, not the device.
+ * UNREGISTERED 是永久性错误；INVALID_ARGUMENT 只有在针对令牌时才视为设备失效，否则是消息本身被拒绝。属于其他 Firebase
+ * 项目的令牌按一次拒绝计算，和其他拒绝一样满五次后删除：服务账号属于错误的项目时也会出现这个错误，不能因为第一次推送就清空所有手机。
+ * 不带 UNREGISTERED 的 404 指的是我方项目，而不是设备。
+ */
+export function classifyFcmResponse(status: number, body: unknown): DeliveryOutcome {
+  if (status >= 200 && status < 300) return 'sent';
+  const { error, details, codes } = fcmErrorCodes(body);
+  if (codes.has('UNREGISTERED')) return 'gone';
+  if (codes.has('SENDER_ID_MISMATCH')) return 'failed';
+  if (status === 404) return 'transient';
   if (status === 400 || codes.has('INVALID_ARGUMENT')) {
     const aboutToken =
       details.some((d) => Array.isArray(d?.fieldViolations) && d.fieldViolations.some((v) => v?.field === 'message.token')) ||
@@ -220,8 +245,20 @@ export async function sendFcm(account: ServiceAccount, accessToken: string, job:
     });
     const body = response.ok ? await response.arrayBuffer().then(() => null) : await response.json().catch(() => null);
     if (response.status === 401) forgetFcmAccessToken();
-    return classifyFcmResponse(response.status, body);
-  } catch {
+    const outcome = classifyFcmResponse(response.status, body);
+    if (outcome !== 'sent') console.error(`fcm: push ${outcome} with ${describeFcmError(response.status, body)}`);
+    return outcome;
+  } catch (err) {
+    console.error('fcm: push request failed', err instanceof Error ? err.message : String(err));
     return 'transient';
   }
+}
+
+/** Status, error codes and FCM's message for the log; FCM's messages name fields, never the token. */
+/** 写入日志的状态码、错误码和 FCM 的说明；FCM 的说明只提字段名，从不包含令牌。 */
+export function describeFcmError(status: number, body: unknown): string {
+  const { error, codes } = fcmErrorCodes(body);
+  const parts = [String(status), ...codes];
+  if (typeof error?.message === 'string' && error.message) parts.push(error.message.slice(0, 200));
+  return parts.join(' ');
 }

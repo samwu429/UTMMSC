@@ -1,16 +1,20 @@
 import { create } from 'zustand';
 import { Capacitor } from '@capacitor/core';
+import type { RemovePushDeviceBody } from '@utmmsc/shared';
 import { errorMessage } from '../../shared/api/errors';
 import { tr } from '../../shared/i18n/locale';
 import { useSessionStore } from '../../shared/session/store';
 import { notificationsApi } from './api';
 import { detectCapability, type DeviceState, type PushCapability } from './capability';
 import {
+  canOpenNativeSettings,
   closeAllNativeNotifications,
   closeNativeNotifications,
   ensureNativeChannels,
+  nativeChannelIssues,
   nativePermission,
   nativePushReady,
+  type ChannelIssues,
   registerFcmDevice,
   registerNative,
   requestNativePermission,
@@ -38,6 +42,12 @@ interface NotificationState {
   /** Whether the server can send Web Push; null until asked. Irrelevant in the Android app. */
   /** 服务器能否发送 Web Push；询问前为 null。安卓 App 中不适用。 */
   serverReady: boolean | null;
+  /** In the Android app, channels the member turned off or down in system settings. */
+  /** 安卓 App 中，成员在系统设置里关闭或调低的通知渠道。 */
+  channels: ChannelIssues | null;
+  /** The Android app can open its notification settings (from 1.2.0). */
+  /** 安卓 App 能打开自己的通知设置（1.2.0 起）。 */
+  canOpenSettings: boolean;
   busy: boolean;
   error: string | null;
 }
@@ -46,6 +56,8 @@ export const useNotificationStore = create<NotificationState>()(() => ({
   capability: null,
   device: 'checking',
   serverReady: null,
+  channels: null,
+  canOpenSettings: false,
   busy: false,
   error: null,
 }));
@@ -56,14 +68,20 @@ function set(patch: Partial<NotificationState>) {
 
 let capabilityPromise: Promise<PushCapability> | null = null;
 
-/** Detected once per page; the answer does not change while the page is open. */
-/** 每个页面只检测一次；页面打开期间结果不会变化。 */
+/**
+ * Detected once per page; the answer does not change while the page is open. The app's probe registers with
+ * Firebase, which creates a push token, so it is skipped before sign-in and after the member turned
+ * notifications off here; a build with the plugin then counts as able.
+ * 每个页面只检测一次；页面打开期间结果不会变化。App 的探测会向 Firebase 登记，从而生成推送令牌，所以登录之前、
+ * 以及成员在这台设备上关闭通知之后都跳过探测，此时带有插件的版本视为可以接收。
+ */
 function capability(): Promise<PushCapability> {
   capabilityPromise ??= (async () => {
     const native = Capacitor.isNativePlatform();
+    const probe = Boolean(useSessionStore.getState().token) && !isTurnedOffHere();
     return detectCapability({
       native,
-      nativePush: native ? await nativePushReady() : false,
+      nativePush: native ? (probe ? await nativePushReady() : Capacitor.isPluginAvailable('PushNotifications')) : false,
       userAgent: navigator.userAgent,
       maxTouchPoints: navigator.maxTouchPoints ?? 0,
       standalone: standaloneDisplay(),
@@ -104,23 +122,96 @@ async function readServerReady(cap: PushCapability): Promise<boolean | null> {
 export async function refreshNotificationStatus(): Promise<void> {
   try {
     const cap = await capability();
-    const [device, serverReady] = await Promise.all([readDeviceState(cap), readServerReady(cap)]);
+    const native = cap === 'native';
+    const [device, serverReady, channels, canOpenSettings] = await Promise.all([
+      readDeviceState(cap),
+      readServerReady(cap),
+      native ? nativeChannelIssues() : null,
+      native ? canOpenNativeSettings() : false,
+    ]);
     // A failed registration in the app stays visible until the member tries again.
     // App 内登记失败的状态会一直显示，直到成员重试。
     const keepFailed = useNotificationStore.getState().device === 'failed' && device === 'off';
-    set({ capability: cap, device: keepFailed ? 'failed' : device, serverReady });
+    set({ capability: cap, device: keepFailed ? 'failed' : device, serverReady, channels, canOpenSettings });
   } catch {
     set({ capability: 'unsupported', device: 'off' });
   }
 }
 
+/**
+ * Records a newly registered token here and drops the one it replaced from the server, so a rotated token
+ * does not leave a dead row that the test would count as a second device.
+ * 在本机记下新登记的令牌，并从服务器删除被它替换的旧令牌，免得更换令牌后留下一条无效记录，被测试当成第二台设备。
+ */
+function rememberToken(token: string, previous: RemovePushDeviceBody | null) {
+  rememberDevice({ token });
+  if (previous && 'token' in previous && previous.token !== token) void notificationsApi.removeDevice(previous).catch(() => undefined);
+}
+
+/**
+ * On the way back to the page, for example from system settings: a device that was blocked and is now
+ * allowed is registered at once, so the member does not have to tap 开启通知 again. Never throws.
+ * 回到页面时（例如从系统设置回来）：原本被拦截、现在已允许的设备会立即登记，成员不必再点一次「开启通知」。不会抛错。
+ */
+export async function refreshAfterReturn(): Promise<void> {
+  const before = useNotificationStore.getState().device;
+  await refreshNotificationStatus();
+  if (before === 'denied' && useNotificationStore.getState().device === 'off') await syncRegistration();
+}
+
+/** A registration under way records its own token, so the token event it causes is not sent twice. */
+/** 进行中的登记会自己记下令牌，因此它引发的令牌事件不会再发送一次。 */
+let registering = false;
+
+/**
+ * The plugin answers unregister() at once while Firebase deletes the token in the background, and until
+ * then Firebase hands the same doomed token out again. The token being deleted, and since when, is kept
+ * here so a quick re-registration waits for a new one. The wait is bounded: a token still handed out after
+ * that was kept, for example because the delete failed offline, so it is still valid and is used.
+ * 插件对 unregister() 立即答复，而 Firebase 在后台删除令牌；删除完成之前，Firebase 仍会再给出这个即将失效的令牌。
+ * 这里记下正在删除的令牌及开始时间，紧接着重新登记时就会等到新令牌。等待有上限：超过上限后仍被给出的令牌说明它被保留了
+ * （例如离线时删除失败），它仍然有效，因此照常使用。
+ */
+let deleting: { token: string; since: number } | null = null;
+const DELETE_GRACE_MS = 8000;
+const NEW_TOKEN_WAIT_MS = 1500;
+
+function isBeingDeleted(token: string): boolean {
+  if (!deleting || deleting.token !== token) return false;
+  if (Date.now() - deleting.since < DELETE_GRACE_MS) return true;
+  deleting = null;
+  return false;
+}
+
+/** The member still wants notifications here: signed in, and not turned off on this device. */
+/** 成员仍希望在这里接收通知：已登录，且没有在这台设备上关闭。 */
+function stillWanted(): boolean {
+  return Boolean(useSessionStore.getState().token) && !isTurnedOffHere();
+}
+
 function onRotatedToken(token: string) {
   const current = storedDevice();
   if (current && 'token' in current && current.token === token) return;
-  if (!useSessionStore.getState().token || isTurnedOffHere()) return;
+  if (registering || !stillWanted() || isBeingDeleted(token)) return;
   registerFcmDevice(token)
-    .then(() => rememberDevice({ token }))
+    .then(() => rememberToken(token, current))
     .catch(() => undefined);
+}
+
+async function unregisterNativeToken(token: string | null): Promise<void> {
+  if (token) deleting = { token, since: Date.now() };
+  await unregisterNative();
+}
+
+async function freshNativeToken(): Promise<string> {
+  for (;;) {
+    const token = await registerNative(onRotatedToken);
+    if (!isBeingDeleted(token)) {
+      deleting = null;
+      return token;
+    }
+    await new Promise((resolve) => setTimeout(resolve, NEW_TOKEN_WAIT_MS));
+  }
 }
 
 /**
@@ -132,15 +223,28 @@ class NativeTokenError extends Error {}
 
 async function registerNativeDevice(): Promise<void> {
   await ensureNativeChannels().catch(() => undefined);
-  let token: string;
+  const previous = storedDevice();
+  registering = true;
   try {
-    token = await registerNative(onRotatedToken);
-  } catch (err) {
-    set({ device: 'failed' });
-    throw new NativeTokenError(err instanceof Error ? err.message : String(err));
+    let token: string;
+    try {
+      token = await freshNativeToken();
+    } catch (err) {
+      set({ device: 'failed' });
+      throw new NativeTokenError(err instanceof Error ? err.message : String(err));
+    }
+    // Firebase can take seconds, and meanwhile the member may have signed out or turned notifications off.
+    // Firebase 可能要好几秒，其间成员可能已退出登录或关闭了通知。
+    if (!stillWanted()) return;
+    await registerFcmDevice(token);
+    if (!stillWanted()) {
+      await notificationsApi.removeDevice({ token }).catch(() => undefined);
+      return;
+    }
+    rememberToken(token, previous);
+  } finally {
+    registering = false;
   }
-  await registerFcmDevice(token);
-  rememberDevice({ token });
 }
 
 function setupMessage(err: unknown): string {
@@ -217,7 +321,7 @@ export async function disableOnThisDevice(): Promise<void> {
     if (device) await notificationsApi.removeDevice(device).catch(() => undefined);
     rememberDevice(null);
     if (cap === 'webpush') await unsubscribeWebPush();
-    if (cap === 'native') await unregisterNative().catch(() => undefined);
+    if (cap === 'native') await unregisterNativeToken(device && 'token' in device ? device.token : null).catch(() => undefined);
     set({ device: 'off' });
   } finally {
     set({ busy: false });
@@ -282,6 +386,35 @@ async function forgetDevice(): Promise<void> {
   rememberDevice(null);
 }
 
+/**
+ * The push service no longer knows this device's address, so registering it again would not help: the
+ * browser subscribes afresh and the app gets a new token, then the server is told. Never throws; the
+ * outcome shows in the device state.
+ * 推送服务已经不认识这台设备的地址，重新登记同一个地址没有用：浏览器重新订阅，App 换一个新令牌，再告知服务器。不会抛错；结果反映在设备状态中。
+ */
+export async function renewRegistration(): Promise<void> {
+  const cap = useNotificationStore.getState().capability;
+  if (!useSessionStore.getState().token || isTurnedOffHere()) return;
+  try {
+    if (cap === 'webpush' && webPushPermission() === 'granted') {
+      await unsubscribeWebPush();
+      rememberDevice({ endpoint: await subscribeWebPush() });
+    } else if (cap === 'native' && (await nativePermission()) === 'granted') {
+      const device = storedDevice();
+      await unregisterNativeToken(device && 'token' in device ? device.token : null);
+      // The deleted token is forgotten at once, so a renewal that fails reads as off rather than on.
+      // 立即忘掉已删除的令牌，续订失败时显示为未开启，而不是已开启。
+      rememberDevice(null);
+      await registerNativeDevice();
+    }
+  } catch {
+    // The screen shows the state; the member can turn notifications off and on again.
+    // 页面会显示状态；成员可以关闭后重新开启通知。
+  } finally {
+    await refreshNotificationStatus();
+  }
+}
+
 const LOGOUT_WAIT_MS = 3000;
 
 function waitAtMost(work: Promise<unknown>, ms: number): Promise<unknown> {
@@ -304,7 +437,7 @@ export async function unregisterBeforeLogout(): Promise<void> {
   if (device) await waitAtMost(notificationsApi.removeDevice(device), LOGOUT_WAIT_MS);
   const cap = useNotificationStore.getState().capability ?? (await capability().catch(() => null));
   if (cap === 'webpush') await waitAtMost(unsubscribeWebPush(), LOGOUT_WAIT_MS);
-  if (cap === 'native') await waitAtMost(unregisterNative(), LOGOUT_WAIT_MS);
+  if (cap === 'native') await waitAtMost(unregisterNativeToken(device && 'token' in device ? device.token : null), LOGOUT_WAIT_MS);
   set({ device: 'off' });
 }
 

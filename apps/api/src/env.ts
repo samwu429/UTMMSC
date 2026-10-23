@@ -23,8 +23,11 @@ export interface Env {
   WEATHER_LATITUDE: string;
   WEATHER_LONGITUDE: string;
   WEATHER_TIMEZONE: string;
-  /** Web Push application server key (base64url). Empty until push is set up; browsers then cannot subscribe. */
-  /** Web Push 应用服务器公钥（base64url）。配置推送之前为空，此时浏览器无法订阅。 */
+  /**
+   * Web Push application server key (base64url), kept for reference: browsers are given the key derived
+   * from VAPID_PRIVATE_KEY, and a mismatch is logged.
+   * Web Push 应用服务器公钥（base64url），仅作对照：浏览器拿到的是由 VAPID_PRIVATE_KEY 推导出的公钥，两者不一致时会记录日志。
+   */
   VAPID_PUBLIC_KEY?: string;
 
   SESSION_SECRET: string;

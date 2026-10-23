@@ -100,7 +100,7 @@ Setup / 配置:
 ```bash
 node scripts/vapid-keys.mjs                  # prints the public key -> VAPID_PUBLIC_KEY in wrangler.jsonc; writes .vapid-private.json (gitignored)
 npx wrangler secret put VAPID_PRIVATE_KEY < .vapid-private.json
-npx wrangler secret put FCM_SERVICE_ACCOUNT  # Firebase service-account JSON; optional, Android pushes are skipped without it
+npx wrangler secret put FCM_SERVICE_ACCOUNT < service-account.json  # Firebase service-account JSON from a file, so its line breaks survive; optional, Android pushes are skipped without it
 ```
 
 ## Updating a deployment

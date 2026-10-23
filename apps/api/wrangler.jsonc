@@ -19,9 +19,9 @@
     "WEATHER_LATITUDE": "43.6532",
     "WEATHER_LONGITUDE": "-79.3832",
     "WEATHER_TIMEZONE": "America/Toronto",
-    // Public half of the Web Push (VAPID) key pair, base64url. Empty keeps browser notifications off; the
-    // private half is the VAPID_PRIVATE_KEY secret.
-    // Web Push（VAPID）密钥对的公钥，base64url。为空时浏览器通知保持关闭；私钥为 VAPID_PRIVATE_KEY 密钥。
+    // Public half of the Web Push (VAPID) key pair, base64url, for reference. Browsers are given the key derived
+    // from the VAPID_PRIVATE_KEY secret, and a mismatch with this value is logged.
+    // Web Push（VAPID）密钥对的公钥，base64url，仅作对照。浏览器拿到的是由 VAPID_PRIVATE_KEY 密钥推导出的公钥，与此值不一致时会记录日志。
     "VAPID_PUBLIC_KEY": "BASuOfQiqZX5mp1tIrEIAkOfCtwkyGDq7QlqOgfL5yZ_vCK8iRkSW47tyZiWOoXBuphDs6M6qfZmfUNwu-neqDc"
   },
 

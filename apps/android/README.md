@@ -80,8 +80,8 @@ The app receives chat and event notifications through Firebase Cloud Messaging (
    线上 Worker 立即使用该密钥，并从中读取项目 ID。之后删除下载的文件，或只保存在密码管理器中。
 6. Rebuild and republish the APK: raise `versionCode` and `versionName` as described in New version, then run the commands under Build. The build no longer prints `google-services.json not found`. Verify the signature and replace the homepage download. Members have to install the new APK, because earlier ones cannot receive push.
    重新构建并发布 APK：按 New version 一节提高 `versionCode` 和 `versionName`，再执行 Build 一节的命令。构建时不再打印 `google-services.json not found`。校验签名后替换首页的下载文件。成员需要安装新的 APK，因为之前的版本收不到推送。
-7. Check on a phone: install, sign in, open the 通知 page under 我的 / 设置, tap 开启通知 and allow, then tap 发送测试通知. A notification with the white UTMMSC book icon should arrive within seconds, also when the app is closed.
-   在手机上检查：安装并登录，在 我的 / 设置 中打开 通知 页面，点 开启通知 并允许，再点 发送测试通知。几秒内应收到带白色 UTMMSC 书本图标的通知，关闭应用时也一样。
+7. Check on a phone: install, sign in, open the 通知 page under 我的 / 设置, tap 开启通知 and allow, then tap 发送测试通知. The app goes to the home screen, and three seconds later a notification with the white UTMMSC book icon appears in the shade, because Android only shows pushes there while the app is in the background. Tapping it returns to the 通知 page, which says whether the notice arrived; when it did not, the page lists the system settings to check.
+   在手机上检查：安装并登录，在 我的 / 设置 中打开 通知 页面，点 开启通知 并允许，再点 发送测试通知。应用会退到桌面，三秒后通知栏出现带白色 UTMMSC 书本图标的通知，因为安卓只在应用处于后台时才把推送显示在那里。点开它会回到 通知 页面，页面会说明通知是否到达；没有到达时会列出需要检查的系统设置。
 
 FCM needs Google Play services. Phones without them, such as most phones sold for mainland China and Huawei phones since 2019, cannot turn on notifications in the app; their members still see new messages and events when they open it.
 FCM 依赖 Google Play 服务。没有该服务的手机（例如大多数国行手机，以及 2019 年以后的华为手机）无法在应用中开启通知；这些成员打开应用时仍能看到新消息和活动。
@@ -104,6 +104,10 @@ FCM 依赖 Google Play 服务。没有该服务的手机（例如大多数国行
 - 应用在后台或已关闭时，安卓把每条推送显示在通知栏，图标为 UTMMSC 紫色的白色书本。点击通知会打开应用，网页收到 `pushNotificationActionPerformed`，其 `notification.data` 中带有推送的 `url`，网页随即跳转过去。应用在前台时安卓不显示通知，改由网页收到 `pushNotificationReceived`，因此正在看的聊天不会再响一次。
 - The channels 消息 (urgent, pops up on screen) and 活动 (high) are created on the first launch, and members can change their sound and vibration or turn either off in Android settings → Apps → UTMMSC → Notifications. Android 13 and later ask for permission only when the member turns notifications on, and no push token exists before then.
 - 首次启动时创建 消息（紧急，会在屏幕上弹出）和 活动（高）两个通知渠道，成员可在 安卓设置 → 应用 → UTMMSC → 通知 中分别调整声音、振动或关闭。Android 13 及以上只在成员开启通知时请求权限，此前不会生成推送令牌。
+- Before Android 13, the push permission reads `denied` when the member turned UTMMSC's notifications off in Android settings; the stock plugin always says `granted` there. From 1.2.0, `PushNotifications.openSettings()` opens the app's notification settings, and the 通知 page offers it when notifications or a channel are off.
+- Android 13 以前，成员在安卓设置中关闭了 UTMMSC 的通知时，推送权限显示为 `denied`；原版插件在这些系统上总是回答 `granted`。从 1.2.0 起，`PushNotifications.openSettings()` 打开本应用的通知设置；通知或某个渠道被关闭时，通知 页面会提供这个按钮。
+- A tapped notice that started the app is not replayed when Android recreates the activity later, for example after reclaiming it in the background.
+- 启动应用的那次通知点击，在安卓之后重新创建 Activity 时（例如在后台回收之后）不会被重放。
 - In a build without `google-services.json`, `PushNotifications.register()` rejects with code `UNAVAILABLE` and also fires `registrationError`, where the stock plugin would crash the app; the page then shows 此版本暂不支持通知.
 - 在没有 `google-services.json` 的构建中，`PushNotifications.register()` 以 `UNAVAILABLE` 代码拒绝，并同时触发 `registrationError`，而原版插件会让应用崩溃；网页随后显示「此版本暂不支持通知」。
 - The app targets API 35 because only that platform is installed. To move to Capacitor 8's default of API 36, install platform `android-36`, then in `android/variables.gradle` set both SDK levels to 36, `androidxActivityVersion` to `1.11.0` and `androidxCoreVersion` to `1.17.0`.

@@ -34,10 +34,10 @@ export async function deliverJobs(env: Env, jobs: readonly DeliveryJob[]): Promi
   const fcmJobs = jobs.filter((job) => job.kind === 'fcm');
 
   const vapidKey = webJobs.length > 0 ? parseVapidPrivateKey(env.VAPID_PRIVATE_KEY) : null;
-  if (webJobs.length > 0 && !vapidKey) console.warn(`push: VAPID_PRIVATE_KEY is not set; skipped ${webJobs.length} web devices`);
+  if (webJobs.length > 0 && !vapidKey) console.warn(`push: VAPID_PRIVATE_KEY is missing or unreadable; skipped ${webJobs.length} web devices`);
 
   const account = fcmJobs.length > 0 ? parseServiceAccount(env.FCM_SERVICE_ACCOUNT) : null;
-  if (fcmJobs.length > 0 && !account) console.warn(`push: FCM_SERVICE_ACCOUNT is not set; skipped ${fcmJobs.length} Android devices`);
+  if (fcmJobs.length > 0 && !account) console.warn(`push: FCM_SERVICE_ACCOUNT is missing or unreadable; skipped ${fcmJobs.length} Android devices`);
   const accessToken = account ? await fcmAccessToken(account) : null;
 
   const outcomes = new Map<string, DeliveryOutcome>();

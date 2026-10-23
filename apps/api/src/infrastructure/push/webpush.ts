@@ -75,8 +75,10 @@ function payloadRecord(job: DeliveryJob): Record<string, string> {
 
 /**
  * The VAPID keys in the raw form the library takes: the public key as the uncompressed point, the private
- * key as the JWK's d. Both come from the one private JWK secret, so there is nothing to keep in step.
- * 库所需的原始形式的 VAPID 密钥：公钥为未压缩的点，私钥为 JWK 的 d。二者都取自同一个私钥 JWK 机密，无需另外保持一致。
+ * key as the JWK's d. Both come from the one private JWK secret, and GET /notifications/vapid-key serves the
+ * same public key, so browsers always subscribe with the key the server signs with.
+ * 库所需的原始形式的 VAPID 密钥：公钥为未压缩的点，私钥为 JWK 的 d。二者都取自同一个私钥 JWK 机密，
+ * GET /notifications/vapid-key 提供的也是这个公钥，因此浏览器订阅所用的公钥始终与服务器签名所用的一致。
  */
 export function vapidKeysFromJwk(privateKey: JsonWebKey): VapidKeys {
   const x = base64UrlToBytes(privateKey.x ?? '') ?? new Uint8Array();
@@ -109,9 +111,14 @@ export async function sendWebPush(privateKey: JsonWebKey, job: DeliveryJob, opti
   }
   try {
     const response = await fetch(job.endpoint, { method: 'POST', headers: request.headers, body: request.body, redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
-    await response.arrayBuffer().catch(() => undefined);
-    return classifyWebPushStatus(response.status);
-  } catch {
+    const reply = await response.text().catch(() => '');
+    const outcome = classifyWebPushStatus(response.status);
+    // Only the push service's host goes in the log: the rest of the endpoint lets anyone push to the device.
+    // 日志中只记录推送服务的主机名：endpoint 的其余部分能让任何人向这台设备推送。
+    if (outcome !== 'sent') console.error(`webpush: push ${outcome} with ${response.status} from ${new URL(job.endpoint).host}${reply ? ` (${reply.slice(0, 200)})` : ''}`);
+    return outcome;
+  } catch (err) {
+    console.error('webpush: push request failed', err instanceof Error ? err.message : String(err));
     return 'transient';
   }
 }
