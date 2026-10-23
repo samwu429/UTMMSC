@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const native = vi.hoisted(() => ({ platform: true, plugins: new Set<string>(['PushNotifications']) }));
-const push = vi.hoisted(() => ({ register: vi.fn<() => Promise<void>>() }));
+// Like Capacitor's plugin proxy, which answers every property: calling then() throws, so the code must
+// never resolve a promise with the plugin itself.
+// 与 Capacitor 的插件代理一样会响应所有属性：调用 then() 会抛错，因此代码绝不能用插件本身去完成 Promise。
+const push = vi.hoisted(() => ({
+  register: vi.fn<() => Promise<void>>(),
+  then: () => {
+    throw new Error('"PushNotifications.then()" is not implemented on android');
+  },
+}));
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {

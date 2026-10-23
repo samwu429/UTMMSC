@@ -8,10 +8,17 @@ const REGISTER_WAIT_MS = 15_000;
 /** register() 会立即答复；令牌本身稍后以事件送达。 */
 const PROBE_WAIT_MS = 5_000;
 
-let pluginPromise: Promise<PushNotificationsPlugin> | null = null;
+let pluginPromise: Promise<{ push: PushNotificationsPlugin }> | null = null;
 
-function pushPlugin(): Promise<PushNotificationsPlugin> {
-  pluginPromise ??= import('@capacitor/push-notifications').then((module) => module.PushNotifications);
+/**
+ * The plugin is wrapped in an object because Capacitor's plugin proxy answers every property, including
+ * then: resolving a promise with the proxy itself makes the promise call proxy.then(), which throws, and the
+ * promise never settles.
+ * 插件被包在一个对象里，因为 Capacitor 的插件代理会响应所有属性，包括 then：用代理本身完成 Promise 时，Promise 会调用
+ * proxy.then()，而它会抛错，Promise 便永远不会完成。
+ */
+function pushPlugin(): Promise<{ push: PushNotificationsPlugin }> {
+  pluginPromise ??= import('@capacitor/push-notifications').then((module) => ({ push: module.PushNotifications }));
   return pluginPromise;
 }
 
@@ -32,7 +39,7 @@ export function isPushUnavailableError(err: unknown): boolean {
 export async function nativePushReady(): Promise<boolean> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) return false;
   try {
-    const push = await pushPlugin();
+    const { push } = await pushPlugin();
     await Promise.race([push.register(), new Promise((resolve) => setTimeout(resolve, PROBE_WAIT_MS))]);
     return true;
   } catch (err) {
@@ -45,7 +52,7 @@ export async function nativePushReady(): Promise<boolean> {
 export type NativePermission = 'granted' | 'denied' | 'prompt';
 
 export async function nativePermission(): Promise<NativePermission> {
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   const { receive } = await push.checkPermissions();
   if (receive === 'granted') return 'granted';
   if (receive === 'denied') return 'denied';
@@ -55,7 +62,7 @@ export async function nativePermission(): Promise<NativePermission> {
 /** Shows the Android 13+ system dialog; older Android grants at once. */
 /** 弹出 Android 13 及以上的系统对话框；更早的安卓版本直接授予。 */
 export async function requestNativePermission(): Promise<NativePermission> {
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   const { receive } = await push.requestPermissions();
   if (receive === 'granted') return 'granted';
   if (receive === 'denied') return 'denied';
@@ -71,7 +78,7 @@ let channelsMade = false;
  */
 export async function ensureNativeChannels(): Promise<void> {
   if (channelsMade) return;
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   await push.createChannel({ id: 'messages', name: tr('消息', 'Messages'), description: tr('聊天中的新消息', 'New chat messages'), importance: 5, vibration: true });
   await push.createChannel({ id: 'events', name: tr('活动', 'Events'), description: tr('社团活动通知与提醒', 'Club event notices and reminders'), importance: 4, vibration: true });
   channelsMade = true;
@@ -88,7 +95,7 @@ let registrationHandles: Promise<PluginListenerHandle[]> | null = null;
  * 令牌事件在登记时以及 Firebase 更换令牌时到达；每次都会交给所有等待中的监听者，并交给 `onToken` 处理刷新。
  */
 function listenForTokens(onToken: (token: string) => void): Promise<PluginListenerHandle[]> {
-  registrationHandles ??= pushPlugin().then((push) =>
+  registrationHandles ??= pushPlugin().then(({ push }) =>
     Promise.all([
       push.addListener('registration', ({ value }) => {
         onToken(value);
@@ -108,7 +115,7 @@ function listenForTokens(onToken: (token: string) => void): Promise<PluginListen
  */
 export async function registerNative(onToken: (token: string) => void): Promise<string> {
   await listenForTokens(onToken);
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => {
       tokenListeners.delete(listener);
@@ -128,7 +135,7 @@ export async function registerNative(onToken: (token: string) => void): Promise<
 /** Deletes this phone's token, so pushes still addressed to it fail and the server drops it. */
 /** 删除这台手机的令牌，仍发往它的推送会失败，服务器随之删除它。 */
 export async function unregisterNative(): Promise<void> {
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   await push.unregister();
 }
 
@@ -146,7 +153,7 @@ export async function listenForNativeNotifications(handlers: {
   onForeground: (notification: PushNotificationSchema) => void;
 }): Promise<() => void> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) return () => undefined;
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   const handles = await Promise.all([
     push.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => handlers.onTap((action.notification.data ?? {}) as Record<string, unknown>)),
     push.addListener('pushNotificationReceived', handlers.onForeground),
@@ -160,7 +167,7 @@ export async function listenForNativeNotifications(handlers: {
 /** 成员打开某个聊天后，从通知栏移除该聊天的通知。 */
 export async function closeNativeNotifications(tag: string): Promise<void> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) return;
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   const { notifications } = await push.getDeliveredNotifications();
   const matching = notifications.filter((notification) => notification.tag === tag);
   if (matching.length > 0) await push.removeDeliveredNotifications({ notifications: matching });
@@ -170,6 +177,6 @@ export async function closeNativeNotifications(tag: string): Promise<void> {
 /** 清除本 App 在通知栏中的全部通知，例如在退出登录时。 */
 export async function closeAllNativeNotifications(): Promise<void> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) return;
-  const push = await pushPlugin();
+  const { push } = await pushPlugin();
   await push.removeAllDeliveredNotifications();
 }
