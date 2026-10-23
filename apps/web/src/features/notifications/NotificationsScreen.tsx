@@ -5,6 +5,8 @@ import { useTr } from '../../shared/i18n/locale';
 import { BackHeader } from '../../shared/ui/BackHeader';
 import { Button } from '../../shared/ui/Button';
 import { Notice } from '../../shared/ui/Card';
+import { useAppUpdate } from '../../shared/native/AppUpdateBanner';
+import { ANDROID_APP_URL } from '../../shared/native/platform';
 import { Switch } from '../chat/info/Switch';
 import { notificationsApi } from './api';
 import { disableOnThisDevice, enableNotifications, refreshNotificationStatus, useNotificationStore } from './notifications';
@@ -56,6 +58,9 @@ function DeviceHelp() {
   const tr = useTr();
   const { capability, device, serverReady, busy, error } = useNotificationStore();
   const [notice, setNotice] = useState<string | null>(null);
+  // An app that cannot receive push is an old build; when a newer one is published, offer it right here.
+  // 不能接收推送的 App 是旧版本；有新版本时直接在这里提供更新。
+  const update = useAppUpdate();
 
   async function turnOn() {
     setNotice(null);
@@ -86,7 +91,9 @@ function DeviceHelp() {
 
   const message =
     capability === 'native-unavailable'
-      ? tr('这个版本的 App 还不能接收通知。', 'This version of the app cannot receive notifications yet.')
+      ? update
+        ? tr(`这个版本的 App（${update.currentName}）还不能接收通知。更新到最新版 ${update.latest.versionName} 即可开启。`, `This version of the app (${update.currentName}) cannot receive notifications. Update to ${update.latest.versionName} to turn them on.`)
+        : tr('这个版本的 App 还不能接收通知。', 'This version of the app cannot receive notifications yet.')
       : capability === 'ios-update'
         ? tr('需要 iOS 16.4 或更新版本才能接收通知。可以在「设置 → 通用 → 软件更新」里更新。', 'Notifications need iOS 16.4 or later. Update in Settings → General → Software Update.')
         : capability === 'unsupported'
@@ -112,6 +119,14 @@ function DeviceHelp() {
       ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
       {notice && !error ? <Notice tone="success">{notice}</Notice> : null}
+      {capability === 'native-unavailable' && update ? (
+        <a
+          href={ANDROID_APP_URL}
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border-t-[3px] border-gold bg-brand-800 px-4 py-2.5 text-[15px] font-medium text-white hover:bg-brand-900"
+        >
+          {tr(`下载新版 ${update.latest.versionName}`, `Download ${update.latest.versionName}`)}
+        </a>
+      ) : null}
       {canEnable ? (
         <Button block loading={busy} onClick={() => void turnOn()}>
           {device === 'failed' ? tr('重试', 'Try again') : tr('开启通知', 'Turn on notifications')}

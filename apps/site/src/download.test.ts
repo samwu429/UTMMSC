@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANDROID_APK_KEY, etagListMatches, parseByteRange, rangeStillValid, serveAndroidApk } from './download';
+import { ANDROID_APK_KEY, ANDROID_RELEASE_KEY, etagListMatches, parseByteRange, rangeStillValid, serveAndroidApk, serveAndroidRelease } from './download';
 
 const UPLOADED = new Date('2026-10-01T12:00:00.500Z');
 const URL_ = 'https://utmmsc.com/download/android';
@@ -172,5 +172,27 @@ describe('serveAndroidApk', () => {
     const response = await serveAndroidApk(new Request(URL_, { method: 'POST' }), bucket);
     expect(response.status).toBe(405);
     expect(response.headers.get('allow')).toBe('GET, HEAD');
+  });
+});
+
+describe('serveAndroidRelease', () => {
+  function releaseBucket(json: string | null) {
+    return {
+      async get(key: string) {
+        return json !== null && key === ANDROID_RELEASE_KEY ? { body: new Response(json).body } : null;
+      },
+    } as unknown as R2Bucket;
+  }
+
+  it('serves the release JSON without caching', async () => {
+    const response = await serveAndroidRelease(new Request('https://utmmsc.com/download/android.json'), releaseBucket('{"versionCode":2,"versionName":"1.1.0"}'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-cache');
+    expect(await response.json()).toEqual({ versionCode: 2, versionName: '1.1.0' });
+  });
+
+  it('answers 404 when nothing is published and 405 for other methods', async () => {
+    expect((await serveAndroidRelease(new Request('https://utmmsc.com/download/android.json'), releaseBucket(null))).status).toBe(404);
+    expect((await serveAndroidRelease(new Request('https://utmmsc.com/download/android.json', { method: 'POST' }), releaseBucket('{}'))).status).toBe(405);
   });
 });

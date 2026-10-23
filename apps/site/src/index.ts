@@ -1,4 +1,4 @@
-import { serveAndroidApk } from './download';
+import { serveAndroidApk, serveAndroidRelease } from './download';
 import { HOME } from './pages';
 
 const MEMBER_PREFIX = '/UTMMSC';
@@ -21,6 +21,7 @@ export default {
       });
     }
     if (url.pathname === '/download/android' || url.pathname === '/download/android/') return serveAndroidApk(request, env.FILES);
+    if (url.pathname === '/download/android.json') return serveAndroidRelease(request, env.FILES);
     if (url.pathname === MEMBER_PREFIX) {
       return Response.redirect(`${url.origin}${MEMBER_PREFIX}/${url.search}`, 301);
     }

@@ -117,3 +117,27 @@ export async function serveAndroidApk(request: Request, bucket: R2Bucket): Promi
   }
   return new Response(object.body, { status: partial ? 206 : 200, headers: headersFor(object, partial ?? { 'content-length': String(object.size) }) });
 }
+
+/** The newest Android release, written next to the installer when it is published. */
+/** 最新的安卓版本信息，发布安装包时一并写在它旁边。 */
+export const ANDROID_RELEASE_KEY = 'downloads/android/latest.json';
+
+/**
+ * GET and HEAD for /download/android.json, which the app reads to offer an update. Never cached, so a
+ * new release is offered right after it is published.
+ * /download/android.json 的 GET 与 HEAD，App 读取它来提示更新。不缓存，新版本发布后立即可见。
+ */
+export async function serveAndroidRelease(request: Request, bucket: R2Bucket): Promise<Response> {
+  const method = request.method;
+  if (method !== 'GET' && method !== 'HEAD') {
+    return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });
+  }
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' };
+  const object = await bucket.get(ANDROID_RELEASE_KEY);
+  if (!object) return new Response(method === 'HEAD' ? null : '{"error":"not_found"}', { status: 404, headers });
+  if (method === 'HEAD') {
+    await object.body.cancel();
+    return new Response(null, { headers });
+  }
+  return new Response(object.body, { headers });
+}

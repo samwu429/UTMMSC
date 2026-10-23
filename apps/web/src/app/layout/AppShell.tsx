@@ -4,6 +4,7 @@ import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
 import { UnreadDot } from '../../features/chat/components/UnreadDot';
 import { showDot, totalUnread, useOverviewStore } from '../../features/chat/state/overviewStore';
+import { AppUpdateBanner } from '../../shared/native/AppUpdateBanner';
 import { useSessionStore } from '../../shared/session/store';
 
 type IconName = 'home' | 'chat' | 'people' | 'files' | 'admin' | 'me' | 'discover' | 'apps';
@@ -276,6 +277,7 @@ export function AppShell() {
             </button>
           </div>
         ) : null}
+        <AppUpdateBanner />
         <Outlet />
       </main>
       <nav
