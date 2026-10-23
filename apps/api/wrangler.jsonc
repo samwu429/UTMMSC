@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
-  // Non-secret configuration. Secrets (SESSION_SECRET, BREVO_API_KEY) are set with
+  // Non-secret configuration. Secrets (SESSION_SECRET, BREVO_API_KEY, VAPID_PRIVATE_KEY, FCM_SERVICE_ACCOUNT) are set with
   // `wrangler secret put` and never written here.
   // 非密钥配置。密钥通过 `wrangler secret put` 设置，不写在此处。
   "vars": {
@@ -18,8 +18,16 @@
     "MAIL_FROM_NAME": "UTMMSC 国语学者联盟",
     "WEATHER_LATITUDE": "43.6532",
     "WEATHER_LONGITUDE": "-79.3832",
-    "WEATHER_TIMEZONE": "America/Toronto"
+    "WEATHER_TIMEZONE": "America/Toronto",
+    // Public half of the Web Push (VAPID) key pair, base64url. Empty keeps browser notifications off; the
+    // private half is the VAPID_PRIVATE_KEY secret.
+    // Web Push（VAPID）密钥对的公钥，base64url。为空时浏览器通知保持关闭；私钥为 VAPID_PRIVATE_KEY 密钥。
+    "VAPID_PUBLIC_KEY": "BASuOfQiqZX5mp1tIrEIAkOfCtwkyGDq7QlqOgfL5yZ_vCK8iRkSW47tyZiWOoXBuphDs6M6qfZmfUNwu-neqDc"
   },
+
+  // Sends event notices that are due. Notices are planned to the minute, so they go out up to five minutes late.
+  // 发送到期的活动通知。通知计划精确到分钟，因此最多晚五分钟发出。
+  "triggers": { "crons": ["*/5 * * * *"] },
 
   "d1_databases": [
     {
@@ -39,11 +47,15 @@
 
   "durable_objects": {
     "bindings": [
-      { "name": "CHAT_ROOMS", "class_name": "ChatRoom" }
+      { "name": "CHAT_ROOMS", "class_name": "ChatRoom" },
+      // Stateless; splits large push fan-outs so no single invocation exceeds its outbound-request limit.
+      // 无状态；拆分大批量推送，使任何一次调用都不超过其外发请求上限。
+      { "name": "PUSH_RELAY", "class_name": "PushRelay" }
     ]
   },
 
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] }
+    { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["PushRelay"] }
   ]
 }

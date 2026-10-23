@@ -88,3 +88,15 @@ export async function clearMarkedUnread(db: D1Database, memberId: string, roomId
     if (!isMissingSchemaError(err)) throw err;
   }
 }
+
+/** Members who set 消息免打扰 on this room. Empty before migration 0013. */
+/** 对该房间设置了「消息免打扰」的成员。迁移 0013 之前为空。 */
+export async function listMutedMemberIds(db: D1Database, roomId: string): Promise<Set<string>> {
+  try {
+    const result = await db.prepare('SELECT member_id FROM chat_prefs WHERE room_id = ? AND muted = 1').bind(roomId).all<{ member_id: string }>();
+    return new Set(result.results.map((row) => row.member_id));
+  } catch (err) {
+    if (isMissingSchemaError(err)) return new Set();
+    throw err;
+  }
+}

@@ -36,6 +36,8 @@ import { OPEN_ACCESS, coerceRoomAccess } from '../../domain/messaging/visibility
 import { touchChannel } from '../../infrastructure/d1/channels';
 import { findAuthorCards, findMemberRole, type AuthorCard } from '../../infrastructure/d1/members';
 import { touchDirect } from '../../infrastructure/d1/direct';
+import type { Retraction } from '../../domain/notifications/payloads';
+import { MESSAGE_PUSH_INTERVAL_MS, notifyChatMessage, notifyChatRetraction, type MessageRecipient } from '../../infrastructure/push/chat';
 import {
   buildQuotePreview,
   capList,
@@ -48,6 +50,8 @@ import {
   unreadBaseline,
   type QuoteTarget,
 } from './history';
+import { recordPushedMessage, takePushedMembers } from './push-sent';
+import { claimPushSlots } from './push-throttle';
 import { currentRev, ensureRoomSchema, nextRev } from './room-schema';
 
 /**
@@ -67,6 +71,9 @@ export interface SocketIdentity {
   /** Random per connection; keys the history rate window for clients that send no requestId. */
   /** 每个连接随机生成；用于不带 requestId 的客户端的历史查询频率窗口。 */
   socketId?: string;
+  /** The page holding this socket said it is off screen; such a socket does not stop pushes. */
+  /** 持有此连接的页面声明自己不在屏幕上；这样的连接不会挡住推送。 */
+  hidden?: boolean;
 }
 
 /** Row shape of the `messages` table; the index signature satisfies SqlStorage's generic bound. */
@@ -148,6 +155,9 @@ export class ChatRoom extends DurableObject<Env> {
   private readonly sendWindows = new Map<string, number[]>();
   private readonly historyWindows = new Map<string, number[]>();
   private readonly legacyHistoryWindows = new Map<string, number[]>();
+  /** Message pushes still being sent, by message id; a recall waits for its message's push before replacing it. */
+  /** 仍在发送中的消息推送，按消息 id 记录；撤回要等原消息的推送发完再替换它。 */
+  private readonly pushesInFlight = new Map<number, Promise<void>>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -357,6 +367,7 @@ export class ChatRoom extends DurableObject<Env> {
       mutedUntil: this.mutedUntil(identity.memberId),
       serverTime: new Date().toISOString(),
       rev: currentRev(this.sql),
+      visibility: true,
     };
     server.send(JSON.stringify(ready));
 
@@ -431,7 +442,18 @@ export class ChatRoom extends DurableObject<Env> {
       case 'mute':
         await this.handleMute(ws, identity, frame.memberId, frame.minutes);
         return;
+      case 'visibility':
+        this.handleVisibility(ws, frame.visible);
+        return;
     }
+  }
+
+  /** Re-read here: another frame may have updated the attachment since this one was parsed. */
+  /** 在这里重新读取：解析本帧之后，其他帧可能已经更新过附件。 */
+  private handleVisibility(ws: WebSocket, visible: boolean): void {
+    const current = ws.deserializeAttachment() as SocketIdentity | null;
+    if (!current || (current.hidden === true) === !visible) return;
+    ws.serializeAttachment({ ...current, hidden: !visible } satisfies SocketIdentity);
   }
 
   /**
@@ -561,6 +583,80 @@ export class ChatRoom extends DurableObject<Env> {
     this.markRead(identity.memberId, inserted.id);
     this.broadcastMessage(inserted, clientId);
     this.ctx.waitUntil(this.recordActivity());
+    this.notifyOffline(identity, inserted, mentions);
+  }
+
+  /**
+   * Pushes a new message to readers who are not looking at the room, after it has been stored and
+   * broadcast. A member counts as looking only with a socket on a page that is on screen, so a room left
+   * open in a background tab or a backgrounded app still notifies. Nothing here can fail or delay the
+   * send. Just before the push goes out, members who opened the room meanwhile are dropped, and a message
+   * withdrawn meanwhile is not pushed at all.
+   * 消息存储并广播之后，推送给没有在看该房间的读者。只有页面显示在屏幕上的连接才算在看，因此留在后台标签页或后台 App 中的房间仍会通知。
+   * 这里的任何问题都不会让发送失败或变慢。推送发出之前，会去掉期间打开了房间的成员；期间被撤回或删除的消息则完全不推送。
+   */
+  private notifyOffline(identity: SocketIdentity, row: MessageRow, mentions: readonly string[]): void {
+    const roomId = this.roomId;
+    if (!roomId) return;
+    try {
+      const throttle = (recipients: readonly MessageRecipient[]): string[] => {
+        const current = this.findRow(row.id);
+        if (!current || current.deleted === 1 || current.recalled === 1) return [];
+        const away = recipients.filter((r) => !this.isWatching(r.memberId));
+        const allowed = claimPushSlots(this.sql, away, Date.now(), MESSAGE_PUSH_INTERVAL_MS);
+        recordPushedMessage(this.sql, allowed, row.id);
+        return allowed;
+      };
+      const delivery: Promise<void> = notifyChatMessage(this.env, {
+        roomId,
+        authorId: identity.memberId,
+        authorName: identity.displayName,
+        text: row.text,
+        hasImage: row.image_key !== null,
+        mentions,
+        mentionAll: row.mention_all === 1,
+        connectedMemberIds: this.watchingMemberIds(),
+        throttle,
+      })
+        .then((summary) => {
+          if (summary && summary.failed > 0) {
+            console.warn(`push: message ${row.id} in ${roomId} reached ${summary.recipients} members; ${summary.failed} of ${summary.devices} devices failed`);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (this.pushesInFlight.get(row.id) === delivery) this.pushesInFlight.delete(row.id);
+        });
+      this.pushesInFlight.set(row.id, delivery);
+      this.ctx.waitUntil(delivery);
+    } catch (err) {
+      console.error('push: could not start message notification', errorText(err));
+    }
+  }
+
+  /**
+   * After a recall or removal, replaces the message's notice on every device it reached, once its own
+   * push has finished, so the text does not stay on lock screens or arrive later from a push service
+   * queue. Never fails or delays the recall.
+   * 撤回或删除之后，等该消息本身的推送发完，再替换它在每台设备上的通知，原文因此不会留在锁屏上，也不会稍后从推送服务的队列中送达。
+   * 不会让撤回失败或变慢。
+   */
+  private retractPush(row: MessageRow, reason: Retraction): void {
+    const roomId = this.roomId;
+    if (!roomId || row.kind !== 'user') return;
+    try {
+      const pending = this.pushesInFlight.get(row.id) ?? Promise.resolve();
+      const work = pending
+        .then(async () => {
+          const memberIds = takePushedMembers(this.sql, row.id);
+          if (memberIds.length === 0) return;
+          await notifyChatRetraction(this.env, { roomId, authorName: row.author_name, reason, memberIds });
+        })
+        .catch((err: unknown) => console.error('push: could not replace a withdrawn notice', errorText(err)));
+      this.ctx.waitUntil(work);
+    } catch (err) {
+      console.error('push: could not start replacing a withdrawn notice', errorText(err));
+    }
   }
 
   private findOwnRow(memberId: string, clientId: string): MessageRow | undefined {
@@ -616,6 +712,7 @@ export class ChatRoom extends DurableObject<Env> {
     this.broadcastFrom(messageId, { type: 'recalled', messageId, rev });
     this.discardImage(row.image_key);
     this.ctx.waitUntil(this.recordActivity());
+    this.retractPush(row, 'recalled');
   }
 
   private async handleDelete(ws: WebSocket, identity: SocketIdentity, messageId: number): Promise<void> {
@@ -663,6 +760,7 @@ export class ChatRoom extends DurableObject<Env> {
     this.broadcastFrom(messageId, { type: 'deleted', messageId, by, rev });
     this.discardImage(row.image_key);
     this.ctx.waitUntil(this.recordActivity());
+    this.retractPush(row, by === 'author' ? 'deleted' : 'removed');
   }
 
   /** WeChat's delete: the message disappears for this member on all of their devices, and for nobody else. */
@@ -1067,13 +1165,35 @@ export class ChatRoom extends DurableObject<Env> {
 
   /* Fan-out */
 
-  private onlineCount(): number {
+  private connectedMemberIds(): Set<string> {
     const members = new Set<string>();
     for (const socket of this.ctx.getWebSockets()) {
       const identity = socket.deserializeAttachment() as SocketIdentity | null;
       if (identity) members.add(identity.memberId);
     }
-    return members.size;
+    return members;
+  }
+
+  /** Members with a socket whose page is on screen; a socket that never said otherwise counts as on screen. */
+  /** 有连接且其页面显示在屏幕上的成员；从未声明过的连接视为在屏幕上。 */
+  private watchingMemberIds(): Set<string> {
+    const members = new Set<string>();
+    for (const socket of this.ctx.getWebSockets()) {
+      const identity = socket.deserializeAttachment() as SocketIdentity | null;
+      if (identity && identity.hidden !== true) members.add(identity.memberId);
+    }
+    return members;
+  }
+
+  private isWatching(memberId: string): boolean {
+    return this.ctx.getWebSockets(memberId).some((socket) => {
+      const identity = socket.deserializeAttachment() as SocketIdentity | null;
+      return identity !== null && identity.hidden !== true;
+    });
+  }
+
+  private onlineCount(): number {
+    return this.connectedMemberIds().size;
   }
 
   private trySend(socket: WebSocket, payload: string): void {

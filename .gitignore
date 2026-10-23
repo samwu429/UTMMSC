@@ -13,6 +13,7 @@ apps/site/public/
 .env.*
 .dev.vars
 .dev.vars.*
+.vapid-private.json
 
 # Android release signing key and its passwords. Back them up outside git; see apps/android/README.md.
 # 安卓发布签名密钥及其密码。请在 git 之外备份，见 apps/android/README.md。
@@ -20,6 +21,10 @@ apps/android/keystore/
 apps/android/keystore.properties
 apps/android/**/*.jks
 apps/android/**/*.keystore
+
+# Firebase config for Android push. Not a secret, but kept out of git until the owner decides; see apps/android/README.md.
+# 安卓推送的 Firebase 配置。它不是密钥，但在负责人决定之前不进入 git；见 apps/android/README.md。
+apps/android/android/app/google-services.json
 
 # Local emulator screenshots. Gradle output is ignored by apps/android/android/.gitignore.
 # 本地模拟器截图。Gradle 构建产物由 apps/android/android/.gitignore 忽略。

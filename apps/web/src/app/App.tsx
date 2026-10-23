@@ -16,6 +16,8 @@ import { DiscoverPage } from '../features/discover/pages/DiscoverPage';
 import { FilesPage } from '../features/files/pages/FilesPage';
 import { HomePage } from '../features/home/pages/HomePage';
 import { MiniappsPage } from '../features/miniapps/pages/MiniappsPage';
+import { NotificationBridge } from '../features/notifications/NotificationBridge';
+import { syncRegistration } from '../features/notifications/notifications';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
 import { refreshMember } from '../features/auth/refreshMember';
 import { useLocaleStore } from '../shared/i18n/locale';
@@ -37,6 +39,9 @@ function RequireSession() {
   useEffect(() => {
     if (!token) return;
     void refreshMember({ force: true });
+    // The server ties each device to a session, so every sign-in registers it again.
+    // 服务器把每台设备绑定到会话，因此每次登录都要重新登记。
+    void syncRegistration();
     const onForeground = () => {
       if (document.visibilityState === 'visible') void refreshMember();
     };
@@ -106,6 +111,7 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <NotificationBridge />
       <StatusBarScrim />
       <SplashScreen />
       </ConfirmProvider>

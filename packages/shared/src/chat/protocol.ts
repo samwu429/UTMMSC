@@ -157,6 +157,18 @@ export interface PingFrame {
   type: 'ping';
 }
 
+/**
+ * Whether the page holding this socket is on screen. A socket counts as visible until it says otherwise,
+ * and only visible sockets keep their member from being pushed for this room. Sent only to a server
+ * whose ready frame set `visibility`.
+ * 持有此连接的页面是否显示在屏幕上。连接在声明之前都算可见，只有可见的连接才会让其成员不再收到本房间的推送。
+ * 只发给 ready 帧中设置了 `visibility` 的服务端。
+ */
+export interface VisibilityFrame {
+  type: 'visibility';
+  visible: boolean;
+}
+
 export type ClientFrame =
   | SendFrame
   | HistoryFrame
@@ -165,7 +177,8 @@ export type ClientFrame =
   | RecallFrame
   | HideFrame
   | MuteFrame
-  | PingFrame;
+  | PingFrame
+  | VisibilityFrame;
 
 /* Server -> client */
 
@@ -192,6 +205,9 @@ export interface ReadyFrame {
   /** Current room revision. A number here marks a server that speaks this protocol. */
   /** 当前房间版本号。此处为数字表示服务端支持本协议。 */
   rev?: number;
+  /** True when the server accepts visibility frames. */
+  /** 服务端接受 visibility 帧时为 true。 */
+  visibility?: boolean;
 }
 
 export interface MessageFrame {
@@ -425,6 +441,8 @@ export function parseClientFrame(raw: unknown): ClientFrame | null {
       return { type: 'mute', memberId: raw.memberId, minutes: raw.minutes };
     case 'ping':
       return { type: 'ping' };
+    case 'visibility':
+      return typeof raw.visible === 'boolean' ? { type: 'visibility', visible: raw.visible } : null;
     default:
       return null;
   }

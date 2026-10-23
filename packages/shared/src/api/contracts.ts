@@ -4,6 +4,7 @@ import type { FriendshipState } from '../identity/friends';
 import type { EnrollmentStatus, MemberProfile, MemberSelf } from '../identity/member';
 import type { ActivityPost, Experience, OpenTo, PostMedia } from '../identity/profile';
 import type { Role } from '../identity/roles';
+import type { EventNotificationPlan, EventNotificationRow, NotificationPrefs } from '../notifications/types';
 
 /** Error envelope returned by every failing API call. */
 /** 所有失败请求返回的错误结构。 */
@@ -311,6 +312,43 @@ export interface CreateEventBody {
   startsAt: string;
   location?: string;
   description?: string;
+  /** Omitted means DEFAULT_EVENT_NOTIFICATION_PLAN; omitted fields inside it take their defaults too. */
+  /** 省略时使用 DEFAULT_EVENT_NOTIFICATION_PLAN；其中省略的字段同样取默认值。 */
+  notifications?: Partial<EventNotificationPlan>;
+}
+
+/** An event in the admin list, with every notice planned for it. */
+/** 管理后台列表中的活动，附带其全部通知计划。 */
+export interface AdminEventRecord extends EventRecord {
+  notifications: EventNotificationRow[];
+}
+
+export interface AdminEventsResponse {
+  events: AdminEventRecord[];
+}
+
+export interface CreateEventResponse {
+  event: AdminEventRecord;
+}
+
+/* Notifications */
+
+export interface VapidKeyResponse {
+  publicKey: string;
+}
+
+export interface NotificationPrefsResponse {
+  prefs: NotificationPrefs;
+}
+
+export type UpdateNotificationPrefsBody = Partial<NotificationPrefs>;
+
+/** Result of POST /notifications/test: devices tried, and how many accepted the push. */
+/** POST /notifications/test 的结果：尝试的设备数，以及其中接受推送的数量。 */
+export interface TestNotificationResponse {
+  sent: number;
+  failed: number;
+  devices: number;
 }
 
 /* Admin */

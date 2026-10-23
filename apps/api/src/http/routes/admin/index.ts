@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
-import { canHoldEnrollment, enrollmentForRole, ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminMemberRow, type AnnouncementResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { canHoldEnrollment, enrollmentForRole, ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminEventRecord, type AdminEventsResponse, type AdminMemberRow, type AnnouncementResponse, type CreateEventResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { readEventNotificationPlan, scheduleEventNotifications } from '../../../domain/notifications/event-plan';
 import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { recordEligibilityChange } from '../../../infrastructure/d1/channel-joins';
 import { listChannels } from '../../../infrastructure/d1/channels';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
-import { createEvent, deleteEvent, listAllEvents, toEvent } from '../../../infrastructure/d1/events';
+import { cancelPendingNotices, listNoticesForEvents, toNotificationRow, type EventNoticeRow } from '../../../infrastructure/d1/event-notifications';
+import { createEvent, deleteEvent, listAllEvents, toEvent, type EventRow } from '../../../infrastructure/d1/events';
+import { dispatchEventNotice } from '../../../infrastructure/push/event-notices';
 import {
   findMemberById,
   findMemberByEmail,
@@ -202,9 +205,15 @@ adminRoutes.post('/enrollment-year-requests/:id/:decision', async (c) => {
 
 /* Events */
 
+function toAdminEvent(row: EventRow, notices: readonly EventNoticeRow[]): AdminEventRecord {
+  return { ...toEvent(row), notifications: notices.map(toNotificationRow) };
+}
+
 adminRoutes.get('/events', requirePermission('events.manage'), async (c) => {
   const rows = await listAllEvents(c.env.DB);
-  return c.json({ events: rows.map(toEvent) });
+  const notices = await listNoticesForEvents(c.env.DB, rows.map((row) => row.id));
+  const response: AdminEventsResponse = { events: rows.map((row) => toAdminEvent(row, notices.get(row.id) ?? [])) };
+  return c.json(response);
 });
 
 adminRoutes.post('/events', requirePermission('events.manage'), async (c) => {
@@ -213,18 +222,35 @@ adminRoutes.post('/events', requirePermission('events.manage'), async (c) => {
   const startsAtRaw = requireString(body.startsAt, '开始时间', 40);
   const startsAt = new Date(startsAtRaw);
   if (Number.isNaN(startsAt.getTime())) throw badRequest('invalid_date', '开始时间无效');
-  const row = await createEvent(c.env.DB, {
-    title,
-    startsAt: startsAt.toISOString(),
-    location: optionalString(body.location, '地点', 120),
-    description: optionalString(body.description, '说明', 1000),
-    createdBy: c.get('member').id,
-  });
-  return c.json({ event: toEvent(row) }, 201);
+  const plan = readEventNotificationPlan(body.notifications);
+  if (!plan.ok) throw badRequest(plan.error.code, plan.error.message);
+  const schedule = scheduleEventNotifications({ startsAt: startsAt.toISOString(), plan: plan.value, now: new Date() });
+  if (!schedule.ok) throw badRequest(schedule.error.code, schedule.error.message);
+  const { row, notices } = await createEvent(
+    c.env.DB,
+    {
+      title,
+      startsAt: startsAt.toISOString(),
+      location: optionalString(body.location, '地点', 120),
+      description: optionalString(body.description, '说明', 1000),
+      createdBy: c.get('member').id,
+    },
+    schedule.value,
+  );
+  // The publish notice is claimed like any due row, so a cron run at the same moment cannot send it twice.
+  // 发布通知与其他到期的行一样先领取再发送，同一时刻运行的定时任务不会重复发送。
+  const publish = notices.find((notice) => notice.kind === 'publish');
+  if (publish) c.executionCtx.waitUntil(dispatchEventNotice(c.env, publish.id));
+  const response: CreateEventResponse = { event: toAdminEvent(row, notices) };
+  return c.json(response, 201);
 });
 
 adminRoutes.delete('/events/:id', requirePermission('events.manage'), async (c) => {
-  await deleteEvent(c.env.DB, c.req.param('id'));
+  const id = c.req.param('id');
+  // Notice rows also cascade away with the event; cancelling first covers a database without cascades.
+  // 通知行也会随活动级联删除；先取消可以覆盖不执行级联的数据库。
+  await cancelPendingNotices(c.env.DB, id);
+  await deleteEvent(c.env.DB, id);
   return c.json({ ok: true });
 });
 

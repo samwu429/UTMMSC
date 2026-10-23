@@ -50,6 +50,9 @@ export default defineConfig({
       workbox: {
         navigateFallback: `${BASE}index.html`,
         globPatterns: ['**/*.{js,css,html,png,svg,woff2,mp4}'],
+        // Push and notification-click handlers live in public/push-sw.js, beside the generated worker.
+        // 推送与点击通知的处理写在 public/push-sw.js 中，与生成的 Service Worker 放在一起。
+        importScripts: ['push-sw.js'],
       },
     }),
     spaFallback(),

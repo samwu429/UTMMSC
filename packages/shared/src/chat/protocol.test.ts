@@ -32,6 +32,13 @@ describe('parseClientFrame', () => {
     expect(parseClientFrame({ type: 'mute', memberId: 'mem_1', minutes: 10 })).toEqual({ type: 'mute', memberId: 'mem_1', minutes: 10 });
   });
 
+  it('parses a visibility frame only with a boolean', () => {
+    expect(parseClientFrame({ type: 'visibility', visible: false, extra: 1 })).toEqual({ type: 'visibility', visible: false });
+    expect(parseClientFrame({ type: 'visibility', visible: true })).toEqual({ type: 'visibility', visible: true });
+    expect(parseClientFrame({ type: 'visibility', visible: 'no' })).toBeNull();
+    expect(parseClientFrame({ type: 'visibility' })).toBeNull();
+  });
+
   it('rejects send frames with missing or malformed fields', () => {
     expect(parseClientFrame({ type: 'send', text: 'hi' })).toBeNull();
     expect(parseClientFrame({ type: 'send', clientId: '', text: 'hi' })).toBeNull();

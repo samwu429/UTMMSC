@@ -17,8 +17,11 @@ import { authApi } from '../../auth/api';
 import { adminApi } from '../../admin/api';
 import { profileApi } from '../../profile/api';
 import { ProgramPicker } from '../../auth/components/ProgramPicker';
+import { NotificationsScreen } from '../../notifications/NotificationsScreen';
+import { unregisterBeforeLogout, useNotificationStore } from '../../notifications/notifications';
+import { deviceStatusText } from '../../notifications/statusText';
 
-type Screen = 'list' | 'password' | 'install' | 'programs' | 'year' | 'language';
+export type Screen = 'list' | 'password' | 'install' | 'programs' | 'year' | 'language' | 'notifications';
 
 function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -262,11 +265,22 @@ function InstallScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () => void; onPushed: (pushed: boolean) => void }) {
+export function AccountPanel({
+  onOpenProfile,
+  onPushed,
+  initialScreen = 'list',
+}: {
+  onOpenProfile: () => void;
+  onPushed: (pushed: boolean) => void;
+  initialScreen?: Screen;
+}) {
   const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
   const clear = useSessionStore((s) => s.clear);
-  const [screen, setScreen] = useState<Screen>('list');
+  const [screen, setScreen] = useState<Screen>(initialScreen);
+  const pushCapability = useNotificationStore((s) => s.capability);
+  const pushDevice = useNotificationStore((s) => s.device);
+  const pushServerReady = useNotificationStore((s) => s.serverReady);
   const [actingError, setActingError] = useState<string | null>(null);
   const [graduateError, setGraduateError] = useState<string | null>(null);
   const [pendingYear, setPendingYear] = useState<number | null>(null);
@@ -315,6 +329,9 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
     const ok = await ask({ title: tr('退出登录？', 'Sign out?'), confirmLabel: tr('退出', 'Sign out'), danger: true });
     if (!ok) return;
     try {
+      // Needs the session, so it runs before the server closes it.
+      // 需要会话，所以在服务器关闭会话之前执行。
+      await unregisterBeforeLogout();
       await authApi.logout();
     } finally {
       clear();
@@ -326,6 +343,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
   if (screen === 'year') return <YearScreen onBack={() => setScreen('list')} />;
   if (screen === 'install') return <InstallScreen onBack={() => setScreen('list')} />;
   if (screen === 'language') return <LanguageScreen onBack={() => setScreen('list')} />;
+  if (screen === 'notifications') return <NotificationsScreen onBack={() => setScreen('list')} />;
   if (!member) return null;
 
   const alumni = member.enrollmentStatus === 'alumni' || shouldGraduate(member.graduationYear, 'student');
@@ -391,6 +409,7 @@ export function AccountPanel({ onOpenProfile, onPushed }: { onOpenProfile: () =>
       </Group>
 
       <Group label={tr('通用', 'General')}>
+        <Row label={tr('通知', 'Notifications')} value={deviceStatusText(pushCapability, pushDevice, pushServerReady, tr)} onClick={() => setScreen('notifications')} />
         <Row label={tr('语言', 'Language')} value={locale === 'en' ? 'English' : '中文'} onClick={() => setScreen('language')} />
         {offersAndroidApp ? <Row label={tr('下载安卓 App', 'Get the Android app')} href={ANDROID_APP_URL} /> : null}
         {installed ? null : <Row label={tr('添加到主屏幕', 'Add to Home Screen')} onClick={() => setScreen('install')} />}

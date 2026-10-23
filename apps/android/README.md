@@ -9,11 +9,14 @@ UTMMSC 成员网络的安卓应用。它是一个 Capacitor 8 外壳，打开线
 capacitor.config.ts        app id, live URL, offline page, system bar style
 www/index.html             offline page, shown only when the live site cannot load
 android/                   Gradle project from `npx cap add android`, then customised
-  variables.gradle         SDK levels and AndroidX versions
-  app/build.gradle         versionCode, versionName, release signing
+  variables.gradle         SDK levels, AndroidX and Firebase Messaging versions
+  app/build.gradle         versionCode, versionName, release signing, Firebase only when google-services.json exists
+  app/google-services.json Firebase config for push (not in git, optional; see below)
   app/src/main/java/com/utmmsc/app/
     MainActivity.java              Back button, downloads, offline page history
     PhotoCaptureChromeClient.java  camera for the chat 拍摄 button
+    AppPushPlugin.java             push plugin that cannot crash without Firebase, notification channels
+  app/src/main/res/drawable-*/ic_stat_notify.png   notification icon, white brand mark
 keystore/                  release keystore (not in git)
 keystore.properties        keystore passwords (not in git)
 ```
@@ -52,6 +55,37 @@ The certificate's SHA-256 fingerprint, for checking a downloaded APK with `apksi
 A new APK is only needed when native parts change: `capacitor.config.ts`, `www/`, `android/` or the Capacitor plugins. In `android/app/build.gradle`, raise `versionCode` by one for every APK you publish (Android refuses an update whose code is lower than the installed one) and set `versionName` to the version members see, such as `1.0.1`. Then build, verify, and replace the file behind the Android download button on the homepage.
 只有原生部分改动时才需要新的 APK：`capacitor.config.ts`、`www/`、`android/` 或 Capacitor 插件。在 `android/app/build.gradle` 中，每发布一个 APK 就把 `versionCode` 加一（版本号低于已安装版本时安卓会拒绝更新），并把 `versionName` 设为成员看到的版本，例如 `1.0.1`。然后构建、校验，并替换首页安卓下载按钮所指向的文件。
 
+## Android push (Firebase) / 开启安卓推送（Firebase）
+
+The app receives chat and event notifications through Firebase Cloud Messaging (FCM), which is free. Until the steps below are done, the APK still builds and runs, only without push: the build prints `google-services.json not found`, and the app's notification settings show 此版本暂不支持通知. Browsers and the home-screen web app use Web Push and do not need Firebase.
+应用通过免费的 Firebase Cloud Messaging（FCM）接收聊天和活动通知。完成以下步骤之前，APK 照常构建运行，只是没有推送：构建时会打印 `google-services.json not found`，应用的通知设置显示「此版本暂不支持通知」。浏览器和添加到主屏幕的网页应用使用 Web Push，不需要 Firebase。
+
+1. Open the [Firebase console](https://console.firebase.google.com/) with the club's Google account and choose **Create a project**. Any name works, for example `UTMMSC`. Google Analytics is not needed and can be turned off.
+   用社团的 Google 账号打开 [Firebase 控制台](https://console.firebase.google.com/)，选择 **创建项目**（Create a project）。名称随意，例如 `UTMMSC`。不需要 Google Analytics，可以关闭。
+2. On the project's home page, click the Android icon to add an app. The Android package name must be exactly `com.utmmsc.app`. The nickname and the debug signing certificate SHA-1 can stay empty; push does not need them. Click **Register app**.
+   在项目首页点安卓图标添加应用。Android 软件包名称必须填 `com.utmmsc.app`，完全一致。应用昵称和调试签名证书 SHA-1 可以留空，推送不需要。点 **注册应用**（Register app）。
+3. Download `google-services.json` and save it as `apps/android/android/app/google-services.json`. Skip the rest of the wizard: the Firebase SDK is already set up. The file only names the Firebase project and is not a secret, but it is gitignored until you decide to commit it. You can download it again at any time from Project settings → General → Your apps.
+   下载 `google-services.json`，保存为 `apps/android/android/app/google-services.json`。向导其余步骤直接跳过：Firebase SDK 已经配置好。该文件只标识 Firebase 项目，不是密钥，但在你决定提交之前已被 gitignore。之后随时可以在 项目设置 → 常规 → 您的应用 中重新下载。
+4. Open Project settings (the gear icon) → **Service accounts** → Firebase Admin SDK → **Generate new private key** → **Generate key**. A JSON file downloads. This file is a secret: whoever has it can send notifications to every member. Never commit it or send it in chat.
+   打开 项目设置（齿轮图标）→ **服务账号**（Service accounts）→ Firebase Admin SDK → **生成新的私钥**（Generate new private key）→ **生成密钥**。浏览器会下载一个 JSON 文件。这个文件是密钥：拿到它的人可以给所有成员发通知。切勿提交到 git 或通过聊天发送。
+5. Store it as the Worker secret `FCM_SERVICE_ACCOUNT`. Pipe the file in rather than pasting it into the prompt, so the multi-line JSON arrives intact:
+   把它存为 Worker 密钥 `FCM_SERVICE_ACCOUNT`。请用管道传入文件，不要粘贴到提示符里，以免多行 JSON 被截断：
+
+   ```powershell
+   cd apps/api
+   Get-Content -Raw C:\path\to\downloaded-key.json | npx wrangler secret put FCM_SERVICE_ACCOUNT
+   ```
+
+   The live Worker uses it at once and reads the project id from it. Then delete the downloaded file, or keep it only in the password manager.
+   线上 Worker 立即使用该密钥，并从中读取项目 ID。之后删除下载的文件，或只保存在密码管理器中。
+6. Rebuild and republish the APK: raise `versionCode` and `versionName` as described in New version, then run the commands under Build. The build no longer prints `google-services.json not found`. Verify the signature and replace the homepage download. Members have to install the new APK, because earlier ones cannot receive push.
+   重新构建并发布 APK：按 New version 一节提高 `versionCode` 和 `versionName`，再执行 Build 一节的命令。构建时不再打印 `google-services.json not found`。校验签名后替换首页的下载文件。成员需要安装新的 APK，因为之前的版本收不到推送。
+7. Check on a phone: install, sign in, open the 通知 page under 我的 / 设置, tap 开启通知 and allow, then tap 发送测试通知. A notification with the white UTMMSC book icon should arrive within seconds, also when the app is closed.
+   在手机上检查：安装并登录，在 我的 / 设置 中打开 通知 页面，点 开启通知 并允许，再点 发送测试通知。几秒内应收到带白色 UTMMSC 书本图标的通知，关闭应用时也一样。
+
+FCM needs Google Play services. Phones without them, such as most phones sold for mainland China and Huawei phones since 2019, cannot turn on notifications in the app; their members still see new messages and events when they open it.
+FCM 依赖 Google Play 服务。没有该服务的手机（例如大多数国行手机，以及 2019 年以后的华为手机）无法在应用中开启通知；这些成员打开应用时仍能看到新消息和活动。
+
 ## Behaviour
 
 - Pages on `utmmsc.com` stay in the app; links to other hosts, `mailto:` and `tel:` open in the browser, mail app or dialer.
@@ -66,5 +100,11 @@ A new APK is only needed when native parts change: `capacitor.config.ts`, `www/`
 - 只有 `https://utmmsc.com` 上的页面和打包的离线页能调用原生插件，而且只能在主框架中调用，嵌入的框架不行。`capacitor.config.ts` 中的 `server.url` 只写源，路径放在 `appStartPath`；`server.url` 带路径时，安卓会把插件暴露给所有框架。
 - Cloud backup and device transfer are off, so the login token never leaves the phone.
 - 关闭云备份和换机迁移，登录令牌不会离开手机。
+- With the app in the background or closed, Android shows each push in the notification tray with the white book icon in UTMMSC purple. Tapping it opens the app, and the page receives `pushNotificationActionPerformed` with the push's `url` in `notification.data` and goes there. While the app is open, Android shows nothing and the page receives `pushNotificationReceived` instead, so the chat you are reading never pings.
+- 应用在后台或已关闭时，安卓把每条推送显示在通知栏，图标为 UTMMSC 紫色的白色书本。点击通知会打开应用，网页收到 `pushNotificationActionPerformed`，其 `notification.data` 中带有推送的 `url`，网页随即跳转过去。应用在前台时安卓不显示通知，改由网页收到 `pushNotificationReceived`，因此正在看的聊天不会再响一次。
+- The channels 消息 (urgent, pops up on screen) and 活动 (high) are created on the first launch, and members can change their sound and vibration or turn either off in Android settings → Apps → UTMMSC → Notifications. Android 13 and later ask for permission only when the member turns notifications on, and no push token exists before then.
+- 首次启动时创建 消息（紧急，会在屏幕上弹出）和 活动（高）两个通知渠道，成员可在 安卓设置 → 应用 → UTMMSC → 通知 中分别调整声音、振动或关闭。Android 13 及以上只在成员开启通知时请求权限，此前不会生成推送令牌。
+- In a build without `google-services.json`, `PushNotifications.register()` rejects with code `UNAVAILABLE` and also fires `registrationError`, where the stock plugin would crash the app; the page then shows 此版本暂不支持通知.
+- 在没有 `google-services.json` 的构建中，`PushNotifications.register()` 以 `UNAVAILABLE` 代码拒绝，并同时触发 `registrationError`，而原版插件会让应用崩溃；网页随后显示「此版本暂不支持通知」。
 - The app targets API 35 because only that platform is installed. To move to Capacitor 8's default of API 36, install platform `android-36`, then in `android/variables.gradle` set both SDK levels to 36, `androidxActivityVersion` to `1.11.0` and `androidxCoreVersion` to `1.17.0`.
 - 由于只安装了 API 35 平台，应用目标为 API 35。如需改用 Capacitor 8 默认的 API 36，先安装 `android-36` 平台，再在 `android/variables.gradle` 中把两个 SDK 级别设为 36，`androidxActivityVersion` 设为 `1.11.0`，`androidxCoreVersion` 设为 `1.17.0`。

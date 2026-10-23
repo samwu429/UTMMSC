@@ -14,6 +14,7 @@ import {
 } from '@utmmsc/shared';
 import { ApiClientError, errorMessage, localizedMessage } from '../../../shared/api/errors';
 import { useLocaleStore } from '../../../shared/i18n/locale';
+import { isOnScreen, onScreenChange } from '../../../shared/native/onScreen';
 import { useSessionStore } from '../../../shared/session/store';
 import { refreshMember } from '../../auth/refreshMember';
 import { chatApi } from '../api';
@@ -229,6 +230,15 @@ class RoomSession {
   private readonly pendingHides = new Map<number, NormalizedChatMessage>();
   private readonly recallStash = new Map<number, { text: string; at: number }>();
 
+  /**
+   * Whether the current socket's server takes visibility frames, and what it was last told. A new socket
+   * starts as on screen on the server.
+   * 当前连接的服务端是否接受 visibility 帧，以及上次告诉它的值。新连接在服务端一开始视为在屏幕上。
+   */
+  private visibilityAccepted = false;
+  private reportedOnScreen = true;
+  private stopScreenWatch: (() => void) | null = null;
+
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private mediaRefresh: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -303,6 +313,7 @@ class RoomSession {
     window.addEventListener('online', this.onWake);
     document.addEventListener('visibilitychange', this.onWake);
     document.addEventListener('visibilitychange', this.onVisibility);
+    this.stopScreenWatch = onScreenChange(() => this.reportScreen());
     this.mediaRefresh = setInterval(() => this.refreshMedia(), MEDIA_REFRESH_MS);
     this.commit();
     void this.connect();
@@ -315,6 +326,8 @@ class RoomSession {
     window.removeEventListener('online', this.onWake);
     document.removeEventListener('visibilitychange', this.onWake);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    this.stopScreenWatch?.();
+    this.stopScreenWatch = null;
     if (this.mediaRefresh) clearInterval(this.mediaRefresh);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.mediaRefresh = null;
@@ -425,6 +438,20 @@ class RoomSession {
   private readonly onVisibility = () => {
     this.outboxLink?.setVisible(document.visibilityState !== 'hidden');
   };
+
+  /**
+   * Tells the room whether this page is on screen. The room pushes a new message to a member unless one
+   * of their sockets is on screen, so a chat left open in a background tab or a backgrounded app still
+   * notifies.
+   * 告诉房间本页面是否显示在屏幕上。只要成员没有任何一个连接在屏幕上，房间就会推送新消息，
+   * 因此留在后台标签页或后台 App 中的聊天仍会通知。
+   */
+  private reportScreen(): void {
+    if (!this.visibilityAccepted) return;
+    const onScreen = isOnScreen();
+    if (onScreen === this.reportedOnScreen) return;
+    if (this.sendFrame({ type: 'visibility', visible: onScreen })) this.reportedOnScreen = onScreen;
+  }
 
   private readonly onWake = () => {
     if (!this.running || this.socket || !this.reconnectTimer) return;
@@ -541,6 +568,8 @@ class RoomSession {
   }
 
   private onSocketLost(): void {
+    this.visibilityAccepted = false;
+    this.reportedOnScreen = true;
     if (this.heartbeat) clearInterval(this.heartbeat);
     if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.legacyOlderTimer) clearTimeout(this.legacyOlderTimer);
@@ -640,6 +669,9 @@ class RoomSession {
     this.attempt = 0;
     this.syncRetries = 0;
     this.memberId = frame.memberId;
+    this.visibilityAccepted = frame.visibility === true;
+    this.reportedOnScreen = true;
+    this.reportScreen();
     const serverRev = typeof frame.rev === 'number' ? frame.rev : undefined;
     const capable = serverRev !== undefined;
     lastServerCapable = capable;

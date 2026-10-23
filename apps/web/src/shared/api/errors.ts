@@ -86,12 +86,24 @@ const ENGLISH: Record<string, string> = {
   '这条消息不能删除': 'This message cannot be deleted.',
   '查询过于频繁，请稍候': 'Loading too quickly. Wait a moment.',
   '图片尺寸无效': 'The image size is not valid.',
+  '开始时间无效': 'That start time is not valid.',
+  '通知服务尚未开通': 'Notifications are not set up on the server yet.',
+  '设备信息格式错误': 'The device details were not valid.',
+  '新消息通知 格式错误': 'The new message setting was not valid.',
+  '活动通知 格式错误': 'The event notification setting was not valid.',
+  '通知显示消息内容 格式错误': 'The message preview setting was not valid.',
+  '通知设置格式错误': 'The notification options were not valid.',
+  '自定义通知时间最多 5 个': 'You can add at most 5 custom notification times.',
+  '通知时间无效': 'That notification time is not valid.',
+  '通知时间必须晚于现在': 'Notification times must be in the future.',
+  '通知时间不能晚于活动开始后一天': 'Notification times can be at most one day after the event starts.',
 };
 
 /** Patterns for server messages that embed a number or a field name. */
 /** 含数字或字段名的服务端消息。 */
 const ENGLISH_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^你已被禁言 (\d+) 分钟$/, (m) => `You have been muted for ${m[1]} minutes.`],
+  [/^自定义通知时间最多 (\d+) 个$/, (m) => `You can add at most ${m[1]} custom notification times.`],
   [/^请求失败（(\d+)）$/, (m) => `The request failed (${m[1]}).`],
   [/^缺少 (.+)$/, () => 'A required field is missing.'],
   [/^(.+) 过长$/, () => 'A field is too long.'],

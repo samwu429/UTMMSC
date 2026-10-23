@@ -16,5 +16,8 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+    // Shared by @capacitor/push-notifications and the app, which subclasses its plugin.
+    // @capacitor/push-notifications 与继承其插件的应用共用此版本。
+    firebaseMessagingVersion = '25.0.1'
     kotlin_version = '2.2.20'
 }

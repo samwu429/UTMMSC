@@ -31,7 +31,9 @@ src/
                            history requests, upload with progress, room cache
       components/          unread badge
     files/                 categorised library with upload and authenticated download
-    admin/                 approvals, roles, channels, events, announcements
+    admin/                 approvals, roles, channels, events (with notification options), announcements
+    notifications/         Web Push and Android push: capability, registration, settings screen,
+                           chat-list prompt, notification taps
     settings/              profile, password change, install hint, sign out
   shared/
     api/                   base URL, fetch wrapper, error helpers
@@ -47,8 +49,8 @@ src/
 
 ## Tests
 
-`npm run test --workspace apps/web` runs Vitest in the node environment over `src/**/*.test.ts`. Tests cover pure modules only (message store, outbox, history requests, timeline, linkify, image boxes, mention tokens, image preparation, conversations, overview store, drafts, time labels, system wording, token contrast), so nothing under test may touch `window` at import time.
-`npm run test --workspace apps/web` 在 node 环境下用 Vitest 运行 `src/**/*.test.ts`。测试只覆盖纯模块（消息存储、发送队列、历史请求、时间线、链接识别、图片尺寸、@ 标记、图片预处理、会话列表、概览 store、草稿、时间文字、系统文案、配色对比度），因此被测模块在导入时不能访问 `window`。
+`npm run test --workspace apps/web` runs Vitest in the node environment over `src/**/*.test.ts`. Tests cover pure modules only (message store, outbox, history requests, timeline, linkify, image boxes, mention tokens, image preparation, conversations, overview store, drafts, time labels, system wording, token contrast, notification capability, event notice times, prompt visibility, notification links), so nothing under test may touch `window` at import time.
+`npm run test --workspace apps/web` 在 node 环境下用 Vitest 运行 `src/**/*.test.ts`。测试只覆盖纯模块（消息存储、发送队列、历史请求、时间线、链接识别、图片尺寸、@ 标记、图片预处理、会话列表、概览 store、草稿、时间文字、系统文案、配色对比度、通知能力、活动通知时间、提示卡片显示、通知链接），因此被测模块在导入时不能访问 `window`。
 
 ## Chat interaction rules
 
@@ -69,3 +71,18 @@ The chat screens follow WeChat's layout and interaction. Own bubbles use the clu
 - 频道遵循历史下限：之后加入的成员只能看到加入之后的消息，除非管理员为该频道打开「新成员可查看历史消息」。
 - 聊天信息 (the ··· button) shows members, the channel name, notice and history rule, 消息免打扰, 置顶聊天 and 清空聊天记录, which clears the history for you only.
 - 聊天信息（··· 按钮）显示成员、频道名称、公告和历史消息规则，以及消息免打扰、置顶聊天和清空聊天记录（只清空你自己的记录）。
+
+## Notifications
+
+- Browsers and home-screen apps use Web Push. `public/push-sw.js` is loaded into the generated service worker through `workbox.importScripts`; it shows each push with the app icon and `icons/badge-96.png`, skips a chat message while a focused window shows that chat (it asks the window, through `NotificationBridge`, which screen is open, because `Client.url` does not follow moves inside the app), and on a tap asks an open window to route there (or opens one).
+- 浏览器和主屏幕应用使用 Web Push。`public/push-sw.js` 通过 `workbox.importScripts` 加载进生成的 Service Worker；它用应用图标和 `icons/badge-96.png` 显示推送，当前有聚焦的窗口正显示该聊天时不再弹出该聊天的消息（它通过 `NotificationBridge` 询问窗口当前打开的页面，因为 `Client.url` 不随应用内跳转变化），点击通知时请已打开的窗口跳转过去（或打开新窗口）。
+- The Android app uses `@capacitor/push-notifications` with FCM. The app's own `PushNotifications` plugin rejects `register()` with code `UNAVAILABLE` when the APK was built without `google-services.json`, so the web calls `register()` first, before any permission dialog, and such builds show 此版本暂不支持通知. Any other token error shows 无法开启 with a retry.
+- 安卓 App 通过 `@capacitor/push-notifications` 使用 FCM。APK 构建时没有 `google-services.json` 的话，App 自带的 `PushNotifications` 插件会以 `UNAVAILABLE` 拒绝 `register()`；因此网页先调用 `register()`，再弹出权限对话框，这样的版本显示「此版本暂不支持通知」。其他令牌错误显示「无法开启」并可重试。
+- Browsers never ask for permission without a tap: 开启 on the chat-list prompt or 开启通知 under 我的 → 设置 → 通知. The Android app asks once after sign-in. Every sign-in registers the device again, since the server ties devices to sessions. Signing out removes the device from the server, then ends the subscription on the device whatever the network did (the browser unsubscribes, the app deletes its token), and clears the member's notices from the shade, as does a session the server refused.
+- 浏览器不经点击绝不请求权限：在聊天列表提示上点「开启」，或在「我的 → 设置 → 通知」点「开启通知」。安卓 App 在登录后询问一次。服务器把设备绑定到会话，所以每次登录都会重新登记设备。退出登录时先从服务器注销设备，然后不论网络结果如何都在本机结束订阅（浏览器取消订阅，App 删除令牌），并清空该成员在通知栏中的通知；会话被服务器拒绝时也会清空。
+- An open room tells the server whether its page is on screen (a `visibility` frame, sent only when the ready frame offers it), so a chat left open in a background tab or a backgrounded app still gets pushes.
+- 打开的房间会告诉服务器其页面是否显示在屏幕上（`visibility` 帧，只在 ready 帧表示支持时发送），因此留在后台标签页或后台 App 中的聊天仍会收到推送。
+- A recalled or removed message's notice is replaced under the same tag by a quiet 「撤回了一条消息」 notice (kind `recall`), so its text leaves the shade and lock screen.
+- 被撤回或删除的消息，其通知会以相同 tag 被一条安静的「撤回了一条消息」通知（类型 `recall`）替换，原文因此离开通知栏和锁屏。
+- Event times in the admin form are Toronto time wherever the publisher is, matching how the server schedules notices.
+- 管理后台活动表单中的时间一律按多伦多时间填写，与服务器安排通知的方式一致。

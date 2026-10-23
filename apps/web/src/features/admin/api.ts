@@ -1,12 +1,13 @@
 import type {
   AdminChannelRow,
+  AdminEventsResponse,
   AdminMemberRow,
   AnnouncementBody,
   AnnouncementResponse,
   CreateChannelBody,
   CreateEventBody,
+  CreateEventResponse,
   EnrollmentStatus,
-  EventRecord,
   ManualApplication,
   MemberStatus,
   MemberSelf,
@@ -38,8 +39,8 @@ export const adminApi = {
   updateChannel: (id: string, body: UpdateChannelBody) =>
     api<{ channel: AdminChannelRow }>(`/channels/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
   deleteChannel: (id: string) => api<{ ok: true }>(`/channels/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  events: () => api<{ events: EventRecord[] }>('/admin/events'),
-  createEvent: (body: CreateEventBody) => api<{ event: EventRecord }>('/admin/events', { method: 'POST', body }),
+  events: () => api<AdminEventsResponse>('/admin/events'),
+  createEvent: (body: CreateEventBody) => api<CreateEventResponse>('/admin/events', { method: 'POST', body }),
   deleteEvent: (id: string) => api<{ ok: true }>(`/admin/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   announce: (body: AnnouncementBody) => api<AnnouncementResponse>('/admin/announcements', { method: 'POST', body }),
   advisorInvites: () =>

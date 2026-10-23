@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTr } from '../../../shared/i18n/locale';
 import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
-import { AccountPanel } from '../panels/AccountPanel';
+import { AccountPanel, type Screen } from '../panels/AccountPanel';
 import { ProfilePanel } from '../panels/ProfilePanel';
 
 const TABS = [
@@ -21,9 +21,16 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = tabFromQuery(params.get('tab'));
+  // ?screen=notifications opens that screen once, e.g. from the chat-list prompt; the parameter is then dropped.
+  // ?screen=notifications 会打开该页面一次，例如从聊天列表的提示进入；之后去掉这个参数。
+  const [initialScreen] = useState<Screen>(() => (tab === 'settings' && params.get('screen') === 'notifications' ? 'notifications' : 'list'));
   const [pushed, setPushed] = useState(false);
   const tr = useTr();
   useStatusBarColor('#FFFFFF');
+
+  useEffect(() => {
+    if (params.has('screen')) setParams(tab === 'profile' ? {} : { tab }, { replace: true });
+  }, [params, setParams, tab]);
 
   function select(next: Tab) {
     setPushed(false);
@@ -57,7 +64,7 @@ export function SettingsPage() {
       {tab === 'profile' ? <ProfilePanel onShowActivity={() => navigate('/discover/feed')} /> : null}
       {tab === 'settings' ? (
         <div className={`px-4 pb-4 ${pushed ? 'pt-5' : 'pt-4'}`}>
-          <AccountPanel onOpenProfile={() => select('profile')} onPushed={setPushed} />
+          <AccountPanel onOpenProfile={() => select('profile')} onPushed={setPushed} initialScreen={initialScreen} />
         </div>
       ) : null}
     </div>

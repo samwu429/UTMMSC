@@ -4,4 +4,10 @@
     <string name="title_activity_main">UTMMSC</string>
     <string name="package_name">com.utmmsc.app</string>
     <string name="custom_url_scheme">com.utmmsc.app</string>
+    <!-- Notification channels, shown in the system settings for this app; same names the web gives them. -->
+    <!-- 通知渠道，显示在系统设置的本应用页面中；名称与网页设置的一致。 -->
+    <string name="notification_channel_messages">消息</string>
+    <string name="notification_channel_messages_description">聊天中的新消息</string>
+    <string name="notification_channel_events">活动</string>
+    <string name="notification_channel_events_description">活动发布和活动当天的提醒</string>
 </resources>

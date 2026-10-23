@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "2.0.0",
     "@utmmsc/shared": "*",
     "hono": "^4.6.14"
   },

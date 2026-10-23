@@ -40,6 +40,7 @@ import {
   updatePasswordHash,
   type MemberRow,
 } from '../../../infrastructure/d1/members';
+import { removeSessionDevices } from '../../../infrastructure/d1/push-devices';
 import { createSession, revokeAllSessions, revokeOtherSessions, revokeSession } from '../../../infrastructure/d1/sessions';
 import { settleMember } from '../../access';
 import {
@@ -277,6 +278,9 @@ authRoutes.get('/me', requireSession, async (c) => {
 
 authRoutes.post('/logout', requireSession, async (c) => {
   await revokeSession(c.env.DB, c.get('sessionId'));
+  // A device signed out here must not keep receiving pushes, even if the client could not unregister it.
+  // 在此退出登录的设备不能继续收到推送，即使客户端没能注销它。
+  await removeSessionDevices(c.env.DB, c.get('sessionId'));
   return c.json({ ok: true });
 });
 

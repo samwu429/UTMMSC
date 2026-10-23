@@ -8,6 +8,9 @@
          without it the photo button hands off to the camera app, which needs no permission from this app. -->
     <!-- 聊天长按通过 navigator.vibrate 轻振一下。刻意不声明 CAMERA：不声明时拍摄按钮交给相机应用处理，本应用无需相机权限。 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Android 13+ asks the member before the app may show notifications; the web requests it from settings. -->
+    <!-- Android 13 及以上需经成员同意才能显示通知；由网页在设置中请求。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Lets Capacitor see the camera app on Android 11+; otherwise the photo button falls back to the gallery. -->
     <!-- 让 Capacitor 在 Android 11 及以上能找到相机应用，否则拍摄按钮会退回到相册。 -->
@@ -54,5 +57,25 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Firebase shows pushes in the tray while the app is in the background; these set their look and the
+             channel used when a push names none. The API names "messages" or "events" and the same icon itself. -->
+        <!-- 应用在后台时由 Firebase 把推送显示在通知栏；以下设置通知的样式，以及推送未指定渠道时使用的渠道。
+             API 自身会指定 "messages" 或 "events" 渠道和同一个图标。 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/utmmsc_purple" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="messages" />
+        <!-- No push token is created until the member turns notifications on: register() switches this on and
+             unregister() off again, and Firebase remembers the choice across launches. -->
+        <!-- 成员开启通知之前不生成推送令牌：register() 将其打开，unregister() 再关上，Firebase 会在多次启动间记住该选择。 -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
     </application>
 </manifest>

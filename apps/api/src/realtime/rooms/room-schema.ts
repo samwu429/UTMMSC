@@ -5,7 +5,7 @@
  * 单个 ChatRoom 的 SQLite 存储结构，带版本号。版本号存在 meta 表中，房间从休眠中唤醒时只读一行，而不是重放每条 ALTER。每一步都只做增加，重复执行也安全。
  */
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 5;
 
 function readMeta(sql: SqlStorage, key: string): string | null {
   const row = sql.exec<{ value: string }>('SELECT value FROM meta WHERE key = ?', key).toArray()[0];
@@ -81,11 +81,21 @@ export function ensureRoomSchema(sql: SqlStorage): void {
       member_id TEXT PRIMARY KEY,
       clear_id INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS push_throttle (
+      member_id TEXT PRIMARY KEY,
+      last_push_at INTEGER NOT NULL,
+      last_mention_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS push_sent (
+      member_id TEXT PRIMARY KEY,
+      message_id INTEGER NOT NULL
+    );
     CREATE UNIQUE INDEX IF NOT EXISTS messages_author_client ON messages (author_id, client_id) WHERE client_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS messages_created ON messages (created_at);
     CREATE INDEX IF NOT EXISTS messages_rev ON messages (rev);
     CREATE INDEX IF NOT EXISTS hidden_messages_rev ON hidden_messages (member_id, rev);
     CREATE INDEX IF NOT EXISTS messages_reply_to ON messages (reply_to_id) WHERE reply_to_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS push_sent_message ON push_sent (message_id);
   `);
   sql.exec("INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0')");
   sql.exec(

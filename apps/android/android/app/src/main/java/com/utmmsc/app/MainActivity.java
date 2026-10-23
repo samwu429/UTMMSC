@@ -17,6 +17,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // initialPlugins register after the plugins Capacitor lists from npm, so this one replaces the stock
+        // PushNotifications under the same name; registerPlugin() would register first and be replaced instead.
+        // initialPlugins 在 Capacitor 从 npm 列出的插件之后注册，因此它会以同名替换原版 PushNotifications；
+        // 用 registerPlugin() 则会先注册，反被原版替换。
+        initialPlugins.add(AppPushPlugin.class);
         super.onCreate(savedInstanceState);
         Bridge bridge = getBridge();
         // Null when the phone has no usable WebView; Capacitor then shows its own notice.

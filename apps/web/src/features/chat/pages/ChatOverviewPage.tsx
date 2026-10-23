@@ -8,6 +8,7 @@ import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
 import { WX_COLORS } from '../../../shared/ui/wxTokens';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import { DirectoryPage } from '../../directory/pages/DirectoryPage';
+import { NotificationCard } from '../../notifications/NotificationCard';
 import { ConversationList, useConversationRows } from '../list/ConversationList';
 import { totalUnread, useOverviewStore } from '../state/overviewStore';
 
@@ -188,7 +189,7 @@ function ConversationsView({ filter }: { filter: Filter }) {
       <NavBar unread={unread} syncing={syncing} />
       <SearchBar />
       {failedWithData ? <OfflineBanner offline={offline} error={error} /> : null}
-      {filter !== 'all' ? <FilterStrip filter={filter} /> : null}
+      {filter === 'all' ? <NotificationCard /> : <FilterStrip filter={filter} />}
       {!hasData && error ? (
         <div className="mt-4 space-y-3">
           <Notice tone="error">{error}</Notice>
