@@ -139,6 +139,64 @@ describe('buildFcmMessage', () => {
     };
     expect(recall.message.android).toMatchObject({ collapse_key: 'channel:ch_all', notification: { channel_id: 'messages', tag: 'channel:ch_all' } });
   });
+
+  it('sends friend update activity on the moments channel at normal priority, collapsed by post', () => {
+    const url = 'https://utmmsc.com/UTMMSC/discover/feed/post/pst_1?comment=cmt_9';
+    const message = buildFcmMessage('token-1', { title: '好友动态', body: '张三评论了你：好看！', tag: 'moment:pst_1', url, kind: 'moment', postId: 'pst_1' }, { ttl: 86_400, urgency: 'normal' });
+    expect(message).toEqual({
+      message: {
+        token: 'token-1',
+        notification: { title: '好友动态', body: '张三评论了你：好看！' },
+        android: {
+          priority: 'NORMAL',
+          ttl: '86400s',
+          collapse_key: 'moment:pst_1',
+          notification: {
+            channel_id: 'moments',
+            tag: 'moment:pst_1',
+            icon: 'ic_stat_notify',
+            color: '#3C165F',
+            notification_priority: 'PRIORITY_DEFAULT',
+            default_sound: true,
+            default_vibrate_timings: true,
+          },
+        },
+        data: { url, kind: 'moment', tag: 'moment:pst_1', postId: 'pst_1' },
+      },
+    });
+  });
+
+  it('replaces a deleted comment’s notice on the same channel and tag, quietly on Android 7', () => {
+    const recall = buildFcmMessage('t', { title: '好友动态', body: '一条评论已删除', tag: 'moment:pst_1', url: 'u', kind: 'moment_recall', postId: 'pst_1' }, { ttl: 86_400, urgency: 'normal' }) as {
+      message: { android: Record<string, unknown> & { notification: Record<string, unknown> }; data: Record<string, string> };
+    };
+    expect(recall.message.android).toMatchObject({ priority: 'NORMAL', collapse_key: 'moment:pst_1' });
+    expect(recall.message.android.notification).toMatchObject({
+      channel_id: 'moments',
+      tag: 'moment:pst_1',
+      notification_priority: 'PRIORITY_DEFAULT',
+      default_sound: false,
+      default_vibrate_timings: false,
+    });
+    expect(recall.message.data).toEqual({ url: 'u', kind: 'moment_recall', tag: 'moment:pst_1', postId: 'pst_1' });
+  });
+
+  it('leaves chat, event and test pushes as they were', () => {
+    type Built = { message: { android: Record<string, unknown> & { notification: Record<string, unknown> }; data: Record<string, string> } };
+    const options = { ttl: 3600, urgency: 'high' as const };
+    for (const kind of ['message', 'recall', 'event', 'test'] as const) {
+      const built = buildFcmMessage('t', { title: 'a', body: 'b', tag: 'x', url: 'u', kind }, options) as Built;
+      expect(built.message.android.priority).toBe('HIGH');
+      expect(built.message.android.notification).toMatchObject({
+        channel_id: kind === 'event' ? 'events' : 'messages',
+        notification_priority: 'PRIORITY_HIGH',
+        default_sound: true,
+        default_vibrate_timings: true,
+      });
+      expect('collapse_key' in built.message.android).toBe(kind === 'message' || kind === 'recall');
+      expect(built.message.data).not.toHaveProperty('postId');
+    }
+  });
 });
 
 describe('classifyFcmResponse', () => {

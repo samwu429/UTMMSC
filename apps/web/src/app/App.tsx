@@ -11,11 +11,15 @@ import { ChatOverviewPage } from '../features/chat/pages/ChatOverviewPage';
 import { ChatSearchPage } from '../features/chat/pages/ChatSearchPage';
 import { RoomPage } from '../features/chat/pages/RoomPage';
 import { MemberPage } from '../features/directory/pages/MemberPage';
-import { DiscoverFeedPage } from '../features/discover/pages/DiscoverFeedPage';
 import { DiscoverPage } from '../features/discover/pages/DiscoverPage';
 import { FilesPage } from '../features/files/pages/FilesPage';
 import { HomePage } from '../features/home/pages/HomePage';
 import { MiniappsPage } from '../features/miniapps/pages/MiniappsPage';
+import { MemberMomentsPage } from '../features/moments/pages/MemberMomentsPage';
+import { MomentDetailPage } from '../features/moments/pages/MomentDetailPage';
+import { MomentNoticesPage } from '../features/moments/pages/MomentNoticesPage';
+import { MomentSettingsPage } from '../features/moments/pages/MomentSettingsPage';
+import { MomentsPage } from '../features/moments/pages/MomentsPage';
 import { NotificationBridge } from '../features/notifications/NotificationBridge';
 import { syncRegistration } from '../features/notifications/notifications';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
@@ -94,6 +98,13 @@ export function App() {
           <Route path="/chat/room/:roomId" element={<RoomPage />} />
           <Route path="/chat/room/:roomId/info" element={<ChatInfoPage />} />
           <Route path="/chat/search" element={<ChatSearchPage />} />
+          {/* 好友动态 scrolls the document and has no tab bar, so its pages sit outside the shell. */}
+          {/* 好友动态由文档滚动，也没有标签栏，因此这些页面位于外壳之外。 */}
+          <Route path="/discover/feed" element={<MomentsPage />} />
+          <Route path="/discover/feed/post/:postId" element={<MomentDetailPage />} />
+          <Route path="/discover/feed/notices" element={<MomentNoticesPage />} />
+          <Route path="/discover/feed/member/:memberId" element={<MemberMomentsPage />} />
+          <Route path="/discover/feed/settings" element={<MomentSettingsPage />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/chat" element={<ChatOverviewPage />} />
@@ -101,7 +112,6 @@ export function App() {
             <Route path="/directory/:id" element={<MemberPage />} />
             <Route path="/miniapps" element={<MiniappsPage />} />
             <Route path="/discover" element={<DiscoverPage />} />
-            <Route path="/discover/feed" element={<DiscoverFeedPage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route element={<RequireStaff />}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTr } from '../../../shared/i18n/locale';
+import { useSessionStore } from '../../../shared/session/store';
 import { useStatusBarColor } from '../../../shared/ui/useStatusBarColor';
 import { AccountPanel, type ScreenRequest } from '../panels/AccountPanel';
 import { ProfilePanel } from '../panels/ProfilePanel';
@@ -29,8 +30,15 @@ export function SettingsPage() {
   const asked = tab === 'settings' && params.get('screen') === 'notifications';
   const [openRequest, setOpenRequest] = useState<ScreenRequest | null>(() => (asked ? { screen: 'notifications', id: 0 } : null));
   const [pushed, setPushed] = useState(false);
+  const selfId = useSessionStore((s) => s.member?.id ?? null);
   const tr = useTr();
   useStatusBarColor('#FFFFFF');
+
+  // 动态 on the own profile opens the own album, where the camera tile posts.
+  // 自己资料页上的「动态」打开自己的相册，在那里用相机格子发表。
+  function showAlbum() {
+    navigate(selfId ? `/discover/feed/member/${encodeURIComponent(selfId)}` : '/discover/feed');
+  }
 
   useEffect(() => {
     if (!params.has('screen')) return;
@@ -70,7 +78,7 @@ export function SettingsPage() {
           })}
         </div>
       )}
-      {tab === 'profile' ? <ProfilePanel onShowActivity={() => navigate('/discover/feed')} /> : null}
+      {tab === 'profile' ? <ProfilePanel onShowActivity={showAlbum} /> : null}
       {tab === 'settings' ? (
         <div className={`px-4 pb-4 ${pushed ? 'pt-5' : 'pt-4'}`}>
           <AccountPanel onOpenProfile={() => select('profile')} onPushed={setPushed} openRequest={openRequest} />

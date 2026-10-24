@@ -1,9 +1,12 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { hasPermission } from '@utmmsc/shared';
 import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { List, PageTitle } from '../../../shared/ui/Card';
+import { UnreadDot } from '../../chat/components/UnreadDot';
+import { useMomentsBadge } from '../../moments/state/badgeStore';
+import { MemberAvatar } from '../../profile/InitialAvatar';
 import { ChevronIcon } from '../../profile/icons';
 
 function Glyph({ children }: { children: ReactNode }) {
@@ -14,11 +17,15 @@ function Glyph({ children }: { children: ReactNode }) {
   );
 }
 
-function Row({ to, title, icon }: { to: string; title: string; icon: ReactNode }) {
+function Row({ to, title, icon, trailing, spoken }: { to: string; title: string; icon: ReactNode; trailing?: ReactNode; spoken?: string }) {
   return (
     <Link to={to} className="flex min-h-[56px] items-center gap-3 px-4 active:bg-stone-50">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-800 text-white">{icon}</span>
-      <span className="min-w-0 flex-1 truncate text-[16px]">{title}</span>
+      <span className="min-w-0 flex-1 truncate text-[16px]">
+        {title}
+        {spoken ? <span className="sr-only">{spoken}</span> : null}
+      </span>
+      {trailing}
       <span className="text-stone-300">
         <ChevronIcon />
       </span>
@@ -26,14 +33,49 @@ function Row({ to, title, icon }: { to: string; title: string; icon: ReactNode }
   );
 }
 
+/**
+ * What the 好友动态 row shows at its end, as in WeChat: the latest actor's avatar with the unread number, or the
+ * latest author's avatar with a dot when friends posted something new. A moderator's removal has no actor, so
+ * the number then stands alone.
+ * 「好友动态」一行末尾显示的内容，与微信一致：最近互动者的头像加未读数，或者在好友有新动态时显示最近发布者的头像加红点。
+ * 管理员移除没有操作者，此时只显示数字。
+ */
+function MomentsBadge() {
+  const unread = useMomentsBadge((s) => s.unread);
+  const newPosts = useMomentsBadge((s) => s.newPosts);
+  const latestActor = useMomentsBadge((s) => s.latestActor);
+  const latestAuthor = useMomentsBadge((s) => s.latestAuthor);
+  const person = unread > 0 ? latestActor : newPosts > 0 ? latestAuthor : null;
+
+  if (!person) return unread > 0 ? <UnreadDot count={unread} className="mr-1" /> : null;
+  return (
+    <span className="relative mr-1.5 inline-flex" aria-hidden>
+      <MemberAvatar name={person.displayName} avatarKey={person.avatarKey} shape="square" className="h-8 w-8 text-xs" />
+      <UnreadDot
+        count={unread}
+        dot={unread === 0}
+        className={`absolute shadow-[0_0_0_1.5px_#fff] ${unread > 0 ? '-right-2 -top-2' : '-right-1 -top-1'}`}
+      />
+    </span>
+  );
+}
+
 export function DiscoverPage() {
   const tr = useTr();
   const member = useSessionStore((s) => s.member);
+  const unread = useMomentsBadge((s) => s.unread);
+  const newPosts = useMomentsBadge((s) => s.newPosts);
   const staff =
     member &&
     (hasPermission(member.role, 'members.approve') ||
       hasPermission(member.role, 'channels.manage') ||
       hasPermission(member.role, 'events.manage'));
+
+  // Every visit asks again, so the row is current when the member decides whether to open it.
+  // 每次进入都重新查询，成员决定是否打开时这一行是最新的。
+  useEffect(() => {
+    void useMomentsBadge.getState().refresh();
+  }, []);
 
   return (
     <div>
@@ -42,6 +84,8 @@ export function DiscoverPage() {
         <Row
           to="/discover/feed"
           title={tr('好友动态', 'Friend updates')}
+          trailing={<MomentsBadge />}
+          spoken={unread > 0 ? tr(`，${unread} 条新消息`, `, ${unread} new`) : newPosts > 0 ? tr('，有新动态', ', new updates') : undefined}
           icon={
             <Glyph>
               <path d="M4 8.5h3l1.2-2h7.6L17 8.5h3v9H4v-9Z" />

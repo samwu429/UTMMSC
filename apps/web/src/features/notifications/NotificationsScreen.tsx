@@ -149,22 +149,28 @@ function DeviceHelp() {
   const canEnable = (capability === 'webpush' && serverReady !== false && device === 'off') || (capability === 'native' && (device === 'off' || device === 'failed'));
   const channelWarnings =
     capability === 'native' && device === 'on'
-      ? [channelWarning({ zh: '消息', en: 'Message' }, channels?.messages ?? null, tr), channelWarning({ zh: '活动', en: 'Event' }, channels?.events ?? null, tr)].filter(
-          (warning): warning is string => warning !== null,
-        )
+      ? [
+          channelWarning({ zh: '消息', en: 'Message' }, channels?.messages ?? null, tr),
+          channelWarning({ zh: '活动', en: 'Event' }, channels?.events ?? null, tr),
+          channelWarning({ zh: '好友动态', en: 'Friend update' }, channels?.moments ?? null, tr),
+        ].filter((warning): warning is string => warning !== null)
       : [];
 
   return (
     <div className="space-y-3 px-4 py-3">
       {message ? <p className="text-[15px] leading-relaxed text-stone-700">{message}</p> : null}
-      {device === 'on' ? <p className="text-[15px] leading-relaxed text-stone-700">{tr('这台设备会收到新消息和活动通知。', 'This device gets new messages and event notices.')}</p> : null}
+      {device === 'on' ? (
+        <p className="text-[15px] leading-relaxed text-stone-700">{tr('这台设备会收到新消息、活动和好友动态互动的通知。', 'This device gets new messages, event notices and friend update activity.')}</p>
+      ) : null}
       {channelWarnings.map((warning) => (
         <Notice key={warning} tone="error">
           {warning}
         </Notice>
       ))}
       {canEnable && device === 'off' && !message ? (
-        <p className="text-[15px] leading-relaxed text-stone-700">{tr('开启后，有新消息和活动时这台设备会收到通知。', 'Turn them on to get new messages and event notices on this device.')}</p>
+        <p className="text-[15px] leading-relaxed text-stone-700">
+          {tr('开启后，有新消息、活动和好友动态互动时这台设备会收到通知。', 'Turn them on to get new messages, event notices and friend update activity on this device.')}
+        </p>
       ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
       {notice && !error ? <Notice tone="success">{notice}</Notice> : null}
@@ -205,9 +211,9 @@ function DeviceHelp() {
 }
 
 /**
- * Settings → Notifications: this device's status and switch, the member's three switches (shared by all
+ * Settings → Notifications: this device's status and switch, the member's four switches (shared by all
  * their devices), and a test push.
- * 设置 → 通知：这台设备的状态与开关、成员的三个开关（对所有设备生效），以及测试通知。
+ * 设置 → 通知：这台设备的状态与开关、成员的四个开关（对所有设备生效），以及测试通知。
  */
 export function NotificationsScreen({ onBack }: { onBack: () => void }) {
   const tr = useTr();
@@ -304,8 +310,15 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
             onChange={(next) => void change('events', next)}
           />
           <ToggleRow
+            label={tr('好友动态互动', 'Friend update activity')}
+            hint={tr('有人评论、回复你，或管理员处理你的内容时通知', 'When someone comments on or replies to you, or an admin acts on your content')}
+            checked={prefs?.moments ?? true}
+            disabled={loading}
+            onChange={(next) => void change('moments', next)}
+          />
+          <ToggleRow
             label={tr('通知显示消息内容', 'Show message content')}
-            hint={tr('关闭后，通知只显示「你收到一条新消息」', 'When off, notifications only say you have a new message')}
+            hint={tr('关闭后，通知只显示「你收到一条新消息」或「好友动态有新互动」', 'When off, notifications only say there is something new')}
             checked={prefs?.preview ?? true}
             disabled={loading}
             onChange={(next) => void change('preview', next)}

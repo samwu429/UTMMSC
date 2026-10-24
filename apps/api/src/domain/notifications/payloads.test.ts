@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { eventPushPayload, messagePushPayload, retractionPushPayload, roomUrl, testPushPayload } from './payloads';
+import {
+  eventPushPayload,
+  messagePushPayload,
+  momentCommentPushPayload,
+  momentNoticesUrl,
+  momentPostUrl,
+  momentRecallPushPayload,
+  momentRemovedPushPayload,
+  momentTag,
+  retractionPushPayload,
+  roomUrl,
+  testPushPayload,
+} from './payloads';
 
 const BASE = 'https://utmmsc.com/UTMMSC/';
 
@@ -108,6 +120,88 @@ describe('eventPushPayload', () => {
     expect(payload.title).toBe('活动提醒：迎新晚会');
     expect(payload.body).toBe('10月24日 周六 14:00');
     expect(payload.tag).toBe('event:evt_1:custom');
+  });
+});
+
+describe('moments payloads', () => {
+  const comment = { postId: 'pst_1', commentId: 'cmt_9', kind: 'comment' as const, actorName: '张三', text: '好看！', preview: true, baseUrl: BASE };
+
+  it('says who commented on your post, under 好友动态, tagged by post and opening the comment', () => {
+    expect(momentCommentPushPayload(comment)).toEqual({
+      title: '好友动态',
+      body: '张三评论了你：好看！',
+      tag: 'moment:pst_1',
+      url: 'https://utmmsc.com/UTMMSC/discover/feed/post/pst_1?comment=cmt_9',
+      kind: 'moment',
+      postId: 'pst_1',
+    });
+  });
+
+  it('says who replied to you, under the same tag as the comments on that post', () => {
+    const reply = momentCommentPushPayload({ ...comment, kind: 'reply', commentId: 'cmt_10', text: '谢谢' });
+    expect(reply.body).toBe('张三回复了你：谢谢');
+    expect(reply.tag).toBe(momentCommentPushPayload(comment).tag);
+    expect(reply.url).toBe('https://utmmsc.com/UTMMSC/discover/feed/post/pst_1?comment=cmt_10');
+  });
+
+  it('keeps the text on one line, and still names the actor when there is no text or no name', () => {
+    expect(momentCommentPushPayload({ ...comment, text: '第一行\n  第二行 ' }).body).toBe('张三评论了你：第一行 第二行');
+    expect(momentCommentPushPayload({ ...comment, text: '  ' }).body).toBe('张三评论了你');
+    expect(momentCommentPushPayload({ ...comment, actorName: ' ' }).body).toBe('有人评论了你：好看！');
+  });
+
+  it('hides the name, the text and what happened when preview is off, keeping tag and link', () => {
+    for (const kind of ['comment', 'reply'] as const) {
+      const hidden = momentCommentPushPayload({ ...comment, kind, preview: false });
+      expect(hidden).toEqual({ ...momentCommentPushPayload({ ...comment, kind }), title: 'UTMMSC', body: '好友动态有新互动' });
+    }
+    const removed = momentRemovedPushPayload({ postId: 'pst_1', target: 'comment', preview: false, baseUrl: BASE });
+    expect(removed.title).toBe('UTMMSC');
+    expect(removed.body).toBe('好友动态有新互动');
+    expect(removed.tag).toBe('moment:pst_1:removed');
+  });
+
+  it('caps the body at 160 without splitting an emoji', () => {
+    const long = momentCommentPushPayload({ ...comment, text: '字'.repeat(300) });
+    expect(long.body.length).toBeLessThanOrEqual(160);
+    expect(long.body.endsWith('…')).toBe(true);
+    // The emoji's two halves would sit at units 158 and 159, so the cut moves before it.
+    // 表情符号的两半落在第 158 和 159 个代码单元，所以截断点移到它前面。
+    const emoji = momentCommentPushPayload({ ...comment, text: `${'字'.repeat(151)}\u{1F600}\u{1F600}` });
+    expect(emoji.body).toBe(`张三评论了你：${'字'.repeat(151)}…`);
+    expect(emoji.body.length).toBe(159);
+    expect(momentCommentPushPayload({ ...comment, text: `${'字'.repeat(150)}\u{1F600}\u{1F600}` }).body).toBe(`张三评论了你：${'字'.repeat(150)}\u{1F600}…`);
+  });
+
+  it('tells the author about a removed post or comment on a tag of its own, opening the notices', () => {
+    expect(momentRemovedPushPayload({ postId: 'pst_1', target: 'post', preview: true, baseUrl: BASE })).toEqual({
+      title: '好友动态',
+      body: '你的一条动态已被管理员移除',
+      tag: 'moment:pst_1:removed',
+      url: 'https://utmmsc.com/UTMMSC/discover/feed/notices',
+      kind: 'moment',
+      postId: 'pst_1',
+    });
+    expect(momentRemovedPushPayload({ postId: 'pst_1', target: 'comment', preview: true, baseUrl: BASE }).body).toBe('你的一条评论已被管理员移除');
+  });
+
+  it('replaces a deleted comment’s notice quietly under the same tag, without its text', () => {
+    const original = momentCommentPushPayload(comment);
+    expect(momentRecallPushPayload({ postId: 'pst_1', baseUrl: BASE })).toEqual({
+      title: original.title,
+      body: '一条评论已删除',
+      tag: original.tag,
+      url: 'https://utmmsc.com/UTMMSC/discover/feed/post/pst_1',
+      kind: 'moment_recall',
+      postId: 'pst_1',
+    });
+  });
+
+  it('builds links under the app with or without a trailing slash, escaping the ids', () => {
+    expect(momentPostUrl('https://utmmsc.com/UTMMSC', 'p/1', 'c&2')).toBe('https://utmmsc.com/UTMMSC/discover/feed/post/p%2F1?comment=c%262');
+    expect(momentPostUrl(BASE, 'pst_1', null)).toBe('https://utmmsc.com/UTMMSC/discover/feed/post/pst_1');
+    expect(momentNoticesUrl('https://utmmsc.com/UTMMSC')).toBe('https://utmmsc.com/UTMMSC/discover/feed/notices');
+    expect(momentTag('pst_1')).toBe('moment:pst_1');
   });
 });
 

@@ -4,6 +4,7 @@ import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
 import { UnreadDot } from '../../features/chat/components/UnreadDot';
 import { showDot, totalUnread, useOverviewStore } from '../../features/chat/state/overviewStore';
+import { useMomentsBadge, useMomentsBadgeSync } from '../../features/moments/state/badgeStore';
 import { AppUpdateBanner } from '../../shared/native/AppUpdateBanner';
 import { useSessionStore } from '../../shared/session/store';
 
@@ -108,13 +109,36 @@ function SideTab({ item }: { item: NavItem }) {
   );
 }
 
+/**
+ * 发现 carries the 好友动态 badge, as in WeChat: a red number for unread notices, otherwise a red dot when
+ * friends posted something new.
+ * 「发现」带有好友动态的角标，与微信一致：有未读消息时显示红色数字，否则在好友有新动态时显示红点。
+ */
 function DiscoverTab() {
   const { tr } = useLabels();
   const { pathname } = useLocation();
   const isActive = pathname.startsWith('/discover') || pathname.startsWith('/files') || pathname.startsWith('/admin');
+  const unread = useMomentsBadge((s) => s.unread);
+  const dot = useMomentsBadge((s) => s.newPosts > 0);
   return (
     <NavLink to="/discover" className={tabClass(isActive)}>
-      <TabFace icon="discover" label={tr('发现', 'Discover')} active={isActive} />
+      <span className="relative flex h-6 w-full items-center justify-center">
+        <span className="relative inline-flex">
+          <TabIcon name="discover" />
+          <UnreadDot
+            count={unread}
+            dot={unread === 0 && dot}
+            className={`absolute shadow-[0_0_0_1.5px_#fff] ${unread > 0 ? '-top-[7px] left-[14px]' : '-top-[2px] left-[19px]'}`}
+          />
+        </span>
+      </span>
+      <span className={`mt-1 h-4 w-full truncate text-center leading-4 ${isActive ? 'font-medium' : ''}`}>{tr('发现', 'Discover')}</span>
+      {unread > 0 ? (
+        <span className="sr-only">{tr(`，${unread} 条新消息`, `, ${unread} new`)}</span>
+      ) : dot ? (
+        <span className="sr-only">{tr('，有新动态', ', new updates')}</span>
+      ) : null}
+      <span className={`mt-1 h-[3px] w-4 rounded-full ${isActive ? 'bg-gold' : 'bg-transparent'}`} />
     </NavLink>
   );
 }
@@ -259,6 +283,9 @@ export function AppShell() {
   const right = RIGHT_NAV;
   useOverviewSync();
   useUnreadIndicators();
+  // The 发现 badge; the home-screen icon badge stays chat-only, as in WeChat.
+  // 「发现」的角标；主屏幕图标角标仍只计聊天，与微信一致。
+  useMomentsBadgeSync();
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col">

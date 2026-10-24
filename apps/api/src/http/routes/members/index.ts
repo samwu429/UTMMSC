@@ -61,14 +61,19 @@ memberRoutes.get('/', async (c) => {
   return c.json(response);
 });
 
+/**
+ * A member's profile. Its posts are the ones the viewer may see under the moments rules, newest first, so a
+ * profile never shows friends or private posts to someone outside them.
+ * 成员资料页。其中的动态是按好友动态规则查看者能看到的那些，最新的在前，因此资料页不会把好友可见或仅自己可见的动态展示给圈外的人。
+ */
 memberRoutes.get('/:id', async (c) => {
   const row = await findMemberById(c.env.DB, c.req.param('id'));
   if (!row || row.status !== 'active') throw notFound('成员不存在');
+  const viewer = c.get('member');
   const [experiences, posts] = await Promise.all([
     listExperiences(c.env.DB, row.id),
-    listMemberPosts(c.env.DB, row.id, PROFILE_POSTS),
+    listMemberPosts(c.env.DB, viewer.id, row.id, PROFILE_POSTS),
   ]);
-  const viewer = c.get('member');
   const member = toProfile(row);
   if (viewer.id === row.id) {
     member.role = viewedRole(viewer);

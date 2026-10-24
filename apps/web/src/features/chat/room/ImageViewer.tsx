@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTr } from '../../../shared/i18n/locale';
 import { extensionForMime } from '../../../shared/native/fileName';
@@ -25,6 +25,19 @@ interface Props {
   /** 某张图片的缩略图当前在屏幕上的位置，关闭时据此缩回。 */
   thumbRect: (id: number) => DOMRect | null;
   onClose: () => void;
+  /** Address of an image's full copy, which 保存图片 saves too. Chat builds it from the image key. */
+  /** 图片完整副本的地址，「保存图片」也保存它。聊天按图片键生成。 */
+  srcFor?: (image: ViewerImage, mediaToken: string | null) => string | null;
+  /** A smaller copy that is already loaded (a preview), shown at once until the full copy has loaded. */
+  /** 已经加载过的较小副本（预览图），在完整副本加载完成之前立即显示。 */
+  placeholderFor?: (image: ViewerImage) => string | null;
+  /** Controls along the bottom edge. They take no part in the gestures and fade with the backdrop. */
+  /** 沿底边显示的控件。它们不参与手势，随背景一起淡入淡出。 */
+  footer?: ReactNode;
+}
+
+function chatSrc(image: ViewerImage, mediaToken: string | null): string | null {
+  return chatImageSrc(image.imageKey, mediaToken);
 }
 
 const ANIMATION_MS = 240;
@@ -59,9 +72,13 @@ function reducedMotion(): boolean {
  * 全屏图片查看器。从缩略图放大打开，支持双指和双击缩放、放大后拖动、左右滑动切换已加载的图片、下拉关闭；
  * 单击关闭，长按可保存图片。键盘：Escape 关闭，方向键切换图片。
  */
-export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect, onClose }: Props) {
+export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect, onClose, srcFor = chatSrc, placeholderFor, footer }: Props) {
   const tr = useTr();
   const rootRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  // Images whose full copy has loaded and decoded, so it can replace the placeholder without a blank frame.
+  // 完整副本已加载并解码的图片，可以替换占位图而不出现空白帧。
+  const [ready, setReady] = useState<Record<number, true>>({});
   const [reduced] = useState(reducedMotion);
   const [currentId, setCurrentId] = useState(startId);
   const [viewport, setViewport] = useState<Size>(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -212,8 +229,12 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
     return event.target instanceof Node && rootRef.current?.contains(event.target) === true;
   }
 
+  function inFooter(event: { target: EventTarget }) {
+    return event.target instanceof Node && footerRef.current?.contains(event.target) === true;
+  }
+
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (!inside(event) || phase !== 'open' || sheet) return;
+    if (!inside(event) || inFooter(event) || phase !== 'open' || sheet) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     const state = gesture.current;
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -354,7 +375,7 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
   }
 
   function onContextMenu(event: MouseEvent<HTMLDivElement>) {
-    if (!inside(event)) return;
+    if (!inside(event) || inFooter(event)) return;
     event.preventDefault();
     if (phase === 'open') setSheet(true);
   }
@@ -371,16 +392,30 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
       event.preventDefault();
       go(1);
     } else if (event.key === 'Tab') {
-      // The close button is the only stop inside the viewer.
-      // 查看器内唯一可聚焦的是关闭按钮。
+      // Without a footer the close button is the only stop inside the viewer; with one, Tab cycles through
+      // the close button and the footer's controls.
+      // 没有底部控件时，查看器内唯一可聚焦的是关闭按钮；有底部控件时，Tab 在关闭按钮和底部控件之间循环。
       event.preventDefault();
-      rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+      if (!footer) {
+        rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+        return;
+      }
+      const stops = Array.from(rootRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      const at = stops.findIndex((stop) => stop === document.activeElement);
+      const next = event.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at + 1) % stops.length;
+      stops[next]?.focus();
     }
+  }
+
+  function markReady(id: number, element: HTMLImageElement) {
+    const done = () => setReady((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+    if (typeof element.decode === 'function') element.decode().then(done, done);
+    else done();
   }
 
   async function save() {
     if (!current) return;
-    const src = chatImageSrc(current.imageKey, mediaToken);
+    const src = srcFor(current, mediaToken);
     if (!src) return;
     try {
       const res = await fetch(src);
@@ -444,12 +479,17 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
       <div className="absolute inset-0 bg-black" style={{ opacity: backdrop, transition }} aria-hidden />
       <div className="absolute inset-0" style={{ transform: `translate3d(${stripX}px, 0, 0)`, transition }}>
         {slides.map(({ offset, image }) => {
-          const src = chatImageSrc(image.imageKey, mediaToken);
+          const src = srcFor(image, mediaToken);
+          const placeholder = placeholderFor?.(image) ?? null;
+          // The placeholder stays until the full copy, loading out of sight, is ready to take its place.
+          // 占位图一直显示，直到在后台加载的完整副本可以接替它。
+          const waiting = placeholder !== null && placeholder !== src && !ready[image.id];
+          const shown = waiting ? placeholder : src;
           return (
             <div key={image.id} className="absolute inset-0 flex items-center justify-center" style={{ transform: `translateX(${offset * 100}%)` }}>
-              {src ? (
+              {shown ? (
                 <img
-                  src={src}
+                  src={shown}
                   alt=""
                   draggable={false}
                   className="pointer-events-none max-w-none object-contain"
@@ -460,10 +500,20 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
                   }}
                 />
               ) : null}
+              {waiting && src ? <img src={src} alt="" aria-hidden className="hidden" onLoad={(event) => markReady(image.id, event.currentTarget)} /> : null}
             </div>
           );
         })}
       </div>
+      {footer ? (
+        <div
+          ref={footerRef}
+          className="absolute inset-x-0 bottom-0"
+          style={{ opacity: phase === 'open' ? backdrop : 0, pointerEvents: phase === 'open' ? 'auto' : 'none', transition }}
+        >
+          {footer}
+        </div>
+      ) : null}
       <p className="sr-only" aria-live="polite">
         {tr(`第 ${index + 1} 张，共 ${images.length} 张`, `Photo ${index + 1} of ${images.length}`)}
       </p>

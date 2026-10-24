@@ -3,6 +3,7 @@ import type { MemberSelf } from '@utmmsc/shared';
 import { errorMessage } from '../../shared/api/errors';
 import { useTr } from '../../shared/i18n/locale';
 import { useSessionStore } from '../../shared/session/store';
+import { ActionSheet } from '../../shared/ui/ActionSheet';
 import { Button } from '../../shared/ui/Button';
 import { Notice } from '../../shared/ui/Card';
 import { profileApi } from './api';
@@ -191,16 +192,32 @@ function CoverAdjuster({
   );
 }
 
+/**
+ * The tall cover's picture reaches up by --pull (set by the moments pull to refresh), so a pull or the iPhone
+ * bounce shows more of the cover instead of a gap above it. Elsewhere the variable is unset and it stays put.
+ * 高封面的图片向上延伸 --pull（由动态页的下拉刷新设置），下拉或 iPhone 回弹时露出更多封面，而不是上方的空白。其他地方没有设置这个变量，图片保持不动。
+ */
+const STRETCH_UP: CSSProperties = { top: 'calc(-1 * var(--pull, 0px))' };
+const FLUSH: CSSProperties = { top: 0 };
+
 export function CoverBanner({
   coverKey,
   tall = false,
   editable = false,
+  editTrigger = 'button',
   onSaved,
   children,
 }: {
   coverKey?: string | null;
   tall?: boolean;
   editable?: boolean;
+  /**
+   * button: a 换封面 button on the cover. cover: the whole cover is the control and offers 更换相册封面 in an
+   * action sheet first, as on WeChat's moments page; children stay above it and keep their own taps.
+   * button：封面上显示「换封面」按钮。cover：整个封面就是控件，先在操作菜单中提供「更换相册封面」，与微信朋友圈一致；
+   * children 位于其上方，保留各自的点按。
+   */
+  editTrigger?: 'button' | 'cover';
   onSaved?: (member: MemberSelf) => void;
   children?: ReactNode;
 }) {
@@ -208,6 +225,7 @@ export function CoverBanner({
   const token = useSessionStore((s) => s.mediaToken);
   const setMember = useSessionStore((s) => s.setMember);
   const setMediaToken = useSessionStore((s) => s.setMediaToken);
+  const [choosing, setChoosing] = useState(false);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -258,12 +276,29 @@ export function CoverBanner({
   }
 
   return (
-    <div className={`relative bg-brand-800 ${tall ? 'h-48' : 'h-32'}`}>
-      <div className="relative z-10 h-1 bg-gold" />
-      {src ? <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
+    <div className={`relative ${tall ? 'h-48' : 'h-32'}`}>
+      <div className="absolute inset-x-0 bottom-0 overflow-hidden bg-brand-800" style={tall ? STRETCH_UP : FLUSH}>
+        <div className="relative z-10 h-1 bg-gold" />
+        {src ? <img src={src} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover [-webkit-touch-callout:none]" /> : null}
+      </div>
       {src ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent" /> : null}
+      {editable && editTrigger === 'cover' ? (
+        <button
+          type="button"
+          onClick={() => setChoosing(true)}
+          aria-label={tr('更换相册封面', 'Change album cover')}
+          aria-haspopup="dialog"
+          className="absolute inset-0 select-none [-webkit-touch-callout:none] focus-visible:outline-offset-[-4px]"
+        />
+      ) : null}
       {children}
-      {editable ? (
+      {choosing ? (
+        <ActionSheet
+          options={[{ label: tr('更换相册封面', 'Change album cover'), onSelect: () => setOpen(true) }]}
+          onClose={() => setChoosing(false)}
+        />
+      ) : null}
+      {editable && editTrigger === 'button' ? (
         <button
           type="button"
           onClick={() => setOpen(true)}

@@ -39,7 +39,7 @@ interface Options {
 
 /** Without scrollend (iOS Safari), a gesture counts as settled after this long with no scroll event. */
 /** 不支持 scrollend 时（iOS Safari），这么久没有滚动事件即视为手势已结束。 */
-const SETTLE_IDLE_MS = 200;
+export const SETTLE_IDLE_MS = 200;
 const FALLBACK_ROWS = 2;
 
 /**
@@ -278,6 +278,9 @@ export function useScrollAnchor(listRef: RefObject<HTMLElement | null>, options:
     list.addEventListener('scroll', onScroll, { passive: true });
     list.addEventListener('scrollend', anchor.settle);
     list.addEventListener('wheel', onInput, { passive: true });
+    // A finger step is the member's own movement, never iOS momentum overriding a restore.
+    // 手指拖动是成员自己的移动，绝不是 iOS 惯性滚动覆盖了恢复。
+    list.addEventListener('touchmove', onInput, { passive: true });
     list.addEventListener('keydown', onInput);
     list.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointerup', onPointerUp);
@@ -289,6 +292,7 @@ export function useScrollAnchor(listRef: RefObject<HTMLElement | null>, options:
       list.removeEventListener('scroll', onScroll);
       list.removeEventListener('scrollend', anchor.settle);
       list.removeEventListener('wheel', onInput);
+      list.removeEventListener('touchmove', onInput);
       list.removeEventListener('keydown', onInput);
       list.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);

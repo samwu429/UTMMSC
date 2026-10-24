@@ -72,6 +72,16 @@ export interface PostMedia {
   key: string;
   contentType: string;
   kind: 'image' | 'video';
+  /**
+   * Pixel size with EXIF orientation applied, a JPEG preview at most 720px on the long edge (a scaled photo or
+   * a video's first frame), and a video's length. Absent or null for media posted before they were recorded.
+   * 按 EXIF 方向得到的像素尺寸、长边不超过 720px 的 JPEG 预览图（照片的缩小版或视频的第一帧），以及视频时长。
+   * 记录这些信息之前发布的媒体没有这些字段，或为 null。
+   */
+  width?: number | null;
+  height?: number | null;
+  previewKey?: string | null;
+  durationMs?: number | null;
 }
 
 export interface ActivityPost {

@@ -39,6 +39,12 @@ const PAIRS: [label: string, foreground: string, background: string][] = [
   ['meta on white', WX_COLORS.meta, WHITE],
   ['link on canvas', WX_COLORS.link, WX_COLORS.canvas],
   ['link on white', WX_COLORS.link, WHITE],
+  // Names and 展开其余 N 条评论 in the likes and comments box of 好友动态.
+  // 好友动态赞和评论区中的名字与「展开其余 N 条评论」。
+  ['link on bar', WX_COLORS.link, WX_COLORS.bar],
+  // A pressed comment row or name, which stays pressed while its menu is open.
+  // 按下的评论行或名字；菜单打开期间保持按下的颜色。
+  ['link on pressed', WX_COLORS.link, WX_COLORS.pressed],
   ['white on red', WHITE, WX_COLORS.red],
   ['red on white', WX_COLORS.red, WHITE],
   ['white on popover', WHITE, WX_COLORS.popover],

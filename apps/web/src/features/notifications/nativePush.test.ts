@@ -6,6 +6,7 @@ const native = vi.hoisted(() => ({ platform: true, plugins: new Set<string>(['Pu
 // 与 Capacitor 的插件代理一样会响应所有属性：调用 then() 会抛错，因此代码绝不能用插件本身去完成 Promise。
 const push = vi.hoisted(() => ({
   register: vi.fn<() => Promise<void>>(),
+  createChannel: vi.fn<(channel: { id: string; name: string; description?: string; importance?: number; vibration?: boolean }) => Promise<void>>(),
   listChannels: vi.fn<() => Promise<{ channels: { id: string; importance: number }[] }>>(),
   getDeliveredNotifications: vi.fn<() => Promise<{ notifications: { id: string; tag?: string }[] }>>(),
   then: () => {
@@ -45,7 +46,7 @@ vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: push }));
 vi.mock('./api', () => ({ notificationsApi: {} }));
 vi.mock('../../shared/i18n/locale', () => ({ tr: (zh: string) => zh }));
 
-const { channelIssue, hasNativeNotification, isPushUnavailableError, leaveApp, nativeChannelIssues, nativePushReady, untilAppActive } = await import('./nativePush');
+const { channelIssue, ensureNativeChannels, hasNativeNotification, isPushUnavailableError, leaveApp, nativeChannelIssues, nativePushReady, untilAppActive } = await import('./nativePush');
 
 /** How Capacitor rejects call.unavailable() from the app's push plugin. */
 /** Capacitor 对 App 推送插件 call.unavailable() 的拒绝形式。 */
@@ -57,6 +58,8 @@ beforeEach(() => {
   native.platform = true;
   native.plugins = new Set(['PushNotifications', 'App']);
   push.register.mockReset();
+  push.createChannel.mockReset();
+  push.createChannel.mockResolvedValue(undefined);
   push.listChannels.mockReset();
   push.getDeliveredNotifications.mockReset();
   app.state.active = true;
@@ -108,11 +111,36 @@ describe('channel settings', () => {
     expect(channelIssue(undefined)).toBeNull();
   });
 
-  it('reports the messages and events channels, and nothing where Android has no channels', async () => {
-    push.listChannels.mockResolvedValue({ channels: [{ id: 'messages', importance: 0 }, { id: 'events', importance: 4 }, { id: 'other', importance: 1 }] });
-    expect(await nativeChannelIssues()).toEqual({ messages: 'off', events: null });
+  it('reports the messages, events and moments channels, and nothing where Android has no channels', async () => {
+    push.listChannels.mockResolvedValue({
+      channels: [
+        { id: 'messages', importance: 0 },
+        { id: 'events', importance: 4 },
+        { id: 'moments', importance: 2 },
+        { id: 'other', importance: 1 },
+      ],
+    });
+    expect(await nativeChannelIssues()).toEqual({ messages: 'off', events: null, moments: 'quiet' });
     push.listChannels.mockRejectedValue(new Error('not available on Android 7'));
     expect(await nativeChannelIssues()).toBeNull();
+  });
+
+  it('says nothing about the moments channel before the web has created it', async () => {
+    push.listChannels.mockResolvedValue({ channels: [{ id: 'messages', importance: 5 }, { id: 'events', importance: 4 }] });
+    expect(await nativeChannelIssues()).toEqual({ messages: null, events: null, moments: null });
+  });
+
+  it('creates the moments channel beside messages and events, at a level that sounds without a pop-up, once', async () => {
+    await ensureNativeChannels();
+    expect(push.createChannel.mock.calls.map(([channel]) => [channel.id, channel.importance])).toEqual([
+      ['messages', 5],
+      ['events', 4],
+      ['moments', 3],
+    ]);
+    expect(push.createChannel).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'moments', name: '好友动态', vibration: true }));
+    expect(channelIssue(3)).toBeNull();
+    await ensureNativeChannels();
+    expect(push.createChannel).toHaveBeenCalledTimes(3);
   });
 });
 

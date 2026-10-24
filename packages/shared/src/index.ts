@@ -12,6 +12,8 @@ export * from './files/categories';
 export * from './miniapps/catalog';
 export * from './programs/catalog';
 export * from './programs/rules';
+export * from './moments/types';
+export * from './moments/rules';
 export * from './notifications/types';
 export * from './notifications/schedule';
 export * from './api/contracts';

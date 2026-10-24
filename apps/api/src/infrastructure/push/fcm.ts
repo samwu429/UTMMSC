@@ -161,28 +161,37 @@ export async function fcmAccessToken(account: ServiceAccount, now: number = Date
  * Android 7 has no channels, so sound, vibration and the banner come from the message itself; Android 8 and
  * later ignore these three fields in favour of the channel.
  * Android 7 没有通知渠道，声音、振动和横幅都取决于消息本身；Android 8 及以上忽略这三个字段，以渠道设置为准。
+ *
+ * Friend update activity goes to its own channel at normal priority, since nobody waits on it the way they
+ * wait on a chat, and collapses by post like chat does by room. The notice that replaces a deleted comment
+ * also keeps Android 7 quiet.
+ * 好友动态的互动通知使用单独的渠道和普通优先级，因为它不像聊天那样有人在等；并像聊天按房间合并一样按动态合并。
+ * 替换已删除评论的通知在 Android 7 上也不发出声音和振动。
  */
 export function buildFcmMessage(token: string, payload: PushPayload, options: DeliveryOptions): Record<string, unknown> {
   const data: Record<string, string> = { url: payload.url, kind: payload.kind, tag: payload.tag };
   if (payload.roomId) data.roomId = payload.roomId;
   if (payload.eventId) data.eventId = payload.eventId;
+  if (payload.postId) data.postId = payload.postId;
   const chat = payload.kind === 'message' || payload.kind === 'recall';
+  const moment = payload.kind === 'moment' || payload.kind === 'moment_recall';
+  const alerts = payload.kind !== 'moment_recall';
   return {
     message: {
       token,
       notification: { title: payload.title, body: payload.body },
       android: {
-        priority: 'HIGH',
+        priority: moment ? 'NORMAL' : 'HIGH',
         ttl: `${options.ttl}s`,
-        ...(chat ? { collapse_key: payload.tag } : {}),
+        ...(chat || moment ? { collapse_key: payload.tag } : {}),
         notification: {
-          channel_id: payload.kind === 'event' ? 'events' : 'messages',
+          channel_id: moment ? 'moments' : payload.kind === 'event' ? 'events' : 'messages',
           tag: payload.tag,
           icon: ANDROID_NOTIFICATION_ICON,
           color: ANDROID_NOTIFICATION_COLOR,
-          notification_priority: 'PRIORITY_HIGH',
-          default_sound: true,
-          default_vibrate_timings: true,
+          notification_priority: moment ? 'PRIORITY_DEFAULT' : 'PRIORITY_HIGH',
+          default_sound: alerts,
+          default_vibrate_timings: alerts,
         },
       },
       data,

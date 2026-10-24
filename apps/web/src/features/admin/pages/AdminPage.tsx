@@ -9,6 +9,7 @@ import { AnnouncementsPanel } from '../announcements/AnnouncementsPanel';
 import { ApprovalsPanel } from '../approvals/ApprovalsPanel';
 import { ChannelsPanel } from '../channels/ChannelsPanel';
 import { EventsPanel } from '../events/EventsPanel';
+import { MomentReportsPanel } from '../moments/MomentReportsPanel';
 import { RolesPanel } from '../roles/RolesPanel';
 
 interface Section {
@@ -27,6 +28,9 @@ const SECTIONS: Section[] = [
   { key: 'channels', label: '频道', visible: (member) => hasPermission(member.role, 'channels.manage'), render: () => <ChannelsPanel /> },
   { key: 'events', label: '活动', visible: (member) => hasPermission(member.role, 'events.manage'), render: () => <EventsPanel /> },
   { key: 'announcements', label: '公告', visible: (member) => hasPermission(member.role, 'announcements.send'), render: () => <AnnouncementsPanel /> },
+  // The club's content moderation permission, the same one that moderates channels.
+  // 社团的内容管理权限，与管理频道发言的权限相同。
+  { key: 'moments', label: '动态投诉', visible: (member) => hasPermission(member.role, 'chat.moderate'), render: () => <MomentReportsPanel /> },
 ];
 
 /** Admin home shows only the sections the signed-in role may use, as large tabs. */
@@ -38,6 +42,7 @@ const SECTION_EN: Record<string, string> = {
   channels: 'Channels',
   events: 'Events',
   announcements: 'Announcements',
+  moments: 'Update reports',
 };
 
 export function AdminPage() {

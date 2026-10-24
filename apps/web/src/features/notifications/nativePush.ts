@@ -73,14 +73,24 @@ let channelsMade = false;
 
 /**
  * The channels the server names. Creating an existing channel again only updates its name, so the
- * names follow the app language.
- * 服务器使用的通知渠道。重复创建已有渠道只会更新名称，因此名称会随应用语言变化。
+ * names follow the app language. The app itself creates only messages and events at first launch, so
+ * moments, added later, exists once the web has run this; until then Firebase shows its pushes on
+ * messages, the default channel in the app's manifest.
+ * 服务器使用的通知渠道。重复创建已有渠道只会更新名称，因此名称会随应用语言变化。App 首次启动时只自行创建 messages 和 events，
+ * 后来加入的 moments 要等网页执行这里之后才存在；在那之前，Firebase 把它的推送显示在 App 清单中的默认渠道 messages 上。
  */
 export async function ensureNativeChannels(): Promise<void> {
   if (channelsMade) return;
   const { push } = await pushPlugin();
   await push.createChannel({ id: 'messages', name: tr('消息', 'Messages'), description: tr('聊天中的新消息', 'New chat messages'), importance: 5, vibration: true });
   await push.createChannel({ id: 'events', name: tr('活动', 'Events'), description: tr('社团活动通知与提醒', 'Club event notices and reminders'), importance: 4, vibration: true });
+  await push.createChannel({
+    id: 'moments',
+    name: tr('好友动态', 'Friend updates'),
+    description: tr('有人评论、回复你，或管理员处理你的内容时通知', 'When someone comments on or replies to you, or an admin acts on your content'),
+    importance: 3,
+    vibration: true,
+  });
   channelsMade = true;
 }
 
@@ -235,6 +245,9 @@ export type ChannelIssue = 'off' | 'quiet';
 export interface ChannelIssues {
   messages: ChannelIssue | null;
   events: ChannelIssue | null;
+  /** Optional, so callers that only look at chat and events, such as the test push tips, can leave it out. */
+  /** 可选，只关心聊天和活动的调用方（例如测试通知的提示）可以不写。 */
+  moments?: ChannelIssue | null;
 }
 
 export function channelIssue(importance: number | undefined): ChannelIssue | null {
@@ -251,7 +264,7 @@ export async function nativeChannelIssues(): Promise<ChannelIssues | null> {
     const { push } = await pushPlugin();
     const { channels } = await push.listChannels();
     const importance = (id: string) => channels.find((channel) => channel.id === id)?.importance;
-    return { messages: channelIssue(importance('messages')), events: channelIssue(importance('events')) };
+    return { messages: channelIssue(importance('messages')), events: channelIssue(importance('events')), moments: channelIssue(importance('moments')) };
   } catch {
     return null;
   }

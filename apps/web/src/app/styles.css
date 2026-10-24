@@ -207,6 +207,16 @@ textarea {
   background-color: theme('colors.wx.otherPressed');
 }
 
+/* The opening film never shows player controls, including the play button iOS draws before playback starts. */
+/* 开屏视频从不显示播放器控件，包括 iOS 在开始播放前画出的播放按钮。 */
+.splash-film::-webkit-media-controls,
+.splash-film::-webkit-media-controls-start-playback-button,
+.splash-film::-webkit-media-controls-overlay-play-button,
+.splash-film::-webkit-media-controls-panel {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
 /* Scroll position is restored by hand from an anchor row, so the browser must not adjust it too. */
 /* 滚动位置由锚点行手动恢复，浏览器不能再自行调整。 */
 .wx-no-anchor {

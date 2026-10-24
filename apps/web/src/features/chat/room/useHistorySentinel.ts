@@ -17,16 +17,19 @@ interface Options {
   version: unknown;
 }
 
-/** Prefetch distance above the visible area, as a share of the list height. */
-/** 可见区域上方的预取距离，以列表高度的倍数计。 */
-const PREFETCH_SCREENS = 1.5;
+/**
+ * Prefetch distance above the visible area, as a share of the list height. Three screens, so a page is usually
+ * shown before a fling reaches the top rather than landing in the middle of it.
+ * 可见区域上方的预取距离，以列表高度的倍数计。取三屏，使一页通常在快速滑动到达顶部之前就已显示，而不是在滑动途中才出现。
+ */
+const PREFETCH_SCREENS = 3;
 const ROOT_MARGIN = `${PREFETCH_SCREENS * 100}% 0px 0px 0px`;
 
 /**
- * Loads older pages from a sentinel at the top of the list, observed with a 150% top margin. It keeps
+ * Loads older pages from a sentinel at the top of the list, observed with a 300% top margin. It keeps
  * loading while the sentinel stays within that margin or while the rows do not fill the list, and never
  * listens to scroll events.
- * 通过列表顶部的哨兵加载更早的消息，观察范围向上扩展 150%。只要哨兵仍在该范围内、或消息填不满列表，就继续加载；
+ * 通过列表顶部的哨兵加载更早的消息，观察范围向上扩展 300%。只要哨兵仍在该范围内、或消息填不满列表，就继续加载；
  * 从不监听滚动事件。
  */
 export function useHistorySentinel(options: Options): void {

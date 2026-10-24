@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANDROID_APP_URL, isAndroidUserAgent, offersAndroidApp } from './platform';
+import { ANDROID_APP_URL, isAndroidUserAgent, isAppleTouchDevice, offersAndroidApp } from './platform';
 
 const ANDROID_CHROME = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36';
 const ANDROID_WEBVIEW = 'Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0.0.0 Mobile Safari/537.36';
@@ -22,6 +22,30 @@ describe('isAndroidUserAgent', () => {
 
   it('needs the whole word', () => {
     expect(isAndroidUserAgent('Mozilla/5.0 (X11; Linux x86_64) NotAndroidish/1.0')).toBe(false);
+  });
+});
+
+describe('isAppleTouchDevice', () => {
+  const IPAD_SAFARI = 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  const IPHONE_HOME_SCREEN = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+
+  it('recognizes iPhone Safari and the home-screen app', () => {
+    expect(isAppleTouchDevice(IPHONE_SAFARI, 5)).toBe(true);
+    expect(isAppleTouchDevice(IPHONE_HOME_SCREEN, 5)).toBe(true);
+    expect(isAppleTouchDevice(IPAD_SAFARI, 5)).toBe(true);
+  });
+
+  it('recognizes iPadOS asking for the desktop site by its touch screen', () => {
+    expect(isAppleTouchDevice(IPAD_DESKTOP_MODE, 5)).toBe(true);
+  });
+
+  it('rejects a Mac without touch, Android and Windows', () => {
+    expect(isAppleTouchDevice(IPAD_DESKTOP_MODE, 0)).toBe(false);
+    expect(isAppleTouchDevice(IPAD_DESKTOP_MODE, 1)).toBe(false);
+    expect(isAppleTouchDevice(ANDROID_CHROME, 5)).toBe(false);
+    expect(isAppleTouchDevice(ANDROID_WEBVIEW, 5)).toBe(false);
+    expect(isAppleTouchDevice(WINDOWS_CHROME, 10)).toBe(false);
+    expect(isAppleTouchDevice('', 0)).toBe(false);
   });
 });
 

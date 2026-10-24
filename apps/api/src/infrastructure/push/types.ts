@@ -36,8 +36,10 @@ const DAY_SECONDS = 24 * 60 * 60;
 
 /**
  * Chat messages are urgent and stale after a day, and so is the notice that replaces a withdrawn one,
- * which must reach the device as soon as the original could; event notices may wait two days.
+ * which must reach the device as soon as the original could; event notices may wait two days. Friend
+ * update activity, and the notice that replaces a deleted comment, keeps for a day at normal urgency.
  * 聊天消息较紧急，一天后失去意义；替换已撤回消息的通知也一样，它必须和原通知一样快地到达设备。活动通知可保留两天。
+ * 好友动态的互动通知，以及替换已删除评论的通知，以普通紧急程度保留一天。
  */
 export function deliveryOptions(kind: PushKind): DeliveryOptions {
   switch (kind) {
@@ -46,6 +48,9 @@ export function deliveryOptions(kind: PushKind): DeliveryOptions {
       return { ttl: DAY_SECONDS, urgency: 'high' };
     case 'event':
       return { ttl: 2 * DAY_SECONDS, urgency: 'normal' };
+    case 'moment':
+    case 'moment_recall':
+      return { ttl: DAY_SECONDS, urgency: 'normal' };
     case 'test':
       return { ttl: 60 * 60, urgency: 'high' };
   }

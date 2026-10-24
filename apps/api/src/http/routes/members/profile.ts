@@ -3,6 +3,8 @@ import { ABOUT_MAX, AVATAR_MAX_BYTES, COVER_MAX_BYTES, EXPERIENCE_LIMIT, HEADLIN
 import { experienceFromInput, FieldError, openToFromInput, skillsFromInput } from '../../../domain/profile/fields';
 import { avatarObjectKey, coverObjectKey, describeContentType, momentObjectKey, normalizePostMedia } from '../../../domain/profile/media';
 import { issueProfileMediaToken } from '../../../domain/profile/media-token';
+import { isMissingSchemaError } from '../../../infrastructure/d1/channels';
+import { countMomentsSince, recordMomentUpload } from '../../../infrastructure/d1/moments';
 import {
   countExperiences,
   deleteExperience,
@@ -19,8 +21,9 @@ import { deleteObject, putObject } from '../../../infrastructure/r2/objects';
 import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
 import { badRequest, notFound } from '../../errors';
-import { rateLimit } from '../../middleware/rate-limit';
+import { memberRateLimit, rateLimit } from '../../middleware/rate-limit';
 import { optionalString, readJson, requireInteger } from '../../validation';
+import { MINUTE, MOMENT_DAILY_POSTS, dailyLimit, dayAgo, deleteObjectsLater, mediaGone } from '../moments/common';
 
 const FEED_LIMIT = 40;
 
@@ -35,8 +38,14 @@ function readField<T>(read: () => T): T {
 
 export const profileRoutes = new Hono<AppEnv>();
 
+/**
+ * Legacy feed for PWA bundles cached before 好友动态, kept for one release. It lists only what the viewer may
+ * see under the moments rules, so the old screen no longer shows friends and private posts to everyone.
+ * 好友动态上线之前缓存的 PWA 版本所用的旧信息流，保留一个版本。它只列出按好友动态规则查看者能看到的内容，
+ * 旧页面因此不会再把好友可见和仅自己可见的动态展示给所有人。
+ */
 profileRoutes.get('/feed', async (c) => {
-  const posts = await listFeed(c.env.DB, FEED_LIMIT);
+  const posts = await listFeed(c.env.DB, c.get('member').id, FEED_LIMIT);
   return c.json({ posts, mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET) });
 });
 
@@ -131,7 +140,14 @@ profileRoutes.delete('/me/cover', async (c) => {
   return c.json({ member: toSelf(updated) });
 });
 
-profileRoutes.post('/me/media', rateLimit(30, 60_000), async (c) => {
+/**
+ * One photo, video or preview for a post not published yet. Limited per member, not per IP, because a
+ * campus network shares one address and each photo now uploads a preview too. The upload is recorded before
+ * the object is stored, so a file the member never publishes is always found and deleted by the cron.
+ * 为尚未发表的动态上传一张照片、一个视频或一张预览图。按成员而不是按 IP 限制频率，因为校园网共用一个地址，
+ * 而且现在每张照片还要多传一张预览图。先记录上传再保存对象，成员从未发表的文件因此总能被定时任务找到并删除。
+ */
+profileRoutes.post('/me/media', memberRateLimit('media', 60, MINUTE), async (c) => {
   const contentType = c.req.header('content-type') ?? '';
   const described = describeContentType(contentType);
   if (!described) throw badRequest('unsupported_type', '只支持 JPEG、PNG、WebP、GIF 照片，或 MP4、MOV、WebM 视频');
@@ -139,8 +155,16 @@ profileRoutes.post('/me/media', rateLimit(30, 60_000), async (c) => {
   const tooLarge = described.kind === 'video' ? '视频不能超过 25MB' : '照片不能超过 8MB';
   const { bytes } = await readUpload(c, maxBytes, tooLarge);
   const member = c.get('member');
+  const bucket = requireBucket(c.env);
   const key = momentObjectKey(member.id, contentType);
-  await putObject(requireBucket(c.env), key, bytes, contentType);
+  try {
+    await recordMomentUpload(c.env.DB, member.id, key);
+  } catch (err) {
+    // Before migration 0016 there is no table to record in and no sweep to read it, so the upload goes ahead.
+    // 迁移 0016 之前既没有可写入的表，也没有读取它的清理任务，因此照常上传。
+    if (!isMissingSchemaError(err)) throw err;
+  }
+  await putObject(bucket, key, bytes, contentType);
   return c.json({ key, contentType, kind: described.kind }, 201);
 });
 
@@ -240,7 +264,15 @@ profileRoutes.delete('/me/experiences/:id', async (c) => {
   return c.json({ ok: true });
 });
 
-profileRoutes.post('/me/posts', rateLimit(8, 60_000), async (c) => {
+/**
+ * Legacy publish, kept for one release. insertPost stores the post for the whole club, as the old screen
+ * promised when it was written, and consumes its uploads; an upload no longer recorded is a 400 invalid_media,
+ * as on POST /moments/posts. It shares the per-member limit and the daily cap of that route, so switching
+ * endpoints buys nothing.
+ * 旧的发表接口，保留一个版本。insertPost 按旧页面发表时的约定把动态设为全社团可见，并消耗对应的上传记录；
+ * 与 POST /moments/posts 一样，上传记录已不存在时返回 400 invalid_media。它与该接口共用按成员的频率限制和每日上限，换用旧接口不会多出额度。
+ */
+profileRoutes.post('/me/posts', memberRateLimit('moments:create', 8, MINUTE), async (c) => {
   const body = await readJson<Record<string, unknown>>(c);
   let text = '';
   if (body.text !== undefined && body.text !== null && body.text !== '') {
@@ -251,16 +283,17 @@ profileRoutes.post('/me/posts', rateLimit(8, 60_000), async (c) => {
   const member = c.get('member');
   const media = readField(() => normalizePostMedia(member.id, body.media));
   if (!text && media.length === 0) throw badRequest('empty_post', '写点什么，或加上照片、视频');
+  if ((await countMomentsSince(c.env.DB, member.id, dayAgo())) >= MOMENT_DAILY_POSTS) throw dailyLimit();
   const post = await insertPost(c.env.DB, member.id, text, media);
+  if (!post) throw mediaGone();
   return c.json({ post }, 201);
 });
 
+/** The author's delete; the originals and their previews leave storage after the response. */
+/** 作者删除动态；原文件及其预览图在响应之后从存储中删除。 */
 profileRoutes.delete('/me/posts/:id', async (c) => {
   const keys = await deletePost(c.env.DB, c.get('member').id, c.req.param('id'));
   if (!keys) throw notFound('动态不存在');
-  if (keys.length > 0) {
-    const bucket = requireBucket(c.env);
-    c.executionCtx.waitUntil(Promise.all(keys.map((key) => deleteObject(bucket, key))));
-  }
+  deleteObjectsLater(c, keys);
   return c.json({ ok: true });
 });

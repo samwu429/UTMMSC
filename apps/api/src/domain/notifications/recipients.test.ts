@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { NotificationPrefs } from '@utmmsc/shared';
 import { selectMessageRecipients, type RecipientInput } from './recipients';
 
-const off = (patch: Partial<NotificationPrefs>): NotificationPrefs => ({ messages: true, events: true, preview: true, ...patch });
+const off = (patch: Partial<NotificationPrefs>): NotificationPrefs => ({ messages: true, events: true, preview: true, moments: true, ...patch });
 
 function input(patch: Partial<RecipientInput> = {}): RecipientInput {
   return {

@@ -11,7 +11,7 @@ import { SystemTip, TimeDivider, UnreadMarker, useMinuteTick } from './SystemTip
 import { buildTimeline, canModerateAuthor, translatorFor, UNREAD_MARKER_KEY, type TimelineItem } from './timeline';
 import type { MessageListHandle, MessageListProps } from './types';
 import { useHistorySentinel } from './useHistorySentinel';
-import { useScrollAnchor } from './useScrollAnchor';
+import { SETTLE_IDLE_MS, useScrollAnchor } from './useScrollAnchor';
 
 /** Within this distance of the bottom the list counts as stuck and follows new messages. */
 /** 距底部不超过此距离时，列表视为贴底并跟随新消息。 */
@@ -27,6 +27,12 @@ const MARKER_MARGIN_PX = 8;
 /** A jump farther than this many screens is instant rather than smooth. */
 /** 超过这么多屏的跳转直接到位，而不是平滑滚动。 */
 const SMOOTH_MAX_SCREENS = 1.5;
+/**
+ * A finger that sent no touchmove and caused no scroll for this long counts as lifted. Its touchend can be lost
+ * when the row under it is removed, since the event then never reaches the list.
+ * 这么久没有 touchmove 也没有引起滚动的手指视为已抬起。手指下方的行被移除时 touchend 可能丢失，因为事件不会再传到列表。
+ */
+const FINGER_LOST_MS = 1000;
 
 type ScrollRequest = { kind: 'center'; id: number; resolve: () => void } | { kind: 'marker' };
 type RowPosition = 'missing' | 'above' | 'visible' | 'below';
@@ -145,6 +151,24 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   /** Open message menus; while any is open a stuck list stops following new messages. */
   /** 打开着的消息菜单数；只要有一个打开，贴底的列表就不再跟随新消息。 */
   const holdsRef = useRef(0);
+  /**
+   * The member's finger owns the list from its first move until the scroll it started has settled, momentum
+   * included. Meanwhile nothing moves the list by itself: on iOS any scrollTop write stops the swipe, and the
+   * keyboard closing under the finger resizes the list several times. A pin to the bottom is owed instead and
+   * paid when the gesture settles, if the list is still near the bottom.
+   * 成员的手指从第一次移动起掌控列表，直到它引起的滚动（包括惯性）停下。在此期间列表不会自行移动：在 iOS 上任何 scrollTop 写入都会让滑动停下，
+   * 而手指下键盘收起会让列表多次改变大小。贴底改为记账，等手势停下后、列表仍靠近底部时再执行。
+   */
+  const fingerRef = useRef(false);
+  const gestureRef = useRef(false);
+  const pinOwedRef = useRef(false);
+  const gestureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** An older page that landed during a gesture waits for it to settle, so it adds no scroll write mid-fling. */
+  /** 手势进行中到达的更早一页要等手势停下再显示，因此不会在快速滑动途中写入滚动位置。 */
+  const holdingPageRef = useRef(false);
+  const [pageRelease, setPageRelease] = useState(0);
+  const shownRef = useRef(messages);
 
   const [stuck, setStuck] = useState(true);
   const [markerId, setMarkerId] = useState<number | null>(null);
@@ -164,11 +188,31 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   const exemptIds = room.meta?.moderationExempt;
   const exempt = useMemo(() => new Set(exemptIds ?? []), [exemptIds]);
 
+  // Only a pure prepend waits (same newest message, older oldest one); anything new at the bottom shows at once.
+  // 只有单纯向前插入（最新一条不变、最早一条更早）才等待；底部有新内容时立即显示。
+  const shown = useMemo(() => {
+    const before = shownRef.current;
+    const prepend =
+      before.length > 0 &&
+      messages.length > before.length &&
+      messages[messages.length - 1]?.id === before[before.length - 1]?.id &&
+      (messages[0]?.id ?? 0) < (before[0]?.id ?? 0);
+    holdingPageRef.current = prepend && gestureRef.current && jumps === 0 && scrollRequest === null;
+    return holdingPageRef.current ? before : messages;
+    // pageRelease re-runs this once the gesture settles.
+    // 手势停下后，pageRelease 会让这里重新计算一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, jumps, scrollRequest, pageRelease]);
+
+  useLayoutEffect(() => {
+    shownRef.current = shown;
+  }, [shown]);
+
   const items = useMemo(
     () =>
       buildTimeline(
         {
-          messages,
+          messages: shown,
           pending,
           meId,
           kind,
@@ -183,7 +227,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         },
         previousItems.current,
       ),
-    [messages, pending, meId, kind, hasMore, reachedFloor, floorReason, roomTitle, markerId, reeditText, locale, now],
+    [shown, pending, meId, kind, hasMore, reachedFloor, floorReason, roomTitle, markerId, reeditText, locale, now],
   );
 
   useLayoutEffect(() => {
@@ -224,18 +268,6 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     setPills((prev) => (prev.mention === mention && prev.unread === unread ? prev : { mention, unread }));
   }, []);
 
-  const onFrame = useCallback(() => {
-    const list = listRef.current;
-    if (!list || !positionedRef.current) return;
-    const nowStuck = distanceFromBottom(list) <= STUCK_PX;
-    // While the list runs its own smooth scroll to the bottom, the frames on the way do not unstick it.
-    // 列表自身平滑滚动到底部的过程中，途中的帧不会解除贴底。
-    if (nowStuck !== stuckRef.current && (nowStuck || performance.now() >= smoothUntilRef.current)) setStuckBoth(nowStuck);
-    updatePills();
-  }, [setStuckBoth, updatePills]);
-
-  const anchor = useScrollAnchor(listRef, { isStuck: () => stuckRef.current, onFrame });
-
   /** `smooth` animates short distances only; `always` animates however far the bottom is. */
   /** `smooth` 只为较短的距离加动画；`always` 无论距离多远都加动画。 */
   const scrollToBottom = useCallback(
@@ -254,6 +286,60 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     },
     [setStuckBoth],
   );
+
+  /** The scroll the finger started has settled: show a held page, then pay an owed pin if still near the bottom. */
+  /** 手指引起的滚动已停下：显示等待中的那一页，然后在仍靠近底部时执行欠下的贴底。 */
+  const endGesture = useCallback(() => {
+    if (fingerRef.current) return;
+    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+    gestureTimerRef.current = null;
+    if (!gestureRef.current) return;
+    gestureRef.current = false;
+    if (holdingPageRef.current) setPageRelease((n) => n + 1);
+    const list = listRef.current;
+    if (!pinOwedRef.current || !list) return;
+    pinOwedRef.current = false;
+    // Still stuck means the member never scrolled away (onFrame would have said so); what arrived meanwhile may be
+    // taller than the stuck margin and must not cancel the catch-up.
+    // 仍然贴底说明成员没有滚走（否则 onFrame 已经记下）；期间到达的内容可能比贴底范围更高，不能因此取消补上。
+    if (positionedRef.current && stuckRef.current) scrollToBottom(true);
+  }, [scrollToBottom]);
+
+  /** Ends the gesture once scrolling has paused, which is how momentum ends where scrollend is missing (iOS). */
+  /** 滚动暂停后结束手势；在不支持 scrollend 的地方（iOS），惯性滚动就是这样结束的。 */
+  const armGestureIdle = useCallback(() => {
+    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+    gestureTimerRef.current = setTimeout(endGesture, SETTLE_IDLE_MS);
+  }, [endGesture]);
+
+  /** Counts the finger as lifted if it has gone quiet, since its touchend may never arrive. */
+  /** 手指沉寂一段时间后视为已抬起，因为它的 touchend 可能永远不会到达。 */
+  const watchFinger = useCallback(() => {
+    if (fingerTimerRef.current) clearTimeout(fingerTimerRef.current);
+    fingerTimerRef.current = setTimeout(() => {
+      fingerTimerRef.current = null;
+      fingerRef.current = false;
+      armGestureIdle();
+    }, FINGER_LOST_MS);
+  }, [armGestureIdle]);
+
+  const onFrame = useCallback(() => {
+    const list = listRef.current;
+    if (!list || !positionedRef.current) return;
+    // Momentum after the finger lifts keeps the gesture open; a finger still down is still alive.
+    // 手指抬起后的惯性滚动让手势保持进行；仍按着的手指说明它还在。
+    if (gestureRef.current) {
+      if (fingerRef.current) watchFinger();
+      else armGestureIdle();
+    }
+    const nowStuck = distanceFromBottom(list) <= STUCK_PX;
+    // While the list runs its own smooth scroll to the bottom, the frames on the way do not unstick it.
+    // 列表自身平滑滚动到底部的过程中，途中的帧不会解除贴底。
+    if (nowStuck !== stuckRef.current && (nowStuck || performance.now() >= smoothUntilRef.current)) setStuckBoth(nowStuck);
+    updatePills();
+  }, [setStuckBoth, updatePills, armGestureIdle, watchFinger]);
+
+  const anchor = useScrollAnchor(listRef, { isStuck: () => stuckRef.current, onFrame });
 
   const settleAfterJump = useCallback(() => {
     const list = listRef.current;
@@ -293,7 +379,11 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         // Catch up with what arrived meanwhile, unless the member scrolled away, which the next frame reports.
         // 补上期间到达的消息，除非成员已经滚走；这一点在下一帧才能得知。
         requestAnimationFrame(() => {
-          if (holdsRef.current === 0 && stuckRef.current) scrollToBottom(true);
+          if (holdsRef.current > 0 || !stuckRef.current) return;
+          // A swipe that dismissed the menu is under way; catch up once it settles.
+          // 关闭菜单的那次滑动仍在进行；等它停下后再补上。
+          if (gestureRef.current) pinOwedRef.current = true;
+          else scrollToBottom(true);
         });
       };
     };
@@ -327,7 +417,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const newest = messages[messages.length - 1]?.id ?? null;
+    const newest = shown[shown.length - 1]?.id ?? null;
     const previousNewest = newestIdRef.current;
     newestIdRef.current = newest;
     const added = pending.some((p) => !seenPendingRef.current.has(p.clientId));
@@ -346,22 +436,30 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       return;
     }
     const appended = newest !== null && previousNewest !== null && newest > previousNewest;
+    const countArrivals = () => {
+      if (!appended) return;
+      const arrived = shown.filter((m) => m.id > previousNewest && m.kind === 'user' && m.author.id !== meId && !m.recalled && !m.deleted).length;
+      if (arrived > 0) setBelow((n) => n + arrived);
+    };
     if (!stuckRef.current) {
-      if (appended) {
-        const arrived = messages.filter((m) => m.id > previousNewest && m.kind === 'user' && m.author.id !== meId && !m.recalled && !m.deleted).length;
-        if (arrived > 0) setBelow((n) => n + arrived);
-      }
+      countArrivals();
       anchor.restore();
       return;
     }
-    if (holdsRef.current > 0) {
+    if (holdsRef.current > 0 || gestureRef.current) {
+      // A finger on the list wins over following; the pin waits until its scroll settles.
+      // 手指在列表上时优先于跟随；贴底等到它引起的滚动停下后再进行。
+      if (gestureRef.current) {
+        countArrivals();
+        pinOwedRef.current = true;
+      }
       anchor.restore();
       return;
     }
     if (appended) scrollToBottom(true);
     else if (performance.now() < smoothUntilRef.current) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
     else list.scrollTop = list.scrollHeight;
-  }, [items, messages, pending, meId, loadingOlder, olderFailed, anchor, scrollToBottom, setStuckBoth]);
+  }, [items, shown, pending, meId, loadingOlder, olderFailed, anchor, scrollToBottom, setStuckBoth]);
 
   useLayoutEffect(() => {
     updatePills();
@@ -398,6 +496,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     const observer = new ResizeObserver(() => {
       if (!positionedRef.current) return;
       if (!stuckRef.current || holdsRef.current > 0) anchor.restore();
+      else if (gestureRef.current) pinOwedRef.current = true;
       else if (performance.now() < smoothUntilRef.current) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
       else list.scrollTop = list.scrollHeight;
     });
@@ -406,15 +505,39 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     return () => observer.disconnect();
   }, [anchor]);
 
+  // Where scrollend exists (Android, desktop) momentum ends there; a page that goes into the background ends any
+  // gesture, since its touchend will not come.
+  // 支持 scrollend 的地方（安卓、桌面）惯性滚动在此结束；页面转入后台时结束一切手势，因为它的 touchend 不会再来。
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const onScrollEnd = () => {
+      if (!fingerRef.current) endGesture();
+    };
+    const onHidden = () => {
+      if (document.visibilityState !== 'hidden') return;
+      fingerRef.current = false;
+      endGesture();
+    };
+    list.addEventListener('scrollend', onScrollEnd);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      list.removeEventListener('scrollend', onScrollEnd);
+      document.removeEventListener('visibilitychange', onHidden);
+      if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+      if (fingerTimerRef.current) clearTimeout(fingerTimerRef.current);
+    };
+  }, [endGesture]);
+
   useHistorySentinel({
     rootRef: listRef,
     sentinelRef,
     hasMore,
     loadingOlder,
-    canLoad: () => positionedRef.current && !propsRef.current.room.olderFailed,
+    canLoad: () => positionedRef.current && !propsRef.current.room.olderFailed && !holdingPageRef.current,
     loadOlder: () => propsRef.current.room.loadOlder(),
     onBeforeLoad: () => {
-      if (!stuckRef.current) anchor.record();
+      if (!stuckRef.current || gestureRef.current) anchor.record();
     },
     version: items,
   });
@@ -462,14 +585,32 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   function onTouchStart(event: TouchEvent<HTMLDivElement>) {
     touchYRef.current = event.touches[0]?.clientY ?? null;
     smoothUntilRef.current = 0;
+    fingerRef.current = true;
+    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+    gestureTimerRef.current = null;
+    watchFinger();
   }
 
   function onTouchMove(event: TouchEvent<HTMLDivElement>) {
+    // Only a moving finger opens a gesture, so a plain tap still keeps the bottom glued while the keyboard closes.
+    // 只有移动的手指才开启手势，因此单纯点按时，键盘收起过程中列表仍保持贴底。
+    smoothUntilRef.current = 0;
+    gestureRef.current = true;
+    fingerRef.current = true;
+    watchFinger();
     const startY = touchYRef.current;
     const y = event.touches[0]?.clientY;
     if (startY === null || y === undefined || Math.abs(y - startY) <= DRAG_BLUR_PX) return;
     touchYRef.current = null;
     if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
+  }
+
+  function onTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    if (event.touches.length > 0) return;
+    fingerRef.current = false;
+    if (fingerTimerRef.current) clearTimeout(fingerTimerRef.current);
+    fingerTimerRef.current = null;
+    if (gestureRef.current) armGestureIdle();
   }
 
   async function jumpToUnread() {
@@ -499,28 +640,32 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     <div className="relative flex min-h-0 flex-1 flex-col bg-wx-canvas">
       <div
         ref={listRef}
-        className="wx-no-anchor relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+        className="wx-no-anchor relative isolate min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
         style={{ overscrollBehaviorY: 'contain' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onClick={onClick}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
         onWheel={() => {
           smoothUntilRef.current = 0;
         }}
       >
         <div ref={contentRef} className="pb-2 pt-1" style={{ paddingLeft: 'var(--safe-left)', paddingRight: 'var(--safe-right)' }}>
           <div ref={sentinelRef} className="h-px" aria-hidden />
-          {loadingOlder ? (
+          {/* The slot keeps its height while more history exists, so starting or failing a load moves no row. */}
+          {/* 还有更早的消息时这一格始终占位，开始加载或加载失败都不会挪动任何一行。 */}
+          {hasMore || loadingOlder || olderFailed ? (
             <div className="flex h-11 items-center justify-center">
-              <WxSpinner label={tr('正在加载更早的消息', 'Loading earlier messages')} />
-            </div>
-          ) : olderFailed ? (
-            <div className="flex justify-center">
-              <button type="button" onClick={retryOlder} className="min-h-11 px-4 text-[13px] text-wx-meta">
-                {tr('加载失败，点击重试', 'Couldn’t load. Tap to retry')}
-              </button>
+              {loadingOlder ? (
+                <WxSpinner label={tr('正在加载更早的消息', 'Loading earlier messages')} />
+              ) : olderFailed ? (
+                <button type="button" onClick={retryOlder} className="min-h-11 px-4 text-[13px] text-wx-meta">
+                  {tr('加载失败，点击重试', 'Couldn’t load. Tap to retry')}
+                </button>
+              ) : null}
             </div>
           ) : null}
           {items.map((item) => (

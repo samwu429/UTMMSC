@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { OPEN_TO, isHonoraryRole, roleTitle, showsEnrollment, type ActivityPost, type Experience, type MemberProfile, type MemberSelf, type OpenTo } from '@utmmsc/shared';
 import { useLabels, useTr } from '../../shared/i18n/locale';
-import { experiencePeriod, formatPostTime } from './format';
+import { useSessionStore } from '../../shared/session/store';
+import { PlayGlyph } from '../moments/icons';
+import { experiencePeriod } from './format';
 import { CoverBanner } from './CoverBanner';
 import { MemberAvatar } from './InitialAvatar';
 import { CameraIcon, ChevronIcon, PlusIcon } from './icons';
-import { PostMediaView } from './PostMediaView';
+import { useMediaUrl } from './media';
 
 function openToLabels(member: MemberProfile, label: (id: OpenTo) => string): string[] {
   const picked = new Set(member.openTo ?? []);
@@ -37,6 +39,86 @@ function Block({ title, action, children }: { title: string; action?: ReactNode;
         {action}
       </div>
       {children ? <div className="mt-3">{children}</div> : null}
+    </section>
+  );
+}
+
+/** How many recent posts the profile shows as thumbnails, as WeChat does. */
+/** 资料页以缩略图显示的最近动态条数，与微信一致。 */
+const ALBUM_PREVIEWS = 4;
+
+/**
+ * One recent post in the profile's album row: the first photo's preview (the original for older photos), a
+ * video's first frame under the play glyph (a dark tile when there is none, never a bare video), or the text
+ * in a grey box.
+ * 资料页相册一行中的一条最近动态：第一张照片的预览图（较早的照片用原图）、带播放标志的视频首帧（没有首帧时为深色格子，从不直接放视频），
+ * 或灰色方框中的文字。
+ */
+function AlbumThumb({ post }: { post: ActivityPost }) {
+  const first = post.media?.[0];
+  const key = first ? (first.previewKey ?? (first.kind === 'image' ? first.key : null)) : null;
+  const url = useMediaUrl(key);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (!first) {
+    return (
+      <span className="h-14 w-14 shrink-0 overflow-hidden bg-wx-bar p-1">
+        <span className="line-clamp-3 break-all text-[11px] leading-[14px] text-wx-ink">{post.body}</span>
+      </span>
+    );
+  }
+  return (
+    <span className={`relative h-14 w-14 shrink-0 overflow-hidden ${first.kind === 'video' ? 'bg-stone-800' : 'bg-stone-200'}`}>
+      {url && url !== failedUrl ? (
+        <img src={url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailedUrl(url)} className="h-full w-full object-cover" />
+      ) : null}
+      {first.kind === 'video' ? (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <PlayGlyph size={22} />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The WeChat 朋友圈 row: up to four recent posts the viewer can see, opening the member's album. On the own
+ * profile with nothing posted yet it offers 发表动态 instead, which opens the own album and its camera tile.
+ * 微信式「朋友圈」一行：最多四条查看者能看到的最近动态，轻触打开该成员的相册。自己的资料页还没有发过动态时改为「发表动态」，
+ * 打开自己的相册及其中的相机格子。
+ */
+function AlbumRow({ posts, own, onOpen }: { posts: ActivityPost[]; own: boolean; onOpen?: () => void }) {
+  const tr = useTr();
+  const recent = posts.slice(0, ALBUM_PREVIEWS);
+  if (!onOpen && recent.length === 0) return null;
+  if (own && onOpen && recent.length === 0) {
+    return (
+      <Block title={tr('动态', 'Updates')}>
+        <AddRow label={tr('发表动态', 'Post an update')} onClick={onOpen} />
+      </Block>
+    );
+  }
+  const content = (
+    <>
+      <span className="w-14 shrink-0 text-[17px] font-semibold text-brand-800">{tr('动态', 'Updates')}</span>
+      <span className="flex min-w-0 flex-1 gap-1.5 overflow-hidden" aria-hidden>
+        {recent.map((post) => (
+          <AlbumThumb key={post.id} post={post} />
+        ))}
+      </span>
+    </>
+  );
+  return (
+    <section className="bg-white">
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className="flex min-h-[76px] w-full items-center gap-3 px-4 py-2.5 text-left active:bg-stone-50">
+          {content}
+          <span className="shrink-0 text-stone-300">
+            <ChevronIcon />
+          </span>
+        </button>
+      ) : (
+        <div className="flex min-h-[76px] items-center gap-3 px-4 py-2.5">{content}</div>
+      )}
     </section>
   );
 }
@@ -97,7 +179,7 @@ export function MemberProfileView({
     showsEnrollment(member.role) && !isHonoraryRole(member.role) ? enrollment(member.enrollmentStatus) : null,
   ].filter(Boolean).join(' · ');
   const skills = member.skills ?? [];
-  const preview = posts.slice(0, 2);
+  const own = useSessionStore((s) => s.member?.id) === member.id;
 
   return (
     <div className="space-y-2">
@@ -190,35 +272,7 @@ export function MemberProfileView({
         </Block>
       ) : null}
 
-      {preview.length > 0 || onShowActivity ? (
-        <section className="bg-white px-4 py-4">
-          {onShowActivity && preview.length > 0 ? (
-            <button type="button" onClick={onShowActivity} className="flex min-h-11 w-full items-center justify-between">
-              <h2 className="text-[17px] font-semibold text-brand-800">{tr('动态', 'Updates')}</h2>
-              <span className="text-stone-300">
-                <ChevronIcon />
-              </span>
-            </button>
-          ) : (
-            <h2 className="text-[17px] font-semibold text-brand-800">{tr('动态', 'Updates')}</h2>
-          )}
-          {preview.length > 0 ? (
-            <div className="mt-1 divide-y divide-stone-200">
-              {preview.map((post) => (
-                <div key={post.id} className="py-3 first:pt-0 last:pb-0">
-                  {post.body ? <p className="line-clamp-4 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800">{post.body}</p> : null}
-                  <PostMediaView media={(post.media ?? []).slice(0, 1)} />
-                  <p className="mt-1 text-xs text-stone-400">{formatPostTime(post.createdAt)}</p>
-                </div>
-              ))}
-            </div>
-          ) : onShowActivity ? (
-            <div className="mt-3">
-              <AddRow label={tr('发表动态', 'Post an update')} onClick={onShowActivity} />
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+      <AlbumRow posts={posts} own={own} onOpen={onShowActivity} />
     </div>
   );
 }

@@ -10,9 +10,12 @@ export interface NotificationPrefs {
   /** Show the sender and text; off shows a generic line instead. */
   /** 显示发送人和内容；关闭时只显示一句通用提示。 */
   preview: boolean;
+  /** 好友动态: comments and replies to the member, and a moderator acting on their content. Likes never push. */
+  /** 好友动态：别人评论、回复了成员，或管理员处理了成员的内容。点赞从不推送。 */
+  moments: boolean;
 }
 
-export const DEFAULT_NOTIFICATION_PREFS: Readonly<NotificationPrefs> = Object.freeze({ messages: true, events: true, preview: true });
+export const DEFAULT_NOTIFICATION_PREFS: Readonly<NotificationPrefs> = Object.freeze({ messages: true, events: true, preview: true, moments: true });
 
 export const PUSH_DEVICE_KINDS = ['webpush', 'fcm'] as const;
 export type PushDeviceKind = (typeof PUSH_DEVICE_KINDS)[number];
@@ -74,9 +77,12 @@ export interface EventNotificationRow {
 /**
  * message: a new chat message. recall: replaces the notice of a message that was recalled or removed,
  * under the same tag, quietly where the device allows it. event: a club event notice. test: from Settings.
+ * moment: a comment, a reply or a moderator's removal in 好友动态, which alerts. moment_recall: replaces the
+ * notice of a comment that was deleted, under the same tag, quietly.
  * message：新聊天消息。recall：消息被撤回或删除后，以相同 tag 替换其通知，设备允许时不再提醒。event：社团活动通知。test：来自设置页。
+ * moment：好友动态中的评论、回复或管理员移除，会提醒。moment_recall：评论被删除后，以相同 tag 安静地替换其通知。
  */
-export const PUSH_KINDS = ['message', 'recall', 'event', 'test'] as const;
+export const PUSH_KINDS = ['message', 'recall', 'event', 'test', 'moment', 'moment_recall'] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 
 /**
@@ -93,4 +99,5 @@ export interface PushPayload {
   kind: PushKind;
   roomId?: string;
   eventId?: string;
+  postId?: string;
 }

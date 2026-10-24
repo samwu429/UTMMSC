@@ -52,9 +52,12 @@ export function RoomScreen({ roomId }: { roomId: string }) {
   const listRef = useRef<MessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const unmarkedRef = useRef(false);
-  // A return from the chat info page or a reload is not a new push, so it does not slide in again.
-  // 从聊天信息页返回或刷新页面不算新进入，不再滑入。
-  const [slideIn] = useState(() => navigationType !== 'POP');
+  // A return from the chat info page or a reload is not a new push, so it does not slide in again. The class is
+  // dropped once the slide ends, so the list never sits inside an element that carried a transform, which can keep
+  // iOS from making it scrollable.
+  // 从聊天信息页返回或刷新页面不算新进入，不再滑入。滑入结束后去掉这个类，列表就不会处在曾带有 transform 的元素之内；
+  // 这种情况可能让 iOS 无法把列表变成可滚动的。
+  const [slideIn, setSlideIn] = useState(() => navigationType !== 'POP');
   const [muteTarget, setMuteTarget] = useState<string | null>(null);
   const [firstWaitOver, setFirstWaitOver] = useState(false);
   const [everOpen, setEverOpen] = useState(false);
@@ -178,7 +181,14 @@ export function RoomScreen({ roomId }: { roomId: string }) {
 
   return (
     <div ref={rootRef} className="fixed inset-x-0 top-0 flex h-full flex-col overflow-hidden bg-wx-canvas">
-      <div className={`mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col bg-wx-canvas ${slideIn ? 'wx-push-in' : ''}`}>
+      <div
+        className={`mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col bg-wx-canvas ${slideIn ? 'wx-push-in' : ''}`}
+        onAnimationEnd={(event) => {
+          // Animations of rows and menus bubble here too; only the slide itself ends it.
+          // 行和菜单的动画也会冒泡到这里；只有滑入本身结束时才去掉。
+          if (event.target === event.currentTarget) setSlideIn(false);
+        }}
+      >
         <RoomHeader
           title={title}
           count={count}
