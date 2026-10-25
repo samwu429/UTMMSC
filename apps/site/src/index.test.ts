@@ -12,7 +12,14 @@ const FILES: Record<string, { body: string; type: string }> = {
 
 function fakeEnv() {
   const apiCalls: Request[] = [];
+  const webCalls: Request[] = [];
   const env: Env = {
+    WEB: {
+      async fetch(input: Request) {
+        webCalls.push(input);
+        return new Response('<!doctype html><title>site</title>', { headers: { 'content-type': 'text/html' } });
+      },
+    } as unknown as Fetcher,
     ASSETS: {
       async fetch(input: Request) {
         const file = FILES[new URL(input.url).pathname];
@@ -29,13 +36,51 @@ function fakeEnv() {
       },
     } as unknown as Fetcher,
   };
-  return { env, apiCalls };
+  return { env, apiCalls, webCalls };
 }
 
-const get = (url: string, init?: RequestInit) => {
-  const { env, apiCalls } = fakeEnv();
-  return worker.fetch(new Request(url, init), env).then((response) => ({ response, apiCalls }));
+const get = (url: string, init?: RequestInit, options: { withoutWeb?: boolean } = {}) => {
+  const { env, apiCalls, webCalls } = fakeEnv();
+  if (options.withoutWeb) delete env.WEB;
+  return worker.fetch(new Request(url, init), env).then((response) => ({ response, apiCalls, webCalls }));
 };
+
+describe('public website forwarding', () => {
+  it('hands the home page and every public path to the website Worker unchanged', async () => {
+    for (const path of ['/', '/events', '/en/reviews/csc108h5', '/admin/', '/admin/api/session', '/media/img/2026/a.jpg', '/sitemap.xml']) {
+      const { response, webCalls } = await get(`https://utmmsc.com${path}?x=1`);
+      expect(response.status, path).toBe(200);
+      expect(webCalls[0]?.url, path).toBe(`https://utmmsc.com${path}?x=1`);
+    }
+  });
+
+  it('keeps the member app, its API and downloads away from the website', async () => {
+    const member = await get('https://utmmsc.com/UTMMSC/');
+    expect(member.webCalls).toHaveLength(0);
+    const api = await get('https://utmmsc.com/api/home/daily');
+    expect(api.webCalls).toHaveLength(0);
+    expect(api.apiCalls).toHaveLength(1);
+  });
+
+  it('passes website writes through, such as admin saves', async () => {
+    const { webCalls } = await get('https://utmmsc.com/admin/api/events', { method: 'POST', body: '{}' });
+    expect(webCalls[0]?.method).toBe('POST');
+  });
+
+  it('redirects /index.html to the home page', async () => {
+    const { response } = await get('https://utmmsc.com/index.html');
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe('https://utmmsc.com/');
+  });
+
+  it('falls back to the holding page and plain 404s without the binding', async () => {
+    const home = await get('https://utmmsc.com/', undefined, { withoutWeb: true });
+    expect(home.response.status).toBe(200);
+    expect(await home.response.text()).toContain('国语学者联盟');
+    const other = await get('https://utmmsc.com/events', undefined, { withoutWeb: true });
+    expect(other.response.status).toBe(404);
+  });
+});
 
 describe('site worker routing', () => {
   it('forwards /api/* on both hosts to the API, before the www redirect', async () => {

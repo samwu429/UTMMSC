@@ -22,8 +22,14 @@
   // utmmsc.com/api/* goes to the API Worker through this binding, so the member app calls its API on its own origin
   // (no CORS preflight, no second connection). Deploy utmmsc-api before this Worker.
   // utmmsc.com/api/* 通过这个绑定转给 API Worker，成员网络因此在自己的源上调用接口（没有 CORS 预检，也不用第二条连接）。先部署 utmmsc-api，再部署本 Worker。
+  // Every other path (/, /events, /reviews, /people, /about, /en/*, /admin/*, /media/*, /static/*, robots.txt,
+  // sitemap.xml) is the public website, the msc-web Worker from the MSC-WEB repository. Deploy msc-web before this
+  // Worker.
+  // 其余所有路径（/、/events、/reviews、/people、/about、/en/*、/admin/*、/media/*、/static/*、robots.txt、sitemap.xml）
+  // 都属于公开网站，即 MSC-WEB 仓库中的 msc-web Worker。先部署 msc-web，再部署本 Worker。
   "services": [
-    { "binding": "API", "service": "utmmsc-api" }
+    { "binding": "API", "service": "utmmsc-api" },
+    { "binding": "WEB", "service": "msc-web" }
   ],
 
   "vars": {

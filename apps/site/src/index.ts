@@ -2,12 +2,26 @@ import { forwardToApi, isApiPath, type ApiEnv } from './api';
 import { REVALIDATE, memberCacheControl, withCacheControl } from './cache';
 import { serveAndroidApk, serveAndroidRelease } from './download';
 import { HOME } from './pages';
+import { forwardToWeb, type WebEnv } from './web';
 
 const MEMBER_PREFIX = '/UTMMSC';
 
-export interface Env extends ApiEnv {
+export interface Env extends ApiEnv, WebEnv {
   ASSETS: Fetcher;
   FILES: R2Bucket;
+}
+
+function holdingPage(): Response {
+  return new Response(HOME, {
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' },
+  });
+}
+
+function notFound(): Response {
+  return new Response('未找到', {
+    status: 404,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  });
 }
 
 export default {
@@ -20,21 +34,16 @@ export default {
       url.hostname = 'utmmsc.com';
       return Response.redirect(url.toString(), 301);
     }
-    if (url.pathname === '/' || url.pathname === '/index.html') {
-      return new Response(HOME, {
-        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' },
-      });
-    }
+    if (url.pathname === '/index.html') return Response.redirect(`${url.origin}/${url.search}`, 301);
     if (url.pathname === '/download/android' || url.pathname === '/download/android/') return serveAndroidApk(request, env.FILES);
     if (url.pathname === '/download/android.json') return serveAndroidRelease(request, env.FILES);
     if (url.pathname === MEMBER_PREFIX) {
       return Response.redirect(`${url.origin}${MEMBER_PREFIX}/${url.search}`, 301);
     }
     if (url.pathname.startsWith(`${MEMBER_PREFIX}/`)) return memberAsset(request, env, url);
-    return new Response('未找到', {
-      status: 404,
-      headers: { 'content-type': 'text/plain; charset=utf-8' },
-    });
+    // Everything else is the public website. Until it is bound, the apex keeps the holding page.
+    // 其余路径都属于公开网站。在绑定之前，根路径仍显示占位页。
+    return forwardToWeb(request, env, url.pathname === '/' ? holdingPage : notFound);
   },
 };
 
