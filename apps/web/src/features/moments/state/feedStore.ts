@@ -1,6 +1,7 @@
 import { normalizeMomentComment, type MemberSelf, type MomentAlbumOwner, type MomentMediaInput, type MomentPerson, type MomentPost } from '@utmmsc/shared';
 import { useCallback, useEffect } from 'react';
 import { create } from 'zustand';
+import { holdAppUpdate } from '../../../app/pwa';
 import { ApiClientError, errorMessage } from '../../../shared/api/errors';
 import { tr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -220,6 +221,9 @@ export interface FeedStoreDeps {
   isOnline(): boolean;
   makeClientId(): string;
   now(): number;
+  /** Keeps a waiting app update from reloading the page (pwa.ts) and returns the release. */
+  /** 阻止等待中的应用更新重新加载页面（pwa.ts），并返回释放函数。 */
+  holdUpdate(): () => void;
 }
 
 interface FirstAnswer {
@@ -1158,6 +1162,26 @@ export function createFeedStore(deps: FeedStoreDeps) {
     }, CACHE_WRITE_DELAY_MS);
   });
 
+  // A post or a comment written here lives only in memory until the server has it, so from 发表 or 发送 until it lands
+  // a waiting app update must not reload the page. A failed one waits for the member (重试 or 重新发送 holds again);
+  // 删除 or a sign-out lets go.
+  // 本设备发表的动态和发出的评论在服务器收到之前只保存在内存中，所以从「发表」或「发送」到成功，等待中的应用更新都不能重新加载页面。
+  // 失败的动态或评论等成员处理（「重试」或「重新发送」会再次占用）；「删除」或退出登录时释放。
+  let releaseUpdate: (() => void) | null = null;
+  store.subscribe((state, prev) => {
+    if (state.localPosts === prev.localPosts && state.pendingComments === prev.pendingComments) return;
+    const busy =
+      state.localPosts.some((local) => local.state.status !== 'failed') ||
+      Object.values(state.pendingComments).some((pending) => pending.some((comment) => comment.status !== 'failed'));
+    if (busy && !releaseUpdate) {
+      releaseUpdate = deps.holdUpdate();
+    } else if (!busy && releaseUpdate) {
+      const release = releaseUpdate;
+      releaseUpdate = null;
+      release();
+    }
+  });
+
   return Object.assign(store, { memo });
 }
 
@@ -1206,6 +1230,7 @@ const defaultDeps: FeedStoreDeps = {
   isOnline: () => typeof navigator === 'undefined' || navigator.onLine !== false,
   makeClientId: newMomentClientId,
   now: () => Date.now(),
+  holdUpdate: holdAppUpdate,
 };
 
 export const useFeedStore = createFeedStore(defaultDeps);

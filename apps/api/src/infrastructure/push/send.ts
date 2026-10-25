@@ -35,9 +35,22 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return chunks;
 }
 
-async function runJobs(env: Env, jobs: DeliveryJob[]): Promise<JobOutcome[]> {
+/**
+ * auto: up to INLINE_PUSH_MAX pushes are sent in the calling invocation, more go through the relay. always: every
+ * push goes through the relay, which keeps encryption and push requests out of a cron run's own CPU and
+ * outbound-request budget. Without the relay binding both send inline.
+ * auto：不超过 INLINE_PUSH_MAX 条推送在本次调用中直接发送，更多的交给中继。always：所有推送都交给中继，使加密和推送请求不占用定时任务
+ * 本身的 CPU 和外发请求额度。没有中继绑定时两者都直接发送。
+ */
+export type RelayMode = 'auto' | 'always';
+
+export interface SendOptions {
+  relay?: RelayMode;
+}
+
+async function runJobs(env: Env, jobs: DeliveryJob[], mode: RelayMode): Promise<JobOutcome[]> {
   const relay = env.PUSH_RELAY;
-  if (jobs.length <= INLINE_PUSH_MAX || !relay) return deliverJobs(env, jobs);
+  if (!relay || (mode === 'auto' && jobs.length <= INLINE_PUSH_MAX)) return deliverJobs(env, jobs);
   const parts = await Promise.all(
     chunk(jobs, RELAY_CHUNK).map(async (part, index) => {
       try {
@@ -64,10 +77,10 @@ interface DeliveryRun {
  * 为每位成员生成一份内容并推送到其每台设备，然后清理被推送服务拒绝的设备。无法读取已存密钥的记录按失效删除。
  */
 export async function deliverToDevices(env: Env, devices: readonly DeliveryDevice[], payloadFor: PayloadFor): Promise<DeliverySummary> {
-  return (await deliver(env, devices, payloadFor)).summary;
+  return (await deliver(env, devices, payloadFor, 'auto')).summary;
 }
 
-async function deliver(env: Env, devices: readonly DeliveryDevice[], payloadFor: PayloadFor): Promise<DeliveryRun> {
+async function deliver(env: Env, devices: readonly DeliveryDevice[], payloadFor: PayloadFor, mode: RelayMode): Promise<DeliveryRun> {
   const payloads = new Map<string, PushPayload | null>();
   const jobs: DeliveryJob[] = [];
   const broken: string[] = [];
@@ -82,7 +95,7 @@ async function deliver(env: Env, devices: readonly DeliveryDevice[], payloadFor:
     jobs.push({ deviceId: device.id, kind: device.kind, endpoint: device.endpoint, keys: device.keys, payload });
   }
 
-  const outcomes = jobs.length > 0 ? await runJobs(env, jobs) : [];
+  const outcomes = jobs.length > 0 ? await runJobs(env, jobs, mode) : [];
   const byId = new Map(devices.map((device) => [device.id, device]));
   const results = [
     ...outcomes.map((o) => ({ deviceId: o.deviceId, outcome: o.outcome, failureCount: byId.get(o.deviceId)?.failureCount ?? 0 })),
@@ -125,7 +138,7 @@ function isServiceSide(outcome: DeliveryOutcome): outcome is 'skipped' | 'transi
  */
 export async function sendTestPush(env: Env, memberId: string, sessionId: string, payload: PushPayload): Promise<TestNotificationResponse> {
   const devices = await listDeliveryDevices(env.DB, [memberId]);
-  const { summary, outcomes } = await deliver(env, devices, () => payload);
+  const { summary, outcomes } = await deliver(env, devices, () => payload, 'auto');
   let here: DeliveryOutcome | null = null;
   for (const device of devices) {
     const outcome = device.sessionId === sessionId ? outcomes.get(device.id) : undefined;
@@ -146,4 +159,52 @@ export async function sendToMembers(env: Env, memberIds: readonly string[], payl
 /** 推送到全体在用成员的有效设备。 */
 export async function sendToAllMembers(env: Env, payloadFor: PayloadFor): Promise<DeliverySummary> {
   return deliverToDevices(env, await listDeliveryDevices(env.DB, 'all'), payloadFor);
+}
+
+/**
+ * How a push went for one member. sent: at least one device took it. retry: none did, and at least one failure lay
+ * with the push service or our credentials, so trying again may work. failed: every device refused it or is gone.
+ * none: the member has no live device, or was given no payload.
+ * 一位成员的推送结果。sent：至少一台设备收到。retry：没有设备收到，且至少有一次失败出在推送服务或我方凭据一侧，重试可能成功。
+ * failed：每台设备都拒绝了或已失效。none：该成员没有有效设备，或没有为其生成内容。
+ */
+export type MemberPushOutcome = 'sent' | 'retry' | 'failed' | 'none';
+
+/** One member's outcome from the outcomes of their devices. */
+/** 由一位成员各台设备的结果得出该成员的结果。 */
+export function memberPushOutcome(outcomes: readonly DeliveryOutcome[]): MemberPushOutcome {
+  if (outcomes.length === 0) return 'none';
+  if (outcomes.includes('sent')) return 'sent';
+  if (outcomes.some(isServiceSide)) return 'retry';
+  return 'failed';
+}
+
+/**
+ * Pushes to these members' live devices like sendToMembers, and reports the outcome for each member asked about,
+ * so a caller that keeps its own ledger can mark each row sent, skipped, failed or due for a retry. Devices are
+ * pruned exactly as for any other push.
+ * 与 sendToMembers 一样推送到这些成员的有效设备，并报告每位被询问成员的结果；自己维护记录的调用方因此能把每一行标记为已发送、
+ * 已跳过、失败或待重试。设备的清理与其他推送完全相同。
+ */
+export async function sendToMembersReport(
+  env: Env,
+  memberIds: readonly string[],
+  payloadFor: PayloadFor,
+  options: SendOptions = {},
+): Promise<Map<string, MemberPushOutcome>> {
+  const unique = [...new Set(memberIds)];
+  const report = new Map<string, MemberPushOutcome>(unique.map((memberId) => [memberId, 'none']));
+  if (unique.length === 0) return report;
+  const devices = await listDeliveryDevices(env.DB, unique);
+  const { outcomes } = await deliver(env, devices, payloadFor, options.relay ?? 'auto');
+  const byMember = new Map<string, DeliveryOutcome[]>();
+  for (const device of devices) {
+    const outcome = outcomes.get(device.id);
+    if (!outcome) continue;
+    const list = byMember.get(device.memberId) ?? [];
+    list.push(outcome);
+    byMember.set(device.memberId, list);
+  }
+  for (const memberId of unique) report.set(memberId, memberPushOutcome(byMember.get(memberId) ?? []));
+  return report;
 }

@@ -9,5 +9,5 @@
     "declaration": true,
     "outDir": "node_modules/.tsconfig-node"
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "src/app/swRoutes.ts"]
 }

@@ -1,3 +1,5 @@
+import type { AdminCounts, AdminSectionKey } from '../admin/sections';
+import type { ChannelIconPresetId } from '../chat/channel-icons';
 import type { ChannelSummary, DirectConversationSummary, ChannelAudience, ChatPrefs, HistoryVisibility, PostPolicy } from '../chat/rooms';
 import type { FileCategory, FileRecord } from '../files/categories';
 import type { FriendshipState } from '../identity/friends';
@@ -176,6 +178,9 @@ export interface RoomMeta {
   moderationExempt?: string[];
   canManage: boolean;
   prefs: ChatPrefs;
+  /** Channels only: channel-icon/ upload or preset:<id>; null or absent shows the text tile. */
+  /** 仅频道：channel-icon/ 下的上传图标或 preset:<id>；为 null 或缺省时显示文字头像。 */
+  iconKey?: string | null;
 }
 
 export interface RoomTicketResponse {
@@ -257,6 +262,25 @@ export interface AdminChannelRow {
   lastMessageAt: string | null;
   memberIds: string[];
   historyVisibility?: HistoryVisibility;
+  /** Absent from servers before migration 0018. */
+  /** 迁移 0018 之前的服务器不返回。 */
+  iconKey?: string | null;
+  /** When the icon last changed, as toISOString writes it. */
+  /** 图标最后修改的时间，格式与 toISOString 一致。 */
+  iconUpdatedAt?: string | null;
+}
+
+/** POST /channels/:id/icon answers with a media token so the new image can load at once. */
+/** POST /channels/:id/icon 同时返回媒体令牌，新图片可以立即加载。 */
+export interface ChannelIconResponse {
+  channel: AdminChannelRow;
+  mediaToken?: string;
+}
+
+/** Body of POST /channels/:id/icon/preset. */
+/** POST /channels/:id/icon/preset 的请求体。 */
+export interface SetChannelIconPresetBody {
+  id: ChannelIconPresetId;
 }
 
 export interface OpenDirectResponse {
@@ -394,6 +418,35 @@ export interface AnnouncementBody {
 export interface AnnouncementResponse {
   recipientCount: number;
   emailed: boolean;
+}
+
+/**
+ * GET /admin/summary: the sections the viewed role sees and only the counts of those sections
+ * (admin/sections.ts adminCountsFor). A count whose table is missing reads as 0.
+ * GET /admin/summary：当前视角身份能看到的板块，以及仅属于这些板块的计数（见 admin/sections.ts 的 adminCountsFor）。表不存在的计数为 0。
+ */
+export interface AdminSummaryResponse {
+  sections: AdminSectionKey[];
+  counts: AdminCounts;
+}
+
+/** One sent announcement. emailed false means it was only saved here, and no member saw it. */
+/** 一条已发送的公告。emailed 为 false 表示只保存在这里，没有成员看到。 */
+export interface AdminAnnouncementRow {
+  id: string;
+  title: string;
+  body: string;
+  sentAt: string;
+  recipientCount: number;
+  emailed: boolean;
+  sentBy: { id: string; displayName: string } | null;
+}
+
+/** GET /admin/announcements?cursor=: newest first, 20 a page. */
+/** GET /admin/announcements?cursor=：最新的在前，每页 20 条。 */
+export interface AdminAnnouncementsResponse {
+  announcements: AdminAnnouncementRow[];
+  nextCursor: string | null;
 }
 
 export interface AdminMemberRow extends MemberProfile {

@@ -1,7 +1,9 @@
 import { useRef } from 'react';
 import { PRESET_AVATARS, presetAvatarKey, type PresetAvatarId, type PresetAvatarMotion } from '@utmmsc/shared';
 import { useTr } from '../../shared/i18n/locale';
+import { useReducedMotion } from '../../shared/media/reducedMotion';
 import { Button } from '../../shared/ui/Button';
+import { presetAvatarSrc } from './media';
 
 const AVATAR_EN: Record<PresetAvatarId, string> = {
   'woman-cute-gold': 'Woman · Cute · Gold',
@@ -25,6 +27,9 @@ export function AvatarChooser({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const tr = useTr();
+  // The 256 px files: the chooser draws them at 96 px. With reduced motion the animated choice previews as its still.
+  // 使用 256px 文件：头像选择以 96px 显示。减弱动态效果时，动态选项以静态图预览。
+  const reducedMotion = useReducedMotion();
 
   return (
     <div>
@@ -35,12 +40,14 @@ export function AvatarChooser({
             <div className="grid grid-cols-2 gap-3">
               {(['animated', 'still'] as const).map((motion) => {
                 const selected = currentKey === presetAvatarKey(item.id, motion);
-                const ext = motion === 'animated' ? 'gif' : 'png';
                 return (
                   <button key={motion} type="button" disabled={busy} onClick={() => onPreset(item.id, motion)} className="flex flex-col items-center gap-1.5 disabled:opacity-50">
                     <img
-                      src={`${import.meta.env.BASE_URL}avatars/${item.id}.${ext}`}
+                      src={presetAvatarSrc(item.id, motion, 256, reducedMotion)}
                       alt=""
+                      width={96}
+                      height={96}
+                      decoding="async"
                       className={`h-24 w-24 rounded-full object-cover ring-2 ${selected ? 'ring-gold' : 'ring-stone-200'}`}
                     />
                     <span className={`text-sm ${selected ? 'font-medium text-brand-800' : 'text-stone-500'}`}>{motion === 'animated' ? tr('动态', 'Animated') : tr('静态', 'Still')}</span>

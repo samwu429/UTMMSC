@@ -1,24 +1,42 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   CHANNEL_AUDIENCES,
+  CHANNEL_ICON_KEY_PREFIX,
+  CHANNEL_ICON_MAX_BYTES,
+  CHANNEL_ICON_SIZE,
+  CHANNEL_ICON_THUMB_MAX_BYTES,
+  CHANNEL_ICON_THUMB_SIZE,
   DEFAULT_HISTORY_VISIBILITY,
   HISTORY_VISIBILITIES,
   POST_POLICIES,
+  channelIconExtension,
+  channelIconPresetKey,
+  channelIconThumbKey,
   channelRoomId,
+  isChannelIconPresetId,
+  isChannelIconType,
+  isChannelIconUploadKey,
   type AdminChannelRow,
   type ChannelAudience,
+  type ChannelIconResponse,
+  type ChannelIconType,
   type HistoryVisibility,
   type PostPolicy,
 } from '@utmmsc/shared';
+import { randomId } from '../../../domain/crypto/encoding';
+import { sniffImage } from '../../../domain/media/image-sniff';
+import { issueProfileMediaToken } from '../../../domain/profile/media-token';
 import {
   addChannelMembers,
   createChannel,
   deleteChannel,
   findChannel,
+  isMissingSchemaError,
   listChannelMemberIds,
   listChannels,
   removeChannelMember,
   replaceChannelMembers,
+  setChannelIcon,
   updateChannel,
   type ChannelPatch,
   type ChannelRow,
@@ -27,12 +45,16 @@ import { carriedReaderJoins } from '../../../domain/messaging/visibility';
 import { listChannelJoins, recordAudienceChange } from '../../../infrastructure/d1/channel-joins';
 import { findAuthorCards, findMemberAccessRows, viewedActor, type MemberRow } from '../../../infrastructure/d1/members';
 import { nowIso } from '../../../infrastructure/d1/time';
+import { IMMUTABLE_MEDIA_CACHE, putObject } from '../../../infrastructure/r2/objects';
 import type { Env } from '../../../env';
+import { requireBucket } from '../../bindings';
 import type { AppEnv } from '../../context';
-import { badRequest, notFound } from '../../errors';
+import { badRequest, conflict, notFound, serviceUnavailable } from '../../errors';
 import { recordRoomJoins, revokeRoom } from '../../rooms';
+import { memberRateLimit } from '../../middleware/rate-limit';
 import { requirePermission, requireSession } from '../../middleware/session';
 import { optionalString, readJson, requireOneOf, requireString } from '../../validation';
+import { MINUTE } from '../moments/common';
 
 /** Channel administration. Reading and posting go through the chat routes. */
 /** 频道管理。阅读与发言走 chat 路由。 */
@@ -65,7 +87,7 @@ async function requireExistingMembers(db: D1Database, ids: string[]): Promise<vo
 }
 
 function toAdminChannel(row: ChannelRow, memberIds: string[]): AdminChannelRow {
-  return {
+  const channel: AdminChannelRow = {
     id: row.id,
     slug: row.slug,
     name: row.name,
@@ -77,6 +99,14 @@ function toAdminChannel(row: ChannelRow, memberIds: string[]): AdminChannelRow {
     memberIds,
     historyVisibility: row.history_visibility ?? DEFAULT_HISTORY_VISIBILITY,
   };
+  // Left out before migration 0018, as the contract says, so a client can tell icons that are not available yet
+  // from a channel that has none.
+  // 迁移 0018 之前按约定不返回，客户端因此能区分「图标功能尚不可用」和「频道没有图标」。
+  if (row.icon_key !== undefined) {
+    channel.iconKey = row.icon_key;
+    channel.iconUpdatedAt = row.icon_updated_at ?? null;
+  }
+  return channel;
 }
 
 /**
@@ -241,8 +271,198 @@ channelRoutes.delete('/:id/members/:memberId', async (c) => {
 
 channelRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  if (!(await findChannel(c.env.DB, id))) throw notFound('频道不存在');
+  const channel = await findChannel(c.env.DB, id);
+  if (!channel) throw notFound('频道不存在');
   await deleteChannel(c.env.DB, id);
   c.executionCtx.waitUntil(revokeRoom(c.env, channelRoomId(id)));
+  // The uploaded icon goes with the channel; a preset is a bundled file and stays.
+  // 上传的图标随频道一起删除；预设是内置文件，保留不动。
+  if (channel.icon_key && isChannelIconUploadKey(channel.icon_key)) deleteIconLater(c, channel.icon_key);
   return c.json({ ok: true });
+});
+
+/* Channel icons */
+
+/** Messages of the icon routes. The web app adds the English in shared/api/errors/channelIcons.ts. */
+/** 图标接口的提示。网页端在 shared/api/errors/channelIcons.ts 中补上英文。 */
+export const CHANNEL_ICON_MESSAGES = {
+  type: '图标只支持 WebP 或 JPEG',
+  size: '图标尺寸不对，请重新选择',
+  tooLarge: '图标不能超过 256KB',
+  preset: '没有这个预设图标',
+  pending: '频道图标暂不可用',
+  conflict: '图标刚被别人修改，请重试',
+} as const;
+
+/** The icon, its thumbnail and room for the multipart framing around them. */
+/** 图标、缩略图以及它们外层 multipart 封装所需的余量。 */
+export const CHANNEL_ICON_REQUEST_MAX_BYTES = CHANNEL_ICON_MAX_BYTES + CHANNEL_ICON_THUMB_MAX_BYTES + 16 * 1024;
+
+const iconsPending = () => serviceUnavailable('schema_pending', CHANNEL_ICON_MESSAGES.pending);
+const iconTooLarge = () => badRequest('too_large', CHANNEL_ICON_MESSAGES.tooLarge);
+
+/**
+ * Deletes an uploaded icon and its thumbnail after the response. The row no longer points at them, so a failure
+ * only leaves files behind and is logged. Without a bucket nothing was ever stored.
+ * 在响应之后删除上传的图标及其缩略图。记录已不再指向它们，失败只会留下文件，记录日志即可。没有存储桶时从未存过文件。
+ */
+function deleteIconLater(c: Context<AppEnv>, key: string): void {
+  const bucket = c.env.FILES;
+  if (!bucket) return;
+  c.executionCtx.waitUntil(
+    bucket.delete([key, channelIconThumbKey(key)]).catch((err: unknown) => {
+      console.error(`channel icon: could not delete ${key}`, err instanceof Error ? err.message : String(err));
+    }),
+  );
+}
+
+/** The channel, or 404; 503 before migration 0018, checked before anything is read or stored. */
+/** 返回频道，不存在时 404；迁移 0018 之前返回 503，在读取或存储任何内容之前检查。 */
+async function requireIconChannel(db: D1Database, id: string): Promise<ChannelRow> {
+  const channel = await findChannel(db, id);
+  if (!channel) throw notFound('频道不存在');
+  if (channel.icon_key === undefined) throw iconsPending();
+  return channel;
+}
+
+interface IconUpload {
+  type: ChannelIconType;
+  icon: ArrayBuffer;
+  thumb: ArrayBuffer;
+}
+
+function uploadedFile(value: unknown, field: string): Blob {
+  if (!(value instanceof Blob)) throw badRequest('missing_field', `缺少 ${field}`);
+  return value;
+}
+
+function isSquare(image: { width: number; height: number }, size: number): boolean {
+  return image.width === size && image.height === size;
+}
+
+/**
+ * The 256 px icon and its 96 px thumbnail from the multipart body: one allowed type for both, within the byte caps,
+ * and bytes that really are that format at exactly that square size.
+ * 从 multipart 请求体中读出 256px 图标及其 96px 缩略图：两者为同一种允许的类型，不超过字节上限，并且字节确实是该格式、恰好是该边长的正方形。
+ */
+async function readIconUpload(c: Context<AppEnv>): Promise<IconUpload> {
+  let form: Record<string, unknown>;
+  try {
+    form = await c.req.parseBody();
+  } catch {
+    throw badRequest('invalid_body', '请求格式错误');
+  }
+  const icon = uploadedFile(form.icon, '图标');
+  const thumb = uploadedFile(form.thumb, '缩略图');
+  if (!isChannelIconType(icon.type) || thumb.type !== icon.type) throw badRequest('invalid_icon', CHANNEL_ICON_MESSAGES.type);
+  const type = icon.type;
+  if (icon.size === 0 || thumb.size === 0) throw badRequest('empty_file', '文件为空');
+  if (icon.size > CHANNEL_ICON_MAX_BYTES || thumb.size > CHANNEL_ICON_THUMB_MAX_BYTES) throw iconTooLarge();
+  const [iconBytes, thumbBytes] = await Promise.all([icon.arrayBuffer(), thumb.arrayBuffer()]);
+  const iconImage = sniffImage(new Uint8Array(iconBytes));
+  const thumbImage = sniffImage(new Uint8Array(thumbBytes));
+  // The bytes decide, not the declared type: a canvas that cannot encode WebP silently returns PNG.
+  // 以字节为准，而不是声明的类型：无法编码 WebP 的画布会悄悄返回 PNG。
+  if (iconImage?.type !== type || thumbImage?.type !== type) throw badRequest('invalid_icon', CHANNEL_ICON_MESSAGES.type);
+  if (!isSquare(iconImage, CHANNEL_ICON_SIZE) || !isSquare(thumbImage, CHANNEL_ICON_THUMB_SIZE)) {
+    throw badRequest('invalid_icon', CHANNEL_ICON_MESSAGES.size);
+  }
+  return { type, icon: iconBytes, thumb: thumbBytes };
+}
+
+/**
+ * Points the channel at `next` with a compare-and-swap against the key read with the channel, and returns the key
+ * it replaced. When another admin changed the icon in between, the row is read again and the swap tried once more,
+ * so the last writer wins and only the objects actually replaced are deleted; a second miss is 409 icon_conflict.
+ * 以读取频道时得到的键做比较并交换，把频道指向 `next`，并返回被替换的键。若其间另一位管理员改了图标，就重新读取该行再试一次，
+ * 因此最后写入的人生效，而且只删除确实被替换的对象；第二次仍不成功时返回 409 icon_conflict。
+ */
+async function swapIcon(db: D1Database, channel: ChannelRow, next: string | null): Promise<string | null> {
+  try {
+    const first = channel.icon_key ?? null;
+    if (await setChannelIcon(db, channel.id, first, next)) return first;
+    const fresh = await findChannel(db, channel.id);
+    if (!fresh) throw notFound('频道不存在');
+    const second = fresh.icon_key ?? null;
+    if (await setChannelIcon(db, channel.id, second, next)) return second;
+  } catch (err) {
+    if (isMissingSchemaError(err)) throw iconsPending();
+    throw err;
+  }
+  throw conflict('icon_conflict', CHANNEL_ICON_MESSAGES.conflict);
+}
+
+/** After a swap: deletes the upload it replaced (never a preset) and reads the channel back. */
+/** 交换之后：删除被替换的上传图标（预设从不删除），再读回频道。 */
+async function finishIconChange(c: Context<AppEnv>, id: string, previous: string | null, next: string | null): Promise<AdminChannelRow> {
+  if (previous && previous !== next && isChannelIconUploadKey(previous)) deleteIconLater(c, previous);
+  const channel = await loadAdminChannel(c.env.DB, id);
+  if (!channel) throw notFound('频道不存在');
+  return channel;
+}
+
+/**
+ * Uploads a new icon: the client crops the image square and sends a 256 px icon and a 96 px thumbnail of one type.
+ * Both are stored under a new random key before the row points at them, so a reader never meets a missing file.
+ * 上传新图标：客户端把图片裁成正方形，发送同一类型的 256px 图标和 96px 缩略图。两者先以新的随机键存好，记录才指向它们，读取方因此不会遇到缺失的文件。
+ */
+channelRoutes.post('/:id/icon', memberRateLimit('channels:icon', 10, MINUTE), async (c) => {
+  const id = c.req.param('id');
+  const channel = await requireIconChannel(c.env.DB, id);
+  const bucket = requireBucket(c.env);
+  const declared = Number(c.req.header('content-length'));
+  if (Number.isFinite(declared) && declared > CHANNEL_ICON_REQUEST_MAX_BYTES) throw iconTooLarge();
+  const upload = await readIconUpload(c);
+  const key = `${CHANNEL_ICON_KEY_PREFIX}${id}/${randomId('cic')}.${channelIconExtension(upload.type)}`;
+  // Channel ids are randomId values or the seeded ch_ names, so this only fails for a row written by hand.
+  // 频道 id 是 randomId 生成的值或预置的 ch_ 名称，只有手工写入的行才会不满足。
+  if (!isChannelIconUploadKey(key)) throw new Error(`channel id ${id} cannot form an icon key`);
+  // Every upload gets a new random key and is never overwritten, so a browser may keep it for a year.
+  // 每次上传都使用新的随机键且从不覆盖，因此浏览器可以缓存一年。
+  const options = { cacheControl: IMMUTABLE_MEDIA_CACHE };
+  const stored = await Promise.allSettled([
+    putObject(bucket, key, upload.icon, upload.type, options),
+    putObject(bucket, channelIconThumbKey(key), upload.thumb, upload.type, options),
+  ]);
+  const failed = stored.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failed) {
+    deleteIconLater(c, key);
+    throw failed.reason;
+  }
+  let previous: string | null;
+  try {
+    previous = await swapIcon(c.env.DB, channel, key);
+  } catch (err) {
+    deleteIconLater(c, key);
+    throw err;
+  }
+  const response: ChannelIconResponse = {
+    channel: await finishIconChange(c, id, previous, key),
+    mediaToken: await issueProfileMediaToken(c.env.SESSION_SECRET),
+  };
+  return c.json(response);
+});
+
+/** Switches to a bundled preset. Needs no storage, so it works before R2 is enabled. */
+/** 改用内置预设。不需要存储，因此在开通 R2 之前也能使用。 */
+channelRoutes.post('/:id/icon/preset', memberRateLimit('channels:icon', 10, MINUTE), async (c) => {
+  const id = c.req.param('id');
+  const channel = await requireIconChannel(c.env.DB, id);
+  const body = await readJson<Record<string, unknown>>(c);
+  const presetId = typeof body.id === 'string' ? body.id : '';
+  if (!isChannelIconPresetId(presetId)) throw badRequest('invalid_icon_preset', CHANNEL_ICON_MESSAGES.preset);
+  const key = channelIconPresetKey(presetId);
+  const previous = await swapIcon(c.env.DB, channel, key);
+  const response: ChannelIconResponse = { channel: await finishIconChange(c, id, previous, key) };
+  return c.json(response);
+});
+
+/** Back to the text tile; an uploaded image is deleted. */
+/** 恢复为文字头像；上传的图片会被删除。 */
+channelRoutes.delete('/:id/icon', async (c) => {
+  const id = c.req.param('id');
+  const channel = await requireIconChannel(c.env.DB, id);
+  const previous = await swapIcon(c.env.DB, channel, null);
+  const response: ChannelIconResponse = { channel: await finishIconChange(c, id, previous, null) };
+  return c.json(response);
 });

@@ -25,6 +25,14 @@ describe('parseClientFrame', () => {
     });
   });
 
+  it('keeps a thumbnail key only together with an image key', () => {
+    expect(parseClientFrame({ type: 'send', clientId: 'a', text: '', imageKey: 'k', thumbKey: 't' })).toEqual({ type: 'send', clientId: 'a', text: '', imageKey: 'k', thumbKey: 't' });
+    expect(parseClientFrame({ type: 'send', clientId: 'a', text: 'hi', thumbKey: 't' })).toBeNull();
+    expect(parseClientFrame({ type: 'send', clientId: 'a', text: '', imageKey: 'k', thumbKey: '' })).toBeNull();
+    expect(parseClientFrame({ type: 'send', clientId: 'a', text: '', imageKey: 'k', thumbKey: 't'.repeat(201) })).toBeNull();
+    expect(parseClientFrame({ type: 'send', clientId: 'a', text: '', imageKey: 'k', thumbKey: 3 })).toBeNull();
+  });
+
   it('rejects oversized image keys and mute targets', () => {
     expect(parseClientFrame({ type: 'send', clientId: 'a', text: '', imageKey: 'k'.repeat(201) })).toBeNull();
     expect(parseClientFrame({ type: 'mute', memberId: '', minutes: 10 })).toBeNull();
@@ -229,10 +237,18 @@ describe('normalizeChatMessage', () => {
       replyTo: null,
       imageWidth: null,
       imageHeight: null,
+      thumbKey: null,
       clientId: null,
       deletedBy: null,
       rev: 0,
     });
+  });
+
+  it('keeps a thumbnail only beside its image', () => {
+    expect(normalizeChatMessage({ ...legacyMessage, imageKey: 'chat/r/img_a.jpg', thumbKey: 'chat/r/img_b.jpg' }).thumbKey).toBe('chat/r/img_b.jpg');
+    expect(normalizeChatMessage({ ...legacyMessage, imageKey: null, thumbKey: 'chat/r/img_b.jpg' }).thumbKey).toBeNull();
+    expect(normalizeChatMessage({ ...legacyMessage, imageKey: 'chat/r/img_a.jpg', thumbKey: '' }).thumbKey).toBeNull();
+    expect(normalizeChatMessage({ ...legacyMessage, imageKey: 'chat/r/img_a.jpg', thumbKey: 5 as never }).thumbKey).toBeNull();
   });
 
   it('keeps valid new fields and drops malformed ones', () => {

@@ -1,0 +1,260 @@
+/*
+ * Owner: T3, timetable web core. The week grid's sizes and drawing. The hour height comes from the window in CSS
+ * (geometry.ts holds the same formula), so a resize or rotation lays the grid out again without any React work.
+ * Hour and half-hour lines are two background gradients, not elements. Blocks show the location only when they
+ * are at least 36 px tall, through a container query.
+ * 维护者：T3，课表网页核心。周课表的尺寸和绘制。小时高度在 CSS 中由窗口算出（geometry.ts 中是同一公式），因此调整窗口大小或旋转时
+ * 课表会重新排版，而无需任何 React 工作。整点线和半点线是两层背景渐变，而不是元素。方块高度至少 36 px 时才通过容器查询显示地点。
+ */
+
+.tt-page {
+  --tt-vh: 100vh;
+  /* Header 48, tabs row 40 and day heads 36 above the hours. */
+  /* 小时区域上方的标题栏 48、标签行 40 与日期行 36。 */
+  --tt-chrome: 124px;
+  --tt-min-hour: 44px;
+  /* One pixel less than the space, so rounding never makes a grid that fits scroll by a hair. */
+  /* 比可用空间少一像素，避免四舍五入让刚好放得下的课表出现一丝滚动。 */
+  --tt-hour: min(88px, max(var(--tt-min-hour), calc((var(--tt-vh) - var(--safe-top) - var(--safe-bottom) - var(--tt-chrome) - 1px) / 12)));
+  --tt-time-col: 28px;
+  --tt-line: #e6e6e6;
+  --tt-half-line: #f3f3f3;
+  --tt-col-line: #efefef;
+  height: var(--tt-vh);
+}
+
+@supports (height: 100dvh) {
+  .tt-page {
+    --tt-vh: 100dvh;
+  }
+}
+
+/* A short landscape window: the tabs join the header and the hours may scroll. */
+/* 较矮的横屏窗口：标签并入标题栏，小时区域可以滚动。 */
+@media (max-height: 500px) and (orientation: landscape) {
+  .tt-page {
+    --tt-chrome: 84px;
+    --tt-min-hour: 32px;
+  }
+}
+
+.tt-grid-height {
+  height: calc(var(--tt-hour) * 12);
+}
+
+/* The swipe track: three weeks side by side, the middle one on screen. Only transform ever changes. */
+/* 滑动轨道：三周并排，中间一周显示在屏幕上。只有 transform 会变化。 */
+.tt-viewport {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.tt-track {
+  display: flex;
+  width: 300%;
+  transform: translate3d(-33.333333%, 0, 0);
+}
+
+.tt-track.is-moving {
+  will-change: transform;
+}
+
+.tt-pane {
+  display: flex;
+  flex: none;
+  width: 33.333333%;
+}
+
+.tt-day {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: calc(var(--tt-hour) * 12);
+  border-left: 1px solid var(--tt-col-line);
+  background-color: #ffffff;
+  background-image: linear-gradient(to bottom, var(--tt-line) 1px, transparent 1px), linear-gradient(to bottom, var(--tt-half-line) 1px, transparent 1px);
+  background-size: 100% var(--tt-hour), 100% var(--tt-hour);
+  background-position: 0 0, 0 calc(var(--tt-hour) / 2);
+  cursor: pointer;
+}
+
+.tt-day.is-today {
+  background-color: #f4eef8;
+}
+
+.tt-time {
+  position: relative;
+  width: var(--tt-time-col);
+  flex: none;
+  height: calc(var(--tt-hour) * 12);
+  background: #ffffff;
+}
+
+.tt-time-label {
+  position: absolute;
+  right: 3px;
+  font-size: 10px;
+  line-height: 12px;
+  color: #6b6b6b;
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-50%);
+}
+
+.tt-time-label.is-first {
+  transform: translateY(1px);
+}
+
+.tt-time-label.is-last {
+  transform: translateY(-100%);
+}
+
+/* Blocks. */
+/* 方块。 */
+.tt-block {
+  position: absolute;
+  box-sizing: border-box;
+  container: tt-block / size;
+  overflow: hidden;
+  border-radius: 4px;
+  border-left: 3px solid var(--tt-ink);
+  background: var(--tt-fill);
+  color: var(--tt-ink);
+  padding: 2px 2px 2px 3px;
+  text-align: left;
+  font-size: 11px;
+  line-height: 13px;
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.tt-block:active,
+.tt-block.is-pressed {
+  filter: brightness(0.94);
+}
+
+.tt-block:focus-visible {
+  outline-offset: 0;
+  z-index: 2;
+}
+
+.tt-block-code {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tt-block-loc {
+  display: none;
+  margin-top: 1px;
+  font-size: 10px;
+  line-height: 12px;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+
+@container tt-block (min-height: 36px) {
+  .tt-block-loc {
+    display: block;
+  }
+}
+
+.tt-block.is-skipped {
+  background: repeating-linear-gradient(135deg, var(--tt-fill) 0 4px, #ffffff 4px 8px);
+  opacity: 0.72;
+}
+
+.tt-block.is-skipped .tt-block-code {
+  text-decoration: line-through;
+}
+
+/* Side by side with an overlapping class: tighter type and border, and no location, so the code keeps its room. */
+/* 与重叠的课并排时：更紧凑的文字和边框，不显示地点，把空间留给代码。 */
+.tt-block.is-narrow {
+  border-left-width: 2px;
+  padding: 1px 1px 1px 2px;
+  font-size: 10px;
+  line-height: 11px;
+  letter-spacing: -0.3px;
+}
+
+.tt-block.is-narrow .tt-block-loc {
+  display: none;
+}
+
+/* The overlap badge sits at the bottom corner, below the code. */
+/* 重叠标记位于底部角落，在代码下方。 */
+.tt-block-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: flex;
+  height: 11px;
+  min-width: 11px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #d93025;
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tt-block-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  height: 5px;
+  width: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.tt-flash {
+  animation: tt-flash 1.2s ease-in-out 2;
+}
+
+@keyframes tt-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 210, 63, 0);
+  }
+  40% {
+    box-shadow: 0 0 0 3px rgba(255, 210, 63, 0.95);
+  }
+}
+
+/* The now line: red, 2 px, with a dot at the left of today's column. */
+/* 当前时间线：红色、2 px，今天这一列左侧有一个圆点。 */
+.tt-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 2px;
+  margin-top: -1px;
+  background: #d93025;
+  pointer-events: none;
+}
+
+.tt-now::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  background: #d93025;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(255, 210, 63, 0.95);
+  }
+}

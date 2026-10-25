@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import type { MemberSelf } from '@utmmsc/shared';
 import { errorMessage } from '../../shared/api/errors';
 import { useTr } from '../../shared/i18n/locale';
+import { documentCanvas, drawScaled, encodeCanvas, releaseCanvas } from '../../shared/media/canvas';
+import { cropOutputSize } from '../../shared/media/sizing';
 import { useSessionStore } from '../../shared/session/store';
 import { ActionSheet } from '../../shared/ui/ActionSheet';
 import { Button } from '../../shared/ui/Button';
@@ -12,6 +14,13 @@ import { Sheet } from './Sheet';
 
 const MOMENTS_HEIGHT = 192;
 const PROFILE_HEIGHT = 128;
+/**
+ * The cover is drawn at most 672 CSS px wide, so 1280px covers a 2x screen. Quality 0.82 keeps a photo near 150KB
+ * instead of the 600KB or so of a 1600px JPEG at 0.92.
+ * 封面最宽显示 672 CSS px，1280px 足够 2 倍屏。质量 0.82 让一张照片约 150KB，而 1600px、质量 0.92 的 JPEG 约 600KB。
+ */
+const COVER_WIDTH_MAX = 1280;
+const COVER_QUALITY = 0.82;
 
 function bannerWidth(): number {
   return Math.min(window.innerWidth, 672);
@@ -118,13 +127,6 @@ function CoverAdjuster({
 
   async function confirm() {
     if (!image || frameW <= 0 || momentsH <= 0) return;
-    const outW = 1600;
-    const outH = Math.max(1, Math.round(outW * (momentsH / frameW)));
-    const canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
     const cover = Math.max(frameW / image.naturalWidth, momentsH / image.naturalHeight);
     const dw = image.naturalWidth * cover * zoom;
     const dh = image.naturalHeight * cover * zoom;
@@ -134,8 +136,16 @@ function CoverAdjuster({
     const sy = Math.max(0, ((0 - top) / dh) * image.naturalHeight);
     const sw = Math.min((frameW / dw) * image.naturalWidth, image.naturalWidth - sx);
     const sh = Math.min((momentsH / dh) * image.naturalHeight, image.naturalHeight - sy);
-    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, outW, outH);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    // Drawn in halving steps, so a 12MP photo shrinks smoothly, and never wider than the source pixels it shows.
+    // 逐次减半绘制，1200 万像素的照片因此缩得平滑，且宽度不超过它所显示的源像素。
+    const canvas = drawScaled(image, { sx, sy, sw, sh }, cropOutputSize(sw, { width: frameW, height: momentsH }, COVER_WIDTH_MAX), documentCanvas);
+    if (!canvas) return;
+    let blob: Blob | null;
+    try {
+      blob = await encodeCanvas(canvas, 'image/jpeg', COVER_QUALITY);
+    } finally {
+      releaseCanvas(canvas);
+    }
     if (!blob) return;
     onUse(new File([blob], 'cover.jpg', { type: 'image/jpeg' }));
   }
@@ -279,7 +289,7 @@ export function CoverBanner({
     <div className={`relative ${tall ? 'h-48' : 'h-32'}`}>
       <div className="absolute inset-x-0 bottom-0 overflow-hidden bg-brand-800" style={tall ? STRETCH_UP : FLUSH}>
         <div className="relative z-10 h-1 bg-gold" />
-        {src ? <img src={src} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover [-webkit-touch-callout:none]" /> : null}
+        {src ? <img src={src} alt="" draggable={false} decoding="async" className="absolute inset-0 h-full w-full object-cover [-webkit-touch-callout:none]" /> : null}
       </div>
       {src ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent" /> : null}
       {editable && editTrigger === 'cover' ? (

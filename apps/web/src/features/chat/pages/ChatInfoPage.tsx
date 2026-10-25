@@ -8,6 +8,7 @@ import { useConfirm } from '../../../shared/ui/confirm';
 import { toast } from '../../../shared/ui/toast';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import { chatApi } from '../api';
+import { ChannelIconEditor } from '../info/ChannelIconEditor';
 import { InfoCell, InfoGroup } from '../info/InfoCell';
 import { MemberGrid, MemberTile } from '../info/MemberGrid';
 import { MemberListSheet } from '../info/MemberListSheet';
@@ -32,9 +33,32 @@ function SwitchCell({ label, checked, onChange }: { label: string; checked: bool
   return <InfoCell label={label} labelId={labelId} trailing={<Switch checked={checked} onChange={onChange} labelledBy={labelId} />} />;
 }
 
-function ChannelSection({ roomId, info, onViewAll }: { roomId: string; info: RoomMeta; onViewAll: () => void }) {
+/**
+ * The admin settings of this channel. The ?tab= form works with the old tabbed admin page and the new admin alike,
+ * which sends it on to /admin/channels/<id>.
+ * 这个频道的管理设置。?tab= 形式的地址在旧版标签式管理页和新版管理后台中都有效，新版会把它转到 /admin/channels/<id>。
+ */
+function channelSettingsLink(channelId: string): string {
+  return `/admin?tab=channels&channel=${encodeURIComponent(channelId)}`;
+}
+
+function ChannelSection({
+  roomId,
+  info,
+  onViewAll,
+  onIconChange,
+}: {
+  roomId: string;
+  info: RoomMeta;
+  onViewAll: () => void;
+  onIconChange: (iconKey: string | null) => void;
+}) {
   const tr = useTr();
   const history = info.historyVisibility ? HISTORY_VISIBILITY_LABELS[info.historyVisibility] : null;
+  const channelId = parseRoomId(roomId)?.id ?? '';
+  // A server without channel icons leaves the field out; the row waits for it rather than offering an edit that fails.
+  // 不支持频道图标的服务器不返回这个字段；在它出现之前不显示这一行，而不是提供一个必然失败的编辑入口。
+  const iconsAvailable = info.iconKey !== undefined && channelId !== '';
   return (
     <>
       <InfoGroup flush>
@@ -42,12 +66,15 @@ function ChannelSection({ roomId, info, onViewAll }: { roomId: string; info: Roo
       </InfoGroup>
       <InfoGroup>
         <InfoCell label={tr('频道名称', 'Channel name')} value={info.title} />
+        {iconsAvailable ? (
+          <ChannelIconEditor channelId={channelId} iconKey={info.iconKey ?? null} canManage={info.canManage} name={info.title} onChange={onIconChange} />
+        ) : null}
         <InfoCell label={tr('频道简介', 'Description')} detail={info.description?.trim() ? info.description : tr('暂无简介', 'No description')} />
         {history ? <InfoCell label={tr('历史消息', 'Chat history')} value={tr(history.zh, history.en)} /> : null}
       </InfoGroup>
-      {info.canManage ? (
+      {info.canManage && channelId ? (
         <InfoGroup>
-          <InfoCell label={tr('频道设置', 'Channel settings')} to="/admin?tab=channels" />
+          <InfoCell label={tr('频道设置', 'Channel settings')} to={channelSettingsLink(channelId)} />
         </InfoGroup>
       ) : null}
     </>
@@ -148,7 +175,11 @@ function ChatInfoScreen({ roomId }: { roomId: string }) {
           </div>
         ) : (
           <div className="pb-[max(24px,var(--safe-bottom))]">
-            {kind === 'channel' ? <ChannelSection roomId={roomId} info={info} onViewAll={() => setMembersOpen(true)} /> : <DirectSection info={info} />}
+            {kind === 'channel' ? (
+              <ChannelSection roomId={roomId} info={info} onViewAll={() => setMembersOpen(true)} onIconChange={(iconKey) => update({ iconKey })} />
+            ) : (
+              <DirectSection info={info} />
+            )}
             <InfoGroup>
               <SwitchCell label={tr('消息免打扰', 'Mute notifications')} checked={prefs.muted} onChange={(next) => setPref('muted', next)} />
               <SwitchCell label={tr('置顶聊天', 'Pin chat')} checked={prefs.pinned} onChange={(next) => setPref('pinned', next)} />

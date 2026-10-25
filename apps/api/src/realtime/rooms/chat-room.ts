@@ -38,6 +38,7 @@ import { findAuthorCards, findMemberRole, type AuthorCard } from '../../infrastr
 import { touchDirect } from '../../infrastructure/d1/direct';
 import type { Retraction } from '../../domain/notifications/payloads';
 import { MESSAGE_PUSH_INTERVAL_MS, notifyChatMessage, notifyChatRetraction, type MessageRecipient } from '../../infrastructure/push/chat';
+import { isRoomImageKey } from '../../infrastructure/r2/objects';
 import {
   buildQuotePreview,
   capList,
@@ -50,6 +51,7 @@ import {
   unreadBaseline,
   type QuoteTarget,
 } from './history';
+import { AuthorCache } from './author-cache';
 import { recordPushedMessage, takePushedMembers } from './push-sent';
 import { claimPushSlots } from './push-throttle';
 import { currentRev, ensureRoomSchema, nextRev } from './room-schema';
@@ -97,6 +99,9 @@ interface MessageRow extends Record<string, SqlStorageValue> {
   image_h: number | null;
   deleted_by: string | null;
   rev: number;
+  /** Schema 6: the image's 360 px preview, under the same room prefix. */
+  /** 结构版本 6：图片的 360px 预览图，位于同一房间前缀下。 */
+  thumb_key: string | null;
 }
 
 type QuoteRow = QuoteTarget & Record<string, SqlStorageValue>;
@@ -158,10 +163,14 @@ export class ChatRoom extends DurableObject<Env> {
   /** Message pushes still being sent, by message id; a recall waits for its message's push before replacing it. */
   /** 仍在发送中的消息推送，按消息 id 记录；撤回要等原消息的推送发完再替换它。 */
   private readonly pushesInFlight = new Map<number, Promise<void>>();
+  /** Current author names and avatars for history pages, so most pages read nothing from D1. */
+  /** 历史页使用的作者当前名字和头像，大多数页面因此无需读取 D1。 */
+  private readonly authors: AuthorCache;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.authors = new AuthorCache((ids) => findAuthorCards(this.env.DB, ids));
     ensureRoomSchema(this.sql);
     // Heartbeats are answered by the runtime without waking the object, so idle rooms can hibernate.
     // 心跳由运行时直接应答，不唤醒对象，空闲房间才能真正休眠。
@@ -284,11 +293,14 @@ export class ChatRoom extends DurableObject<Env> {
   /**
    * Called after a member changes their avatar. Old uploaded avatars are deleted from storage, so
    * stored rows, open sockets, and on-screen messages all move to the new one. The rows take a new
-   * revision so a reconnecting client refreshes names it already holds.
+   * revision so a reconnecting client refreshes names it already holds. The author cache takes the new
+   * values too, so the next history page shows them without reading D1.
    * 成员更换头像后调用。旧的上传头像会从存储中删除，因此已存的消息、打开的连接和屏幕上的消息都要换成新头像。这些行会取新的版本号，重连的客户端据此刷新已有的名字。
+   * 作者缓存也同时更新，下一页历史无需读取 D1 就能显示新信息。
    */
   async refreshAuthor(author: ChatAuthor): Promise<void> {
     const avatarKey = author.avatarKey ?? null;
+    this.authors.put(author.id, { displayName: author.displayName, avatarKey });
     const hasRows = this.sql.exec<{ e: number }>('SELECT EXISTS(SELECT 1 FROM messages WHERE author_id = ?) AS e', author.id).one().e === 1;
     const rev = hasRows ? nextRev(this.sql) : currentRev(this.sql);
     if (hasRows) {
@@ -526,7 +538,24 @@ export class ChatRoom extends DurableObject<Env> {
       this.sendError(ws, 'rate_limited', '发送太快，请稍候', { clientId });
       return;
     }
-    if (imageKey && this.roomId && !imageKey.startsWith(`chat/${this.roomId.replace(':', '/')}/`)) {
+    if (imageKey && this.roomId && !isRoomImageKey(this.roomId, imageKey)) {
+      this.sendError(ws, 'invalid_frame', '图片无效', { clientId });
+      return;
+    }
+    // The thumbnail is checked like the image, since rows show it in its place. One that names the image itself
+    // adds nothing and is dropped, so a withdrawal never deletes the same object twice.
+    // 缩略图与图片一样检查，因为消息行用它代替图片显示。与图片本身相同的缩略图没有意义，会被丢弃，撤回时就不会把同一个对象删除两次。
+    const thumbKey = imageKey && frame.thumbKey && frame.thumbKey !== imageKey ? frame.thumbKey : null;
+    if (thumbKey && this.roomId && !isRoomImageKey(this.roomId, thumbKey)) {
+      this.sendError(ws, 'invalid_frame', '图片无效', { clientId });
+      return;
+    }
+    // Upload keys are random, go back only to the uploader, and are never sent twice (a resend is answered above
+    // from the stored row). So a key another message already names is someone else's photo: naming it would let
+    // the sender delete it by withdrawing their own message, or put their picture in its row as the thumbnail.
+    // 上传的键是随机的，只返回给上传者，也从不会发送两次（重发已在上面由已存的行回复）。因此已被其他消息使用的键是别人的照片：
+    // 若允许使用，发送者就能通过撤回或删除自己的消息把它删掉，或者把自己的图片作为缩略图放进那条消息的行里。
+    if (imageKey && this.rowsNamingKeys([imageKey, thumbKey]).length > 0) {
       this.sendError(ws, 'invalid_frame', '图片无效', { clientId });
       return;
     }
@@ -555,12 +584,13 @@ export class ChatRoom extends DurableObject<Env> {
     try {
       inserted = this.sql
         .exec<MessageRow>(
-          `INSERT INTO messages (author_id, author_name, text, image_key, created_at, avatar_key, kind, reply_to_id, mention_all, client_id, image_w, image_h, rev)
-           VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?) RETURNING *`,
+          `INSERT INTO messages (author_id, author_name, text, image_key, thumb_key, created_at, avatar_key, kind, reply_to_id, mention_all, client_id, image_w, image_h, rev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?) RETURNING *`,
           identity.memberId,
           identity.displayName,
           trimmed,
           imageKey,
+          thumbKey,
           createdAt,
           avatarKey,
           replyToId,
@@ -707,10 +737,14 @@ export class ChatRoom extends DurableObject<Env> {
       return;
     }
     const rev = nextRev(this.sql);
-    this.sql.exec("UPDATE messages SET recalled = 1, text = '', image_key = NULL, image_w = NULL, image_h = NULL, rev = ? WHERE id = ?", rev, messageId);
+    this.sql.exec(
+      "UPDATE messages SET recalled = 1, text = '', image_key = NULL, thumb_key = NULL, image_w = NULL, image_h = NULL, rev = ? WHERE id = ?",
+      rev,
+      messageId,
+    );
     this.touchReplies(messageId, rev);
     this.broadcastFrom(messageId, { type: 'recalled', messageId, rev });
-    this.discardImage(row.image_key);
+    this.discardImage(row);
     this.ctx.waitUntil(this.recordActivity());
     this.retractPush(row, 'recalled');
   }
@@ -751,14 +785,14 @@ export class ChatRoom extends DurableObject<Env> {
     const by = ownMessage ? 'author' : 'moderator';
     const rev = nextRev(this.sql);
     this.sql.exec(
-      "UPDATE messages SET deleted = 1, deleted_by = ?, text = '', image_key = NULL, image_w = NULL, image_h = NULL, rev = ? WHERE id = ?",
+      "UPDATE messages SET deleted = 1, deleted_by = ?, text = '', image_key = NULL, thumb_key = NULL, image_w = NULL, image_h = NULL, rev = ? WHERE id = ?",
       by,
       rev,
       messageId,
     );
     this.touchReplies(messageId, rev);
     this.broadcastFrom(messageId, { type: 'deleted', messageId, by, rev });
-    this.discardImage(row.image_key);
+    this.discardImage(row);
     this.ctx.waitUntil(this.recordActivity());
     this.retractPush(row, by === 'author' ? 'deleted' : 'removed');
   }
@@ -807,11 +841,44 @@ export class ChatRoom extends DurableObject<Env> {
     this.sql.exec('UPDATE messages SET rev = ? WHERE reply_to_id = ?', rev, messageId);
   }
 
-  /** A withdrawn image must stop being downloadable, not just disappear from history. */
-  /** 撤回或删除的图片要真正不可下载，而不只是从历史里隐藏。 */
-  private discardImage(key: string | null): void {
-    if (!key || !this.env.FILES) return;
-    this.ctx.waitUntil(this.env.FILES.delete(key).catch(() => undefined));
+  /**
+   * A withdrawn image and its thumbnail must stop being downloadable, not just disappear from history. It runs
+   * after the row's keys are cleared. Rows sent before keys were checked against each other may share an object,
+   * and the first row that names one is its uploader's (nobody else had the key before that row went out). So an
+   * object stays while an earlier row or another row by the same author still names it: a borrower's withdrawal
+   * never deletes the uploader's photo, and the uploader's withdrawal still deletes it from under a borrower.
+   * 撤回或删除的图片及其缩略图要真正不可下载，而不只是从历史里隐藏。它在该行的键清空之后执行。在键互相核对之前发送的行可能共用同一个对象，
+   * 而最早使用某个对象的行属于上传者（在那一行发出之前没有别人知道这个键）。因此只要更早的行或同一作者的其他行仍在使用，对象就会保留：
+   * 借用者撤回不会删掉上传者的照片，上传者撤回时照片仍会被删除，借用者的消息里也随之失效。
+   */
+  private discardImage(row: Pick<MessageRow, 'id' | 'author_id' | 'image_key' | 'thumb_key'>): void {
+    if (!this.env.FILES) return;
+    const keys = [...new Set([row.image_key, row.thumb_key].filter((key): key is string => typeof key === 'string' && key.length > 0))];
+    if (keys.length === 0) return;
+    const kept = new Set(
+      this.rowsNamingKeys(keys)
+        .filter((other) => other.id < row.id || other.author_id === row.author_id)
+        .map((other) => other.key),
+    );
+    const gone = keys.filter((key) => !kept.has(key));
+    if (gone.length === 0) return;
+    this.ctx.waitUntil(this.env.FILES.delete(gone).catch(() => undefined));
+  }
+
+  /** The stored messages that name any of these keys as their image or their thumbnail, one entry per key named. */
+  /** 把这些键中任意一个用作图片或缩略图的已存消息，每个被使用的键一条。 */
+  private rowsNamingKeys(keys: readonly (string | null)[]): { key: string; id: number; author_id: string }[] {
+    const named = [...new Set(keys.filter((key): key is string => typeof key === 'string' && key.length > 0))];
+    if (named.length === 0) return [];
+    const marks = named.map(() => '?').join(', ');
+    return this.sql
+      .exec<{ key: string; id: number; author_id: string }>(
+        `SELECT image_key AS key, id, author_id FROM messages WHERE image_key IN (${marks})
+         UNION ALL SELECT thumb_key AS key, id, author_id FROM messages WHERE thumb_key IN (${marks})`,
+        ...named,
+        ...named,
+      )
+      .toArray();
   }
 
   /**
@@ -982,17 +1049,15 @@ export class ChatRoom extends DurableObject<Env> {
 
   /**
    * Rows keep the avatar from send time, which may point at a deleted upload. History is served with
-   * each author's current name and avatar; if D1 is unreachable the stored values are used.
-   * 消息行保存的是发送时的头像，可能指向已删除的上传文件。下发历史时使用作者当前的名字和头像；D1 不可用时退回已存的值。
+   * each author's current name and avatar, kept in memory for a few minutes (AuthorCache) so most pages
+   * read nothing from D1; if D1 is unreachable the stored values are used.
+   * 消息行保存的是发送时的头像，可能指向已删除的上传文件。下发历史时使用作者当前的名字和头像，并在内存中保留几分钟（AuthorCache），
+   * 大多数页面因此无需读取 D1；D1 不可用时退回已存的值。
    */
   private async currentAuthors(authorIds: string[]): Promise<Map<string, AuthorCard>> {
     const ids = authorIds.filter((id) => id !== SYSTEM_AUTHOR_ID);
     if (ids.length === 0) return new Map();
-    try {
-      return await findAuthorCards(this.env.DB, ids);
-    } catch {
-      return new Map();
-    }
+    return this.authors.cards(ids);
   }
 
   /** Batch-loads the rows that replies point at, so quotes are built from their current state. */
@@ -1036,6 +1101,9 @@ export class ChatRoom extends DurableObject<Env> {
       replyTo: row.reply_to_id ? buildQuotePreview(row.reply_to_id, quotes.get(row.reply_to_id), viewer.floorId) : null,
       imageWidth: row.image_w ?? null,
       imageHeight: row.image_h ?? null,
+      // Only beside a live image: a withdrawn row has neither, and redaction does not know this field.
+      // 只与有效的图片一同出现：已撤回或删除的行两者都没有，而清理函数并不知道这个字段。
+      thumbKey: row.image_key !== null && row.deleted === 0 && row.recalled === 0 ? (row.thumb_key ?? null) : null,
       clientId: row.author_id === viewer.memberId ? (row.client_id ?? null) : null,
       deletedBy: row.deleted_by === 'author' || row.deleted_by === 'moderator' ? row.deleted_by : null,
       rev: row.rev ?? 0,

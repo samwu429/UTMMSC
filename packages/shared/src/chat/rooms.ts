@@ -21,6 +21,17 @@ export const CHANNEL_AUDIENCE_LABELS: Record<ChannelAudience, string> = {
   custom: '指定成员',
 };
 
+export const CHANNEL_AUDIENCE_LABELS_EN: Record<ChannelAudience, string> = {
+  all: 'All members',
+  student: 'Students',
+  alumni: 'Graduates',
+  honorary: 'Honorary advisors',
+  heads: 'Department heads',
+  officers: 'Presidium',
+  staff: 'Staff and above',
+  custom: 'Selected members',
+};
+
 /** Who may post. Reading is governed by audience; posting can be narrower. */
 /** 谁可以发言。阅读由受众决定，发言可更窄。 */
 export const POST_POLICIES = ['members', 'staff'] as const;
@@ -29,6 +40,11 @@ export type PostPolicy = (typeof POST_POLICIES)[number];
 export const POST_POLICY_LABELS: Record<PostPolicy, string> = {
   members: '所有人可发言',
   staff: '仅负责人及以上可发言',
+};
+
+export const POST_POLICY_LABELS_EN: Record<PostPolicy, string> = {
+  members: 'Anyone can post',
+  staff: 'Staff and above can post',
 };
 
 /**
@@ -100,6 +116,9 @@ export interface ChannelSummary {
   mentionedMe?: boolean;
   prefs?: ChatPrefs;
   historyVisibility?: HistoryVisibility;
+  /** channel-icon/ upload or preset:<id> (chat/channel-icons.ts); null or absent shows the text tile. */
+  /** channel-icon/ 下的上传图标或 preset:<id>（见 chat/channel-icons.ts）；为 null 或缺省时显示文字头像。 */
+  iconKey?: string | null;
 }
 
 export interface DirectConversationSummary {

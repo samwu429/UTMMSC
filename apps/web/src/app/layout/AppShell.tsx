@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { PageBoundary, PageFallback } from '../RouteFallback';
 import { useLabels } from '../../shared/i18n/locale';
 import { adminApi } from '../../features/admin/api';
 import { UnreadDot } from '../../features/chat/components/UnreadDot';
@@ -117,7 +118,9 @@ function SideTab({ item }: { item: NavItem }) {
 function DiscoverTab() {
   const { tr } = useLabels();
   const { pathname } = useLocation();
-  const isActive = pathname.startsWith('/discover') || pathname.startsWith('/files') || pathname.startsWith('/admin');
+  // Admin left the shell for its own screens (/admin/*), so only 发现's own pages light this tab.
+  // 管理后台已离开外壳、有了自己的界面（/admin/*），所以只有「发现」自己的页面会点亮这个标签。
+  const isActive = pathname.startsWith('/discover') || pathname.startsWith('/files');
   const unread = useMomentsBadge((s) => s.unread);
   const dot = useMomentsBadge((s) => s.newPosts > 0);
   return (
@@ -280,6 +283,7 @@ export function AppShell() {
   const { tr, role } = useLabels();
   const setMember = useSessionStore((s) => s.setMember);
   const member = useSessionStore((s) => s.member);
+  const { pathname } = useLocation();
   const right = RIGHT_NAV;
   useOverviewSync();
   useUnreadIndicators();
@@ -305,7 +309,13 @@ export function AppShell() {
           </div>
         ) : null}
         <AppUpdateBanner />
-        <Outlet />
+        {/* A tab whose page is still loading, or failed to, keeps the tab bar, so the member can go elsewhere. */}
+        {/* 页面还在加载或加载失败的标签页仍保留标签栏，成员随时可以去别处。 */}
+        <PageBoundary resetKey={pathname}>
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
+        </PageBoundary>
       </main>
       <nav
         className="fixed inset-x-0 bottom-0 z-30 overflow-visible border-t border-stone-200 bg-white"

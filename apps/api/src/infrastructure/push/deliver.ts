@@ -1,6 +1,6 @@
 import type { Env } from '../../env';
 import { fcmAccessToken, parseServiceAccount, sendFcm } from './fcm';
-import { deliveryOptions, type DeliveryJob, type DeliveryOutcome, type JobOutcome } from './types';
+import { deliveryOptionsFor, type DeliveryJob, type DeliveryOutcome, type JobOutcome } from './types';
 import { parseVapidPrivateKey, sendWebPush } from './webpush';
 
 /** Pushes in flight at once from one invocation. */
@@ -50,7 +50,7 @@ export async function deliverJobs(env: Env, jobs: readonly DeliveryJob[]): Promi
   }
 
   await mapWithConcurrency(runnable, PUSH_CONCURRENCY, async (job) => {
-    const options = deliveryOptions(job.payload.kind);
+    const options = deliveryOptionsFor(job.payload);
     let outcome: DeliveryOutcome;
     try {
       outcome =

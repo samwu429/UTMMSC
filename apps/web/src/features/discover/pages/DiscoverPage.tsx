@@ -1,10 +1,11 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { hasPermission } from '@utmmsc/shared';
+import { adminPendingTotal, canOpenAdmin } from '@utmmsc/shared';
 import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { List, PageTitle } from '../../../shared/ui/Card';
 import { UnreadDot } from '../../chat/components/UnreadDot';
+import { useAdminCounts, useAdminSummary } from '../../admin/state/summaryStore';
 import { useMomentsBadge } from '../../moments/state/badgeStore';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 import { ChevronIcon } from '../../profile/icons';
@@ -65,17 +66,22 @@ export function DiscoverPage() {
   const member = useSessionStore((s) => s.member);
   const unread = useMomentsBadge((s) => s.unread);
   const newPosts = useMomentsBadge((s) => s.newPosts);
-  const staff =
-    member &&
-    (hasPermission(member.role, 'members.approve') ||
-      hasPermission(member.role, 'channels.manage') ||
-      hasPermission(member.role, 'events.manage'));
+  // The same registry as admin itself, by the viewed role: 管理 shows when the role sees at least one section.
+  // 与管理后台本身使用同一个权限表，按当前视角的身份判断：该身份至少能看到一个板块时才显示「管理」。
+  const admin = canOpenAdmin(member);
+  const counts = useAdminCounts();
+  const pending = admin && counts ? adminPendingTotal(counts) : 0;
 
-  // Every visit asks again, so the row is current when the member decides whether to open it.
-  // 每次进入都重新查询，成员决定是否打开时这一行是最新的。
+  // Every visit asks again, so the row is current when the member decides whether to open it. A change of viewed
+  // role empties the summary, so it asks again then too.
+  // 每次进入都重新查询，成员决定是否打开时这一行是最新的。切换视角身份会清空汇总，因此那时也重新查询。
+  const role = member?.role;
   useEffect(() => {
     void useMomentsBadge.getState().refresh();
   }, []);
+  useEffect(() => {
+    if (admin) void useAdminSummary.getState().refresh();
+  }, [admin, role]);
 
   return (
     <div>
@@ -104,12 +110,14 @@ export function DiscoverPage() {
           }
         />
       </List>
-      {staff ? (
+      {admin ? (
         <div className="mt-2">
           <List>
             <Row
               to="/admin"
               title={tr('管理', 'Admin')}
+              trailing={pending > 0 ? <UnreadDot count={pending} className="mr-1" /> : undefined}
+              spoken={pending > 0 ? tr(`，${pending} 项待处理`, `, ${pending} waiting`) : undefined}
               icon={
                 <Glyph>
                   <circle cx="12" cy="12" r="3" />

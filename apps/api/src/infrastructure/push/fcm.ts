@@ -167,6 +167,12 @@ export async function fcmAccessToken(account: ServiceAccount, now: number = Date
  * also keeps Android 7 quiet.
  * 好友动态的互动通知使用单独的渠道和普通优先级，因为它不像聊天那样有人在等；并像聊天按房间合并一样按动态合并。
  * 替换已删除评论的通知在 Android 7 上也不发出声音和振动。
+ *
+ * Timetable reminders go to the timetable channel at high priority and collapse by tag, so a phone that was
+ * offline gets one live class notice, not a queue of stale ones. ttlSeconds is a delivery hint and never
+ * becomes a data field.
+ * 课表提醒使用 timetable 渠道和高优先级，并按 tag 合并：离线的手机只会收到一条仍然有效的上课通知，而不是一串过时的通知。
+ * ttlSeconds 只是投递提示，从不放进 data。
  */
 export function buildFcmMessage(token: string, payload: PushPayload, options: DeliveryOptions): Record<string, unknown> {
   const data: Record<string, string> = { url: payload.url, kind: payload.kind, tag: payload.tag };
@@ -175,6 +181,7 @@ export function buildFcmMessage(token: string, payload: PushPayload, options: De
   if (payload.postId) data.postId = payload.postId;
   const chat = payload.kind === 'message' || payload.kind === 'recall';
   const moment = payload.kind === 'moment' || payload.kind === 'moment_recall';
+  const timetable = payload.kind === 'class' || payload.kind === 'assignment';
   const alerts = payload.kind !== 'moment_recall';
   return {
     message: {
@@ -183,9 +190,9 @@ export function buildFcmMessage(token: string, payload: PushPayload, options: De
       android: {
         priority: moment ? 'NORMAL' : 'HIGH',
         ttl: `${options.ttl}s`,
-        ...(chat || moment ? { collapse_key: payload.tag } : {}),
+        ...(chat || moment || timetable ? { collapse_key: payload.tag } : {}),
         notification: {
-          channel_id: moment ? 'moments' : payload.kind === 'event' ? 'events' : 'messages',
+          channel_id: moment ? 'moments' : timetable ? 'timetable' : payload.kind === 'event' ? 'events' : 'messages',
           tag: payload.tag,
           icon: ANDROID_NOTIFICATION_ICON,
           color: ANDROID_NOTIFICATION_COLOR,

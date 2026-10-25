@@ -1,14 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NormalizedChatMessage, SendFrame } from '@utmmsc/shared';
-import { ACK_TIMEOUT_MS, FLUSH_SPACING_MS, Outbox, ackedClientIds, buildSendFrame, type OutboxTransport } from './outbox';
+import { createUpdateHolds, type UpdateHolds } from '../../../app/pwa';
+import { ACK_TIMEOUT_MS, FLUSH_SPACING_MS, Outbox, ackedClientIds, buildSendFrame, type OutboxTransport, type UploadedImage } from './outbox';
 
 interface Harness {
   outbox: Outbox;
   sent: SendFrame[];
   revoked: string[];
-  uploads: { resolve(key: string): void; reject(error: unknown): void; signal: AbortSignal; progress(fraction: number): void }[];
+  uploads: {
+    resolve(result: string | UploadedImage): void;
+    reject(error: unknown): void;
+    signal: AbortSignal;
+    progress(fraction: number): void;
+    size: { width: number; height: number };
+  }[];
   transport: OutboxTransport;
   network: { online: boolean };
+  /** App update holds the outbox took; taken counts every hold, held says whether one is still taken. */
+  /** 发送队列获取的应用更新占用；taken 统计每一次获取，held 表示是否还有占用。 */
+  updates: { holds: UpdateHolds; taken: number };
 }
 
 function harness(): Harness {
@@ -17,14 +27,15 @@ function harness(): Harness {
   const revoked: string[] = [];
   const uploads: Harness['uploads'] = [];
   const network = { online: true };
+  const updates = { holds: createUpdateHolds(), taken: 0 };
   const transport: OutboxTransport = {
     send: (frame) => {
       sent.push(frame);
       return true;
     },
-    upload: (_file, { signal, onProgress }) =>
-      new Promise<string>((resolve, reject) => {
-        uploads.push({ resolve, reject, signal, progress: onProgress });
+    upload: (_file, { signal, onProgress, size }) =>
+      new Promise<string | UploadedImage>((resolve, reject) => {
+        uploads.push({ resolve, reject, signal, progress: onProgress, size });
       }),
     online: () => network.online,
   };
@@ -34,8 +45,12 @@ function harness(): Harness {
     uploadFailureText: () => 'Upload failed',
     revokeUrl: (url) => revoked.push(url),
     makeClientId: () => `c${++seq}`,
+    holdUpdate: () => {
+      updates.taken += 1;
+      return updates.holds.take();
+    },
   });
-  return { outbox, sent, revoked, uploads, transport, network };
+  return { outbox, sent, revoked, uploads, transport, network, updates };
 }
 
 function image(localUrl = 'blob:one') {
@@ -369,6 +384,61 @@ describe('images', () => {
     expect(outbox.list().map((p) => p.status)).toEqual(['uploading', 'failed']);
   });
 
+  it('sends the thumbnail and the stored size of a re-encoded photo', async () => {
+    const { outbox, sent, uploads, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', image: { ...image(), width: 4032, height: 3024 } });
+    expect(uploads[0]?.size).toEqual({ width: 4032, height: 3024 });
+    uploads[0]?.resolve({ imageKey: 'chat/channel/main.jpeg', thumbKey: 'chat/channel/thumb.jpeg', width: 2048, height: 1536 });
+    await vi.runAllTimersAsync();
+    expect(sent[0]).toEqual({
+      type: 'send',
+      clientId: id,
+      text: '',
+      imageKey: 'chat/channel/main.jpeg',
+      imageWidth: 2048,
+      imageHeight: 1536,
+      thumbKey: 'chat/channel/thumb.jpeg',
+    });
+    expect(outbox.list()[0]?.image).toMatchObject({ width: 2048, height: 1536, imageKey: 'chat/channel/main.jpeg' });
+  });
+
+  it('keeps the picked size when the stored one is missing or invalid, and the thumbnail across a resend', async () => {
+    const { outbox, sent, uploads, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', image: image() });
+    uploads[0]?.resolve({ imageKey: 'k', thumbKey: 't', width: 0, height: 99_999 });
+    await vi.runAllTimersAsync();
+    expect(sent[0]).toMatchObject({ imageKey: 'k', imageWidth: 640, imageHeight: 480, thumbKey: 't' });
+    outbox.fail(id, 'rate limited');
+    outbox.resend(id);
+    await vi.runAllTimersAsync();
+    expect(uploads).toHaveLength(1);
+    expect(sent[1]).toMatchObject({ imageKey: 'k', thumbKey: 't' });
+  });
+
+  it('leaves the thumbnail out for an old server, which cannot store it', async () => {
+    const { outbox, sent, uploads, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setCapable(false);
+    link.setReady(true);
+    outbox.enqueue({ text: '', image: image() });
+    uploads[0]?.resolve({ imageKey: 'k', thumbKey: 't' });
+    await vi.runAllTimersAsync();
+    expect(sent[0]).toEqual({ type: 'send', clientId: 'c1', text: '', imageKey: 'k', imageWidth: 640, imageHeight: 480 });
+  });
+
+  it('sends an image uploaded before it was queued with its thumbnail', () => {
+    const { outbox, sent, uploads, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setReady(true);
+    outbox.enqueue({ text: '', image: { file: null, localUrl: 'blob:x', width: 10, height: 20, imageKey: 'k', thumbKey: 't' } });
+    expect(uploads).toHaveLength(0);
+    expect(sent[0]).toMatchObject({ imageKey: 'k', thumbKey: 't' });
+  });
+
   it('puts an interrupted upload back in the queue on detach', () => {
     const { outbox, uploads, transport } = harness();
     const link = outbox.attach(transport);
@@ -376,6 +446,115 @@ describe('images', () => {
     link.detach();
     expect(uploads[0]?.signal.aborted).toBe(true);
     expect(outbox.list()[0]).toMatchObject({ status: 'queued', image: { progress: 0, imageKey: null } });
+  });
+});
+
+describe('app updates', () => {
+  it('holds back an app update from the first queued item until the last one is acked', () => {
+    const { outbox, transport, updates } = harness();
+    const link = outbox.attach(transport);
+    expect(updates.holds.held).toBe(false);
+    const a = outbox.enqueue({ text: 'a' });
+    const b = outbox.enqueue({ text: 'b' });
+    expect(updates.holds.held).toBe(true);
+    link.setReady(true);
+    expect(outbox.list().map((i) => i.status)).toEqual(['sending', 'queued']);
+    outbox.ack(a);
+    expect(updates.holds.held).toBe(true);
+    vi.advanceTimersByTime(FLUSH_SPACING_MS);
+    expect(outbox.list()[0]?.status).toBe('sending');
+    expect(updates.holds.held).toBe(true);
+    outbox.ack(b);
+    expect(updates.holds.held).toBe(false);
+    expect(updates.taken).toBe(1);
+  });
+
+  it('holds while an image uploads, lets go when it fails, and holds again on resend', async () => {
+    const { outbox, uploads, transport, updates } = harness();
+    outbox.attach(transport);
+    const id = outbox.enqueue({ text: '', image: image() });
+    expect(outbox.list()[0]?.status).toBe('uploading');
+    expect(updates.holds.held).toBe(true);
+    uploads[0]?.reject(new Error('refused'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outbox.list()[0]?.status).toBe('failed');
+    expect(updates.holds.held).toBe(false);
+    outbox.resend(id);
+    expect(outbox.list()[0]?.status).toBe('uploading');
+    expect(updates.holds.held).toBe(true);
+  });
+
+  it('lets go when a send times out, since the member then decides', () => {
+    const { outbox, transport, updates } = harness();
+    const link = outbox.attach(transport);
+    link.setReady(true);
+    outbox.enqueue({ text: 'a' });
+    expect(updates.holds.held).toBe(true);
+    vi.advanceTimersByTime(ACK_TIMEOUT_MS);
+    expect(outbox.list()[0]?.status).toBe('failed');
+    expect(updates.holds.held).toBe(false);
+  });
+
+  it('keeps holding while an upload that failed for lack of a network waits to go again, but not after a refusal', async () => {
+    const { outbox, uploads, transport, updates } = harness();
+    const link = outbox.attach(transport);
+    link.setReady(true);
+    outbox.enqueue({ text: '', image: image() });
+    uploads[0]?.reject(new TypeError('Network request failed'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outbox.list()[0]?.status).toBe('failed');
+    expect(updates.holds.held).toBe(true);
+    link.setReady(false);
+    link.setReady(true);
+    expect(outbox.list()[0]?.status).toBe('uploading');
+    expect(updates.holds.held).toBe(true);
+    uploads[1]?.reject(new Error('too large'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outbox.list()[0]?.status).toBe('failed');
+    expect(updates.holds.held).toBe(false);
+    expect(updates.taken).toBe(1);
+  });
+
+  it('keeps holding when the room is left mid-send, as the items wait in memory for the next visit', async () => {
+    const { outbox, uploads, transport, updates } = harness();
+    const link = outbox.attach(transport);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', image: image() });
+    expect(updates.holds.held).toBe(true);
+    link.detach();
+    expect(uploads[0]?.signal.aborted).toBe(true);
+    expect(outbox.list()[0]?.status).toBe('queued');
+    expect(updates.holds.held).toBe(true);
+    // Entering the room again, twice over as StrictMode does, keeps the same hold.
+    // 再次进入房间（像 StrictMode 那样连续两次绑定）时沿用同一个占用。
+    outbox.attach(transport);
+    const again = outbox.attach(transport);
+    again.setReady(true);
+    uploads.at(-1)?.resolve('k1');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outbox.list()[0]?.status).toBe('sending');
+    expect(updates.holds.held).toBe(true);
+    outbox.ack(id);
+    expect(updates.holds.held).toBe(false);
+    expect(updates.taken).toBe(1);
+  });
+
+  it('holds for an item written before the room is attached', () => {
+    const { outbox, updates } = harness();
+    outbox.enqueue({ text: 'a' });
+    expect(updates.holds.held).toBe(true);
+  });
+
+  it('lets go when the last item is discarded and on sign-out', () => {
+    const { outbox, transport, updates } = harness();
+    outbox.attach(transport);
+    const id = outbox.enqueue({ text: 'a' });
+    outbox.discard(id);
+    expect(updates.holds.held).toBe(false);
+    outbox.enqueue({ text: 'b' });
+    expect(updates.holds.held).toBe(true);
+    outbox.dispose();
+    expect(updates.holds.held).toBe(false);
   });
 });
 
@@ -394,6 +573,13 @@ describe('frames', () => {
     };
     expect(buildSendFrame(item, false)).toEqual({ type: 'send', clientId: 'c1', text: 'hi', imageKey: 'k', imageWidth: 10, imageHeight: 20 });
     expect(buildSendFrame(item)).toMatchObject({ replyToId: 4, mentions: ['m2'], mentionAll: true });
+  });
+
+  it('carries a thumbnail only beside an image', () => {
+    const base = { clientId: 'c1', text: 'hi', replyTo: null, mentions: [], mentionAll: false, status: 'queued' as const, failure: null, createdAt: '2026-01-01T00:00:00.000Z' };
+    expect(buildSendFrame({ ...base, image: null }, true, 't')).toEqual({ type: 'send', clientId: 'c1', text: 'hi' });
+    expect(buildSendFrame({ ...base, image: { localUrl: '', width: 10, height: 20, progress: 1, imageKey: 'k' } }, true, 't')).toMatchObject({ imageKey: 'k', thumbKey: 't' });
+    expect(buildSendFrame({ ...base, image: { localUrl: '', width: 10, height: 20, progress: 1, imageKey: 'k' } }, true, null)).not.toHaveProperty('thumbKey');
   });
 
   it('omits invalid image sizes', () => {

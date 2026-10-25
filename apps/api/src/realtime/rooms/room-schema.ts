@@ -5,7 +5,13 @@
  * 单个 ChatRoom 的 SQLite 存储结构，带版本号。版本号存在 meta 表中，房间从休眠中唤醒时只读一行，而不是重放每条 ALTER。每一步都只做增加，重复执行也安全。
  */
 
-const SCHEMA_VERSION = 5;
+/**
+ * 6 adds messages.thumb_key, the 360 px preview uploaded beside a chat image. 7 indexes image_key and thumb_key,
+ * so a send and a withdrawal can ask which messages name a key without reading the whole room.
+ * 6 增加 messages.thumb_key，即与聊天图片一同上传的 360px 预览图。7 为 image_key 和 thumb_key 建立索引，
+ * 发送和撤回时查询哪些消息使用了某个键，不必读取整个房间。
+ */
+export const SCHEMA_VERSION = 7;
 
 function readMeta(sql: SqlStorage, key: string): string | null {
   const row = sql.exec<{ value: string }>('SELECT value FROM meta WHERE key = ?', key).toArray()[0];
@@ -64,6 +70,7 @@ export function ensureRoomSchema(sql: SqlStorage): void {
   addColumn(sql, 'ALTER TABLE messages ADD COLUMN image_h INTEGER');
   addColumn(sql, 'ALTER TABLE messages ADD COLUMN deleted_by TEXT');
   addColumn(sql, 'ALTER TABLE messages ADD COLUMN rev INTEGER NOT NULL DEFAULT 0');
+  addColumn(sql, 'ALTER TABLE messages ADD COLUMN thumb_key TEXT');
 
   sql.exec(`
     CREATE TABLE IF NOT EXISTS mentions (
@@ -96,6 +103,8 @@ export function ensureRoomSchema(sql: SqlStorage): void {
     CREATE INDEX IF NOT EXISTS hidden_messages_rev ON hidden_messages (member_id, rev);
     CREATE INDEX IF NOT EXISTS messages_reply_to ON messages (reply_to_id) WHERE reply_to_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS push_sent_message ON push_sent (message_id);
+    CREATE INDEX IF NOT EXISTS messages_image_key ON messages (image_key) WHERE image_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS messages_thumb_key ON messages (thumb_key) WHERE thumb_key IS NOT NULL;
   `);
   sql.exec("INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0')");
   sql.exec(

@@ -2,9 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelSummary, ChatOverviewResponse, ChatPrefs, ChatPrefsResponse, DirectConversationSummary, MemberSelf, UpdateChatPrefsBody } from '@utmmsc/shared';
 import { useSessionStore } from '../../../shared/session/store';
 import {
+  OVERVIEW_CACHE_KEY,
+  OVERVIEW_CACHE_MAX_AGE_MS,
+  OVERVIEW_SAVE_DELAY_MS,
   POLL_INTERVAL_MS,
   REFRESH_MIN_GAP_MS,
+  applyPrefsFields,
+  applyRead,
+  bindOverviewToDevice,
   bindOverviewToSession,
+  createOverviewCache,
   createOverviewStore,
   othersUnread,
   roomById,
@@ -348,5 +355,169 @@ describe('store', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a read of a room already read', () => {
+  it('returns the same data, so nothing re-renders', () => {
+    const data: ChatOverviewResponse = { channels: [channel('a', 0)], direct: [direct('d', 0)] };
+    expect(applyRead(data, 'channel:a')).toBe(data);
+    expect(applyRead(data, 'direct:d')).toBe(data);
+    expect(applyRead(data, 'channel:missing')).toBe(data);
+    expect(applyPrefsFields(data, 'channel:a', { muted: false })).toBe(data);
+    const unread = sample();
+    expect(applyRead(unread, 'channel:a')).not.toBe(unread);
+  });
+
+  it('notifies no listener when the room is already read', async () => {
+    useSessionStore.setState({ token: 'tok', member, mediaToken: null });
+    try {
+      const { api, overviews } = fakeApi();
+      const store = createOverviewStore(api, () => 1_000_000);
+      const loading = store.getState().refresh();
+      overviews[0]?.resolve({ channels: [channel('a', 2)], direct: [] });
+      await loading;
+      store.getState().markRoomRead('channel:a', 10);
+      const after = store.getState().data;
+      const listener = vi.fn();
+      const unsubscribe = store.subscribe((state, prev) => {
+        if (state.data !== prev.data) listener();
+      });
+      for (let id = 11; id < 20; id += 1) store.getState().markRoomRead('channel:a', id);
+      expect(listener).not.toHaveBeenCalled();
+      expect(store.getState().data).toBe(after);
+      unsubscribe();
+    } finally {
+      useSessionStore.setState({ token: null, member: null, mediaToken: null });
+    }
+  });
+});
+
+/** A storage stand-in, like the safe localStorage wrapper. */
+/** 存储替身，与安全的 localStorage 封装一样。 */
+function memoryStorage() {
+  const items = new Map<string, string>();
+  return {
+    items,
+    getItem: (name: string) => items.get(name) ?? null,
+    setItem: (name: string, value: string) => void items.set(name, value),
+    removeItem: (name: string) => void items.delete(name),
+  };
+}
+
+describe('the chat list saved on the device', () => {
+  it('reads back only the same member, within a week, in the expected shape', () => {
+    let clock = 1_000_000;
+    const storage = memoryStorage();
+    const cache = createOverviewCache(storage, () => clock);
+    expect(cache.read('mem_me')).toBeNull();
+    cache.write('mem_me', sample());
+    expect(cache.read('mem_me')).toEqual(sample());
+    expect(cache.read('mem_other')).toBeNull();
+    clock += OVERVIEW_CACHE_MAX_AGE_MS + 1;
+    expect(cache.read('mem_me')).toBeNull();
+    cache.clear();
+    expect(storage.items.size).toBe(0);
+  });
+
+  it('treats a damaged or foreign entry as nothing saved', () => {
+    const storage = memoryStorage();
+    const cache = createOverviewCache(storage, () => 0);
+    const entries = [
+      'not json',
+      'null',
+      '{}',
+      JSON.stringify({ v: 2, memberId: 'mem_me', savedAt: 0, data: sample() }),
+      JSON.stringify({ v: 1, memberId: 'mem_me', savedAt: 0, data: { channels: [{ id: 1 }], direct: [] } }),
+      JSON.stringify({ v: 1, memberId: 'mem_me', savedAt: 0, data: { channels: [], direct: [{ id: 'd', unreadCount: 1 }] } }),
+    ];
+    for (const raw of entries) {
+      storage.items.set(OVERVIEW_CACHE_KEY, raw);
+      expect(cache.read('mem_me'), raw).toBeNull();
+    }
+  });
+
+  describe('binding', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      useSessionStore.setState({ token: 'tok', member, mediaToken: null });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      useSessionStore.setState({ token: null, member: null, mediaToken: null });
+    });
+
+    it('shows the saved list at once and still fetches, without the syncing title', async () => {
+      const storage = memoryStorage();
+      const cache = createOverviewCache(storage, () => Date.now());
+      cache.write('mem_me', sample());
+      const { api, overviews } = fakeApi();
+      const store = createOverviewStore(api, () => Date.now());
+      const unbind = bindOverviewToDevice(store, cache);
+      expect(store.getState().data).toEqual(sample());
+      expect(totalUnread(store.getState().data)).toBe(5);
+      const loading = store.getState().refresh();
+      expect(overviews).toHaveLength(1);
+      expect(store.getState().syncing).toBe(false);
+      overviews[0]?.resolve({ channels: [channel('a', 1)], direct: [] });
+      await loading;
+      expect(totalUnread(store.getState().data)).toBe(1);
+      unbind();
+    });
+
+    it('saves a fetched list once per burst of changes, but never the saved copy back', async () => {
+      const storage = memoryStorage();
+      const writes = vi.fn(storage.setItem);
+      const cache = createOverviewCache({ ...storage, setItem: writes }, () => Date.now());
+      storage.items.set(OVERVIEW_CACHE_KEY, JSON.stringify({ v: 1, memberId: 'mem_me', savedAt: Date.now(), data: sample() }));
+      const { api, overviews } = fakeApi();
+      const store = createOverviewStore(api, () => Date.now());
+      const unbind = bindOverviewToDevice(store, cache);
+      store.getState().markRoomRead('channel:a');
+      await vi.advanceTimersByTimeAsync(OVERVIEW_SAVE_DELAY_MS * 2);
+      expect(writes).not.toHaveBeenCalled();
+
+      const loading = store.getState().refresh();
+      overviews[0]?.resolve({ channels: [channel('a', 4)], direct: [] });
+      await loading;
+      store.getState().markRoomRead('channel:a');
+      await vi.advanceTimersByTimeAsync(OVERVIEW_SAVE_DELAY_MS);
+      expect(writes).toHaveBeenCalledTimes(1);
+      expect(cache.read('mem_me')?.channels[0]?.unreadCount).toBe(0);
+      unbind();
+    });
+
+    it('drops the saved list on sign-out and writes nothing for the old member', async () => {
+      const storage = memoryStorage();
+      const cache = createOverviewCache(storage, () => Date.now());
+      const { api, overviews } = fakeApi();
+      const store = createOverviewStore(api, () => Date.now());
+      const unbindSession = bindOverviewToSession(store, cache);
+      const unbindDevice = bindOverviewToDevice(store, cache);
+      const loading = store.getState().refresh();
+      overviews[0]?.resolve(sample());
+      await loading;
+      await vi.advanceTimersByTimeAsync(OVERVIEW_SAVE_DELAY_MS);
+      expect(cache.read('mem_me')).not.toBeNull();
+      store.getState().markRoomRead('channel:a');
+      useSessionStore.setState({ token: null, member: null });
+      await vi.advanceTimersByTimeAsync(OVERVIEW_SAVE_DELAY_MS);
+      expect(storage.items.size).toBe(0);
+      expect(store.getState().data).toBeNull();
+      unbindSession();
+      unbindDevice();
+    });
+
+    it('hydrates nothing without a session', () => {
+      useSessionStore.setState({ token: null, member: null });
+      const storage = memoryStorage();
+      const cache = createOverviewCache(storage, () => Date.now());
+      cache.write('mem_me', sample());
+      const { api } = fakeApi();
+      const store = createOverviewStore(api, () => Date.now());
+      bindOverviewToDevice(store, cache)();
+      expect(store.getState().data).toBeNull();
+    });
   });
 });

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../../env';
 import { bytesToBase64Url, randomBytes } from '../../domain/crypto/encoding';
 import { deliverJobs, mapWithConcurrency } from './deliver';
-import { deliveryOptions, type DeliveryJob } from './types';
+import { deliveryOptions, deliveryOptionsFor, type DeliveryJob } from './types';
 import { classifyWebPushStatus, parseVapidPrivateKey, pushTopic } from './webpush';
 
 async function vapidPrivateKey(): Promise<string> {
@@ -32,6 +32,22 @@ describe('delivery options', () => {
     expect(deliveryOptions('message')).toEqual({ ttl: 86_400, urgency: 'high' });
     expect(deliveryOptions('recall')).toEqual({ ttl: 86_400, urgency: 'high' });
     expect(deliveryOptions('event')).toEqual({ ttl: 172_800, urgency: 'normal' });
+  });
+
+  it('keeps timetable reminders urgent, a class for half an hour and an assignment for half a day', () => {
+    expect(deliveryOptions('class')).toEqual({ ttl: 1800, urgency: 'high' });
+    expect(deliveryOptions('assignment')).toEqual({ ttl: 43_200, urgency: 'high' });
+  });
+
+  it('takes a payload’s own ttlSeconds, clamped to 60 s - 2 days', () => {
+    expect(deliveryOptionsFor({ kind: 'class' })).toEqual({ ttl: 1800, urgency: 'high' });
+    expect(deliveryOptionsFor({ kind: 'class', ttlSeconds: 480 })).toEqual({ ttl: 480, urgency: 'high' });
+    expect(deliveryOptionsFor({ kind: 'class', ttlSeconds: 12 })).toEqual({ ttl: 60, urgency: 'high' });
+    expect(deliveryOptionsFor({ kind: 'class', ttlSeconds: -5 })).toEqual({ ttl: 60, urgency: 'high' });
+    expect(deliveryOptionsFor({ kind: 'assignment', ttlSeconds: 10 * 86_400 })).toEqual({ ttl: 172_800, urgency: 'high' });
+    expect(deliveryOptionsFor({ kind: 'event', ttlSeconds: 90.6 })).toEqual({ ttl: 91, urgency: 'normal' });
+    expect(deliveryOptionsFor({ kind: 'message', ttlSeconds: Number.NaN })).toEqual({ ttl: 86_400, urgency: 'high' });
+    expect(deliveryOptionsFor({ kind: 'message', ttlSeconds: Number.POSITIVE_INFINITY })).toEqual({ ttl: 86_400, urgency: 'high' });
   });
 });
 
@@ -108,6 +124,25 @@ describe('deliverJobs', () => {
     expect(first?.headers.get('authorization')).toMatch(/^vapid t=.+, k=.+$/);
     expect(first?.body.byteLength).toBeGreaterThan(0);
     expect(requests.find((r) => r.url.endsWith('/gone'))?.headers.get('ttl')).toBe('172800');
+  });
+
+  it('sends a web push with the payload’s own TTL, and never the number itself', async () => {
+    const keys = await browserKeys();
+    const requests: { headers: Headers }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        requests.push({ headers: new Headers(init.headers) });
+        return new Response(null, { status: 201 });
+      }),
+    );
+    const classPayload = { title: 'MAT102 · 10 分钟后上课', body: '10:00–10:50', tag: 'tt:class', url: 'https://utmmsc.com/UTMMSC/timetable', kind: 'class' as const, ttlSeconds: 540 };
+    const outcomes = await deliverJobs(env({ VAPID_PRIVATE_KEY: await vapidPrivateKey() }), [
+      { deviceId: 'd1', kind: 'webpush', endpoint: 'https://fcm.googleapis.com/fcm/send/ok', keys, payload: classPayload },
+    ]);
+    expect(outcomes).toEqual([{ deviceId: 'd1', outcome: 'sent' }]);
+    expect(requests[0]?.headers.get('ttl')).toBe('540');
+    expect(requests[0]?.headers.get('urgency')).toBe('high');
   });
 
   it('skips each kind of device whose credentials are missing, with one warning per kind', async () => {

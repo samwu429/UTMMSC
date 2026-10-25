@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import { canHoldEnrollment, enrollmentForRole, ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminEventRecord, type AdminEventsResponse, type AdminMemberRow, type AnnouncementResponse, type CreateEventResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
+import { adminCountsFor, adminSectionsFor, canHoldEnrollment, enrollmentForRole, ENROLLMENT_STATUSES, MEMBER_STATUSES, ROLES, canAssignRole, isHonoraryRole, isOfficeRole, isUniversityEmail, isValidAdminEnrollmentYear, isValidEnrollmentYear, isWellFormedEmail, normalizeEmail, roleTier, shouldGraduate, type AdminAnnouncementsResponse, type AdminEventRecord, type AdminEventsResponse, type AdminMemberRow, type AdminSummaryResponse, type AnnouncementResponse, type CreateEventResponse, type EnrollmentStatus, type MemberStatus, type Role } from '@utmmsc/shared';
 import { readEventNotificationPlan, scheduleEventNotifications } from '../../../domain/notifications/event-plan';
-import { recordAnnouncement } from '../../../infrastructure/d1/announcements';
+import { loadAdminCounts } from '../../../infrastructure/d1/admin-summary';
+import { ANNOUNCEMENT_PAGE, listAnnouncements, recordAnnouncement } from '../../../infrastructure/d1/announcements';
 import { recordEligibilityChange } from '../../../infrastructure/d1/channel-joins';
 import { listChannels } from '../../../infrastructure/d1/channels';
 import { findApplication, listPendingApplications, reviewApplication, toApplication } from '../../../infrastructure/d1/applications';
@@ -21,19 +22,22 @@ import {
   officeHolderExists,
   correctEnrollment,
   viewedActor,
+  viewedRole,
 } from '../../../infrastructure/d1/members';
 import { revokeAllSessions } from '../../../infrastructure/d1/sessions';
+import { nowIso } from '../../../infrastructure/d1/time';
 import { sendMail } from '../../../infrastructure/email/brevo';
 import { announcementMail, applicationApprovedMail, applicationRejectedMail, advisorInviteMail, enrollmentYearDecisionMail } from '../../../infrastructure/email/templates';
 import { findYearRequest, listPendingYearRequests, reviewYearRequest } from '../../../infrastructure/d1/enrollment-requests';
 import { consumeAdvisorInvite, issueAdvisorInvite, listOpenInvites, retireOtherInvites } from '../../../infrastructure/d1/advisor-invites';
-import { rateLimit } from '../../middleware/rate-limit';
+import { memberRateLimit, rateLimit } from '../../middleware/rate-limit';
 import { recordJoinChanges } from '../../access';
 import { revokeMemberEverywhere } from '../../rooms';
 import type { AppEnv } from '../../context';
 import { badRequest, forbidden, notFound } from '../../errors';
 import { requirePermission, requireSession } from '../../middleware/session';
 import { optionalString, readJson, requireInteger, requireOneOf, requireString } from '../../validation';
+import { MINUTE, cursorOut, readCursor } from '../moments/common';
 
 export const adminRoutes = new Hono<AppEnv>();
 
@@ -50,6 +54,22 @@ adminRoutes.post('/acting-role', async (c) => {
   const updated = await findMemberById(c.env.DB, actor.id);
   if (!updated) throw notFound('成员不存在');
   return c.json({ member: toSelf(updated) });
+});
+
+/**
+ * The admin sections the viewed role sees and the counts of only those sections, for the dashboard, the sidebar and
+ * the red count on 发现 → 管理. Open to every member: a role without sections gets empty lists and runs no query.
+ * 当前视角身份能看到的管理板块，以及仅属于这些板块的计数，供管理首页、侧边栏和「发现 → 管理」上的红色数字使用。
+ * 对所有成员开放：没有板块的身份得到空结果，不执行任何查询。
+ */
+adminRoutes.get('/summary', memberRateLimit('admin:summary', 60, MINUTE), async (c) => {
+  const member = c.get('member');
+  const role = viewedRole(member);
+  const response: AdminSummaryResponse = {
+    sections: adminSectionsFor(role),
+    counts: await loadAdminCounts(c.env.DB, adminCountsFor(role), { viewerId: member.id, now: nowIso() }),
+  };
+  return c.json(response);
 });
 
 function mailConfig(env: AppEnv['Bindings']) {
@@ -102,7 +122,15 @@ adminRoutes.post('/members/:id/role', requirePermission('members.assign_role'), 
   if (implied === 'student' && shouldGraduate(target.graduation_year, 'student')) {
     throw badRequest('already_graduated', '入学已满五年，只能是毕业生');
   }
-  const enrollmentStatus = implied ?? target.enrollment_status;
+  // An office says nothing about enrollment, so the member keeps theirs unless the request names one: 撤销 sends the
+  // status from before the change, which 在校生 or 毕业生 moved. Five years after enrollment it stays 毕业生.
+  // 职位不涉及在读状态，所以成员保留自己的在读状态，除非请求中指定了一个：「撤销」会带上修改之前的状态，因为改为在校生或毕业生时它随之改变。
+  // 入学满五年后仍为毕业生。
+  const requested = implied !== null || body.enrollmentStatus === undefined
+    ? null
+    : requireOneOf<EnrollmentStatus>(body.enrollmentStatus, ENROLLMENT_STATUSES, '在读状态');
+  const restored = requested === 'student' && shouldGraduate(target.graduation_year, 'student') ? 'alumni' : requested;
+  const enrollmentStatus = implied ?? restored ?? target.enrollment_status;
   await updateMemberRole(c.env.DB, target.id, role, enrollmentStatus);
   // A role change also ends any test identity, so access before the change is measured from the real role.
   // 身份改变时测试身份也随之结束，因此变更之前的权限按真实身份计算。
@@ -264,6 +292,10 @@ adminRoutes.post('/announcements', rateLimit(5, 60_000), requirePermission('anno
   const text = requireString(body.body, '正文', 5000);
   const sendEmail = body.sendEmail === true;
   const recipients = await listActiveMemberEmails(c.env.DB);
+  // Recorded before any mail starts: if the write fails, nothing was sent and a retry is safe; once mail is on its
+  // way, the history already shows it, so nobody sends the same announcement twice.
+  // 在任何邮件发出之前先记录：写入失败时什么都没发出，重试是安全的；邮件一旦开始发送，公告记录里已经有它，就不会有人把同一条公告发两遍。
+  await recordAnnouncement(c.env.DB, { title, body: text, sentBy: c.get('member').id, recipientCount: recipients.length, emailed: sendEmail });
 
   if (sendEmail) {
     // Brevo accepts many recipients per call; batches keep each request small and let one failure
@@ -283,9 +315,16 @@ adminRoutes.post('/announcements', rateLimit(5, 60_000), requirePermission('anno
     );
   }
 
-  await recordAnnouncement(c.env.DB, { title, body: text, sentBy: c.get('member').id, recipientCount: recipients.length, emailed: sendEmail });
   const response: AnnouncementResponse = { recipientCount: recipients.length, emailed: sendEmail };
   return c.json(response, 201);
+});
+
+/** Sent announcements, newest first, 20 a page; ?cursor is the nextCursor of the previous page. */
+/** 已发送的公告，从新到旧，每页 20 条；?cursor 为上一页返回的 nextCursor。 */
+adminRoutes.get('/announcements', requirePermission('announcements.send'), async (c) => {
+  const page = await listAnnouncements(c.env.DB, { cursor: readCursor(c.req.query('cursor')), limit: ANNOUNCEMENT_PAGE });
+  const response: AdminAnnouncementsResponse = { announcements: page.announcements, nextCursor: cursorOut(page.nextCursor) };
+  return c.json(response);
 });
 
 adminRoutes.get('/advisor-invites', async (c) => {

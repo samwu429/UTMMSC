@@ -5,6 +5,14 @@ export interface MailRecipient {
 
 export interface MailMessage {
   to: MailRecipient[];
+  /**
+   * Give each recipient their own copy, so nobody sees the other addresses. Without it every `to` address goes
+   * into one message's visible To line, which is only right for a single recipient. Brevo takes up to 1000
+   * versions per call, so callers keep their batches well under that.
+   * 每位收件人各收一份，谁都看不到别人的地址。不设置时所有 `to` 地址都在同一封邮件可见的收件人栏里，只适合单个收件人。
+   * Brevo 每次请求最多接受 1000 个版本，调用方的分批要远小于这个数。
+   */
+  separate?: boolean;
   subject: string;
   text: string;
   html: string;
@@ -28,6 +36,9 @@ export async function sendMail(config: MailConfig, message: MailMessage): Promis
     console.log(`[mail:dry-run] to=${message.to.map((r) => r.email).join(',')} subject=${message.subject}\n${message.text}`);
     return true;
   }
+  // One version per recipient, each with a To of one; Brevo then must not get a top-level `to`.
+  // 每位收件人一个版本，每个版本的收件人只有一位；此时不能再向 Brevo 传顶层的 `to`。
+  const recipients = message.separate ? { messageVersions: message.to.map((r) => ({ to: [r] })) } : { to: message.to };
   const response = await fetch(BREVO_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -37,7 +48,7 @@ export async function sendMail(config: MailConfig, message: MailMessage): Promis
     },
     body: JSON.stringify({
       sender: { email: config.fromEmail, name: config.fromName },
-      to: message.to,
+      ...recipients,
       subject: message.subject,
       textContent: message.text,
       htmlContent: message.html,

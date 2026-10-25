@@ -14,6 +14,7 @@ import { useSessionStore } from '../../../shared/session/store';
 import { toast } from '../../../shared/ui/toast';
 import { chatApi } from '../api';
 import { DEFAULT_CHAT_PREFS, isHiddenRoom, prefsOf } from '../list/conversations';
+import { safeLocalStorage, type SyncStateStorage } from './safeStorage';
 
 /** Calls the store needs; tests pass a fake. */
 /** store 需要的接口调用；测试时传入替身。 */
@@ -122,6 +123,11 @@ export function showDot(data: ChatOverviewResponse | null): boolean {
   return visibleRooms(data).some((room) => (room.prefs.muted && room.unreadCount > 0) || room.prefs.markedUnread);
 }
 
+/**
+ * Applies a change to one room. When the change leaves the room as it was, the same data object comes back, so a
+ * read of a room that is already read (one per incoming message) rebuilds no index and re-renders nothing.
+ * 对一个房间应用改动。改动没有改变该房间时返回同一个数据对象，因此对已读房间的已读（每条新消息一次）不会重建索引，也不会触发重新渲染。
+ */
 function mapRoom(
   data: ChatOverviewResponse,
   roomId: string,
@@ -131,9 +137,13 @@ function mapRoom(
   const room = roomById(data, roomId);
   if (!room) return data;
   if (room.kind === 'channel') {
-    return { ...data, channels: data.channels.map((channel) => (channel === room.summary ? channelFn(channel) : channel)) };
+    const next = channelFn(room.summary);
+    if (next === room.summary) return data;
+    return { ...data, channels: data.channels.map((channel) => (channel === room.summary ? next : channel)) };
   }
-  return { ...data, direct: data.direct.map((dm) => (dm === room.summary ? directFn(dm) : dm)) };
+  const next = directFn(room.summary);
+  if (next === room.summary) return data;
+  return { ...data, direct: data.direct.map((dm) => (dm === room.summary ? next : dm)) };
 }
 
 function withPrefs<T extends ChannelSummary | DirectConversationSummary>(summary: T, fields: Partial<ChatPrefs>): T {
@@ -403,17 +413,109 @@ export function createOverviewStore(api: OverviewApi, now: () => number = Date.n
 
 export type OverviewStore = ReturnType<typeof createOverviewStore>;
 
+/** localStorage key of the chat list saved on this device. */
+/** 保存在本设备上的会话列表的 localStorage 键。 */
+export const OVERVIEW_CACHE_KEY = 'utmmsc.chat.overview';
+/** A saved list older than this is not shown; a spinner is more honest than a week-old badge. */
+/** 超过这个时间的已保存列表不再显示；与其显示一周前的角标，不如显示加载圈。 */
+export const OVERVIEW_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Changes in a burst (a fetch, then the reads it brings) are saved once, this long after the first. */
+/** 一连串的改动（一次加载以及随之而来的已读）只保存一次，在第一次改动之后这么久。 */
+export const OVERVIEW_SAVE_DELAY_MS = 1000;
+const OVERVIEW_CACHE_VERSION = 1;
+
 /**
- * Clears the store when the member signs out or another member signs in, and refetches when the
- * acting role changes, since that changes which channels are visible. Returns the unsubscribe function.
- * 成员退出或换了一个成员登录时清空 store；测试身份变化时重新加载，因为可见频道会随之改变。返回取消订阅的函数。
+ * The chat list saved on this device for one member, so a cold start shows yesterday's list at first paint instead
+ * of a spinner, then refreshes. It holds other members' names and messages, so it is removed on sign-out.
+ * 为一位成员保存在本设备上的会话列表，冷启动时首帧就显示上次的列表而不是加载圈，随后再刷新。
+ * 它包含其他成员的名字和消息，因此在退出登录时删除。
  */
-export function bindOverviewToSession(store: OverviewStore): () => void {
+export interface OverviewCache {
+  read(memberId: string): ChatOverviewResponse | null;
+  write(memberId: string, data: ChatOverviewResponse): void;
+  clear(): void;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Enough of the shape that the list and badges can be drawn from it; anything else is treated as nothing saved. */
+/** 只要形状足以画出列表和角标即可；否则视为没有保存。 */
+function looksLikeOverview(value: unknown): value is ChatOverviewResponse {
+  if (!isRecord(value) || !Array.isArray(value.channels) || !Array.isArray(value.direct)) return false;
+  const channelsOk = value.channels.every((c: unknown) => isRecord(c) && typeof c.id === 'string' && typeof c.name === 'string' && typeof c.unreadCount === 'number');
+  const directOk = value.direct.every((d: unknown) => isRecord(d) && typeof d.id === 'string' && isRecord(d.peer) && typeof d.unreadCount === 'number');
+  return channelsOk && directOk;
+}
+
+export function createOverviewCache(storage: SyncStateStorage = safeLocalStorage, now: () => number = Date.now): OverviewCache {
+  return {
+    read(memberId) {
+      const raw = storage.getItem(OVERVIEW_CACHE_KEY);
+      if (!raw) return null;
+      try {
+        const saved: unknown = JSON.parse(raw);
+        if (!isRecord(saved) || saved.v !== OVERVIEW_CACHE_VERSION || saved.memberId !== memberId) return null;
+        if (typeof saved.savedAt !== 'number' || now() - saved.savedAt > OVERVIEW_CACHE_MAX_AGE_MS) return null;
+        return looksLikeOverview(saved.data) ? saved.data : null;
+      } catch {
+        return null;
+      }
+    },
+    write(memberId, data) {
+      storage.setItem(OVERVIEW_CACHE_KEY, JSON.stringify({ v: OVERVIEW_CACHE_VERSION, memberId, savedAt: now(), data }));
+    },
+    clear() {
+      storage.removeItem(OVERVIEW_CACHE_KEY);
+    },
+  };
+}
+
+/**
+ * Shows the list saved for the signed-in member right away, and saves the list again after each change that
+ * follows a real fetch (a saved list is never saved back as if it were new). Returns the unsubscribe function.
+ * 立即显示为当前登录成员保存的列表；每次真正加载之后的改动都再次保存（已保存的列表不会被当作新数据写回）。返回取消订阅的函数。
+ */
+export function bindOverviewToDevice(store: OverviewStore, cache: OverviewCache): () => void {
+  const session = useSessionStore.getState();
+  const memberId = session.token ? (session.member?.id ?? null) : null;
+  if (memberId && !store.getState().data) {
+    const saved = cache.read(memberId);
+    if (saved) store.setState({ data: saved });
+  }
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const unsubscribe = store.subscribe((state, prev) => {
+    if (state.data === prev.data || state.data === null || state.loadedAt === null || timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      // Read at save time: a sign-out or a member switch in between leaves nothing, or the new member's list.
+      // 保存时再读取：期间退出登录或换了成员时，读到的要么为空，要么是新成员的列表。
+      const { token, member } = useSessionStore.getState();
+      const { data, loadedAt } = store.getState();
+      if (token && member && data && loadedAt !== null) cache.write(member.id, data);
+    }, OVERVIEW_SAVE_DELAY_MS);
+  });
+  return () => {
+    unsubscribe();
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+}
+
+/**
+ * Clears the store (and the list saved on the device) when the member signs out or another member signs in, and
+ * refetches when the acting role changes, since that changes which channels are visible. Returns the unsubscribe
+ * function.
+ * 成员退出或换了一个成员登录时清空 store（以及保存在设备上的列表）；测试身份变化时重新加载，因为可见频道会随之改变。返回取消订阅的函数。
+ */
+export function bindOverviewToSession(store: OverviewStore, cache?: OverviewCache): () => void {
   return useSessionStore.subscribe((state, prev) => {
     const signedOut = prev.token !== null && state.token === null;
     const switched = prev.member !== null && state.member !== null && prev.member.id !== state.member.id;
     if (signedOut || switched) {
       store.getState().reset();
+      cache?.clear();
       return;
     }
     // Channel access follows role and enrollment, so a change to either reloads the list.
@@ -424,4 +526,6 @@ export function bindOverviewToSession(store: OverviewStore): () => void {
 }
 
 export const useOverviewStore = createOverviewStore(chatApi);
-bindOverviewToSession(useOverviewStore);
+const overviewDeviceCache = createOverviewCache();
+bindOverviewToSession(useOverviewStore, overviewDeviceCache);
+bindOverviewToDevice(useOverviewStore, overviewDeviceCache);

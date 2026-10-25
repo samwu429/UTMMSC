@@ -67,6 +67,21 @@ describe('messagePushPayload', () => {
     expect(payload.body.length).toBeLessThanOrEqual(160);
     expect(payload.body.endsWith('…')).toBe(true);
   });
+
+  const ICON = 'https://utmmsc.com/UTMMSC/channel-icons/announce-192.png';
+
+  it('passes the channel icon through', () => {
+    expect(messagePushPayload({ ...channelInput, icon: ICON }).icon).toBe(ICON);
+    expect('icon' in messagePushPayload(channelInput)).toBe(false);
+  });
+
+  it('leaves the icon out of a hidden notice, which must not say which chat it is', () => {
+    expect('icon' in messagePushPayload({ ...channelInput, icon: ICON, preview: false })).toBe(false);
+  });
+
+  it('never puts a channel icon on a direct message', () => {
+    expect('icon' in messagePushPayload({ ...channelInput, roomId: 'direct:dm_1', roomKind: 'direct', roomTitle: '', icon: ICON })).toBe(false);
+  });
 });
 
 describe('retractionPushPayload', () => {
@@ -92,6 +107,14 @@ describe('retractionPushPayload', () => {
     expect(direct.tag).toBe('direct:dm_1');
     expect(retractionPushPayload({ ...input, reason: 'deleted' }).body).toBe('一条消息已被删除');
     expect(retractionPushPayload({ ...input, reason: 'removed' }).body).toBe('管理员删除了一条消息');
+  });
+
+  it('keeps the channel icon of the notice it replaces', () => {
+    const icon = 'https://utmmsc.com/api/members/media/channel-icon%2Fch_all%2Fcic_abcdefghijklmnop.webp?t=tok';
+    expect(retractionPushPayload({ ...input, icon }).icon).toBe(icon);
+    expect(retractionPushPayload({ ...input, icon }).icon).toBe(messagePushPayload({ ...channelInput, icon }).icon);
+    expect('icon' in retractionPushPayload(input)).toBe(false);
+    expect('icon' in retractionPushPayload({ ...input, roomId: 'direct:dm_1', roomKind: 'direct', roomTitle: '', icon })).toBe(false);
   });
 });
 

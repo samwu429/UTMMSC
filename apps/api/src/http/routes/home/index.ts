@@ -4,8 +4,13 @@ import { listUpcomingEvents, toEvent } from '../../../infrastructure/d1/events';
 import { fetchWeather } from '../../../infrastructure/weather/open-meteo';
 import type { AppEnv } from '../../context';
 import { requireSession } from '../../middleware/session';
+import { timetableRoutes } from './timetable';
 
 export const homeRoutes = new Hono<AppEnv>();
+
+// 自定义课表 at /home/timetable, with its own session check, limits and 503 before migration 0017.
+// 自定义课表挂载在 /home/timetable，自带登录检查、频率限制，以及迁移 0017 之前的 503。
+homeRoutes.route('/timetable', timetableRoutes);
 
 const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

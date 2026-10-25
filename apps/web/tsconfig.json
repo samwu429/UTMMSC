@@ -6,6 +6,9 @@
     "types": ["vite/client", "vite-plugin-pwa/client"],
     "useDefineForClassFields": true
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  // No reference to tsconfig.node.json: both check src/app/swRoutes.ts, and with a reference tsc -p would read that
+  // file from the node project's unbuilt output instead (TS6305). The typecheck script checks the node project itself.
+  // 不引用 tsconfig.node.json：两个项目都检查 src/app/swRoutes.ts，有了引用，tsc -p 会改为读取 node 项目尚未生成的输出文件（TS6305）。
+  // typecheck 脚本会单独检查 node 项目。
+  "include": ["src"]
 }

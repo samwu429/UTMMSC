@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { enrollmentCalendarYear } from '@utmmsc/shared';
 import { issueSessionToken } from '../../../domain/identity/session-token';
 import type { Env } from '../../../env';
-import type { MemberRow } from '../../../infrastructure/d1/members';
+import { createSqliteD1, sqlite, type SqliteD1 } from '../../../infrastructure/d1/testing/sqlite-d1';
 import type { AppEnv } from '../../context';
 import { ApiHttpError, errorResponse } from '../../errors';
 import { notificationRoutes, readDeviceRegistration, readTestDelay, readWebPushEndpoint } from './index';
@@ -34,76 +34,35 @@ describe('notification routes', () => {
 
 const SECRET = 'test-session-secret';
 
-const member: MemberRow = {
-  id: 'mem_1',
-  email: 'a@mail.utoronto.ca',
-  display_name: '张三',
-  password_hash: 'x',
-  status: 'active',
-  role: 'student',
-  enrollment_status: 'student',
-  graduation_year: enrollmentCalendarYear(),
-  major: null,
-  headline: null,
-  about: null,
-  location: null,
-  skills: null,
-  open_to: null,
-  avatar_key: null,
-  cover_key: null,
-  acting_role: null,
-  created_at: '2026-09-01T00:00:00.000Z',
-  updated_at: '2026-09-01T00:00:00.000Z',
-};
-
 /**
- * D1 for a signed-in member's prefs requests: the session and member reads of requireSession, and the
- * notification_prefs statements, which before migration 0016 fail on the moments column like D1 does. The
- * stored row is kept between requests.
- * 模拟已登录成员的通知开关请求：requireSession 所做的会话与成员读取，以及 notification_prefs 的语句；迁移 0016 之前，
- * 涉及 moments 列的语句会像 D1 一样报错。已存的行在多次请求之间保留。
+ * Prefs requests run on real SQLite with the migrations up to `to`, so the session check and every
+ * notification_prefs statement behave as on D1 at that migration. One active member with one live session.
+ * 通知开关请求运行在执行到 `to` 号迁移的真实 SQLite 上，会话检查和每条 notification_prefs 语句都与该迁移阶段的 D1 一致。
+ * 只有一位在用成员和一个有效会话。
  */
-function prefsDb(schema: 'current' | 'before-0016' = 'current') {
-  const stored = { messages: 1, events: 1, preview: 1, moments: 1 };
-  const writes: { sql: string; params: unknown[] }[] = [];
-  const db = {
-    prepare(sql: string) {
-      const statement = {
-        params: [] as unknown[],
-        bind(...params: unknown[]) {
-          statement.params = params;
-          return statement;
-        },
-        async first() {
-          if (sql.startsWith('SELECT id FROM sessions')) return { id: 'ses_1' };
-          if (sql.startsWith('SELECT * FROM members')) return member;
-          if (!sql.includes('notification_prefs')) throw new Error(`unexpected query: ${sql}`);
-          if (schema === 'before-0016' && /\bmoments\b/.test(sql)) throw new Error('D1_ERROR: no such column: moments: SQLITE_ERROR');
-          const columns = (['messages', 'events', 'preview', 'moments'] as const).filter((column) => sql.includes(`${column} AS pref_${column}`));
-          if (sql.startsWith('INSERT')) {
-            writes.push({ sql, params: statement.params });
-            columns.forEach((column, index) => {
-              const value = statement.params[1 + index];
-              if (value !== null) stored[column] = value as number;
-            });
-          }
-          return Object.fromEntries(columns.map((column) => [`pref_${column}`, stored[column]]));
-        },
-        async all() {
-          return { results: [] };
-        },
-      };
-      return statement;
-    },
-  };
-  return { db: db as unknown as D1Database, writes };
+function prefsDb(to: number = Number.POSITIVE_INFINITY): SqliteD1 {
+  const d1 = createSqliteD1({ migrate: false });
+  d1.migrate({ to });
+  const now = new Date().toISOString();
+  d1.rows(
+    "INSERT INTO members (id, email, display_name, password_hash, status, role, enrollment_status, graduation_year, created_at, updated_at) VALUES ('mem_1', 'a@mail.utoronto.ca', '张三', 'x', 'active', 'student', 'student', ?, ?, ?)",
+    enrollmentCalendarYear(),
+    now,
+    now,
+  );
+  d1.rows("INSERT INTO sessions (id, member_id, expires_at, created_at) VALUES ('ses_1', 'mem_1', ?, ?)", new Date(Date.now() + 86_400_000).toISOString(), now);
+  return d1;
+}
+
+function prefsWrites(d1: SqliteD1): number {
+  return d1.statements.filter((statement) => statement.sql.trimStart().startsWith('INSERT INTO notification_prefs')).length;
 }
 
 async function prefsRequest(db: D1Database, method: 'GET' | 'PATCH', body?: unknown): Promise<Response> {
   const app = new Hono<AppEnv>();
   app.onError(errorResponse);
   app.route('/notifications', notificationRoutes);
-  const token = await issueSessionToken(SECRET, 'ses_1', member.id, new Date(Date.now() + 60_000));
+  const token = await issueSessionToken(SECRET, 'ses_1', 'mem_1', new Date(Date.now() + 60_000));
   const env = { DB: db, SESSION_SECRET: SECRET } as unknown as Env;
   const ctx = { waitUntil: () => undefined, passThroughOnException: () => undefined, props: {} } as unknown as ExecutionContext;
   return app.request(
@@ -118,40 +77,69 @@ async function prefsRequest(db: D1Database, method: 'GET' | 'PATCH', body?: unkn
   );
 }
 
-describe('notification prefs routes', () => {
-  it('reads and saves the 好友动态互动 switch', async () => {
-    const { db, writes } = prefsDb();
-    const before = await prefsRequest(db, 'GET');
+const ALL_ON = { messages: true, events: true, preview: true, moments: true, timetable: true };
+
+describe.skipIf(!sqlite)('notification prefs routes', () => {
+  let d1: SqliteD1 | null = null;
+
+  afterEach(() => {
+    d1?.close();
+    d1 = null;
+  });
+
+  it('reads and saves the 好友动态互动 and 课表提醒 switches', async () => {
+    d1 = prefsDb();
+    const before = await prefsRequest(d1.db, 'GET');
     expect(before.status).toBe(200);
-    expect(await before.json()).toEqual({ prefs: { messages: true, events: true, preview: true, moments: true } });
+    expect(await before.json()).toEqual({ prefs: ALL_ON });
 
-    const saved = await prefsRequest(db, 'PATCH', { moments: false });
+    const saved = await prefsRequest(d1.db, 'PATCH', { moments: false });
     expect(saved.status).toBe(200);
-    expect(await saved.json()).toEqual({ prefs: { messages: true, events: true, preview: true, moments: false } });
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.params.slice(0, 5)).toEqual(['mem_1', null, null, null, 0]);
+    expect(await saved.json()).toEqual({ prefs: { ...ALL_ON, moments: false } });
 
-    expect(await (await prefsRequest(db, 'GET')).json()).toEqual({ prefs: { messages: true, events: true, preview: true, moments: false } });
+    const timetable = await prefsRequest(d1.db, 'PATCH', { timetable: false });
+    expect(await timetable.json()).toEqual({ prefs: { ...ALL_ON, moments: false, timetable: false } });
+    expect(prefsWrites(d1)).toBe(2);
+
+    expect(await (await prefsRequest(d1.db, 'GET')).json()).toEqual({ prefs: { ...ALL_ON, moments: false, timetable: false } });
+    expect(d1.rows('SELECT messages, moments, timetable FROM notification_prefs')).toEqual([{ messages: 1, moments: 0, timetable: 0 }]);
   });
 
   it('refuses a switch that is not true or false, naming it', async () => {
-    const { db, writes } = prefsDb();
-    const response = await prefsRequest(db, 'PATCH', { moments: 'off' });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: { code: 'invalid_field', message: '好友动态互动通知 格式错误' } });
-    expect(writes).toEqual([]);
+    d1 = prefsDb();
+    for (const [field, label] of [
+      ['moments', '好友动态互动通知'],
+      ['timetable', '课表提醒'],
+    ] as const) {
+      const response = await prefsRequest(d1.db, 'PATCH', { [field]: 'off' });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: { code: 'invalid_field', message: `${label} 格式错误` } });
+    }
+    expect(prefsWrites(d1)).toBe(0);
+  });
+
+  it('answers that push is not ready for a timetable change before migration 0017, and still saves the others', async () => {
+    d1 = prefsDb(16);
+    const refused = await prefsRequest(d1.db, 'PATCH', { timetable: false });
+    expect(refused.status).toBe(503);
+    expect(((await refused.json()) as { error: { code: string } }).error.code).toBe('push_unavailable');
+    expect(d1.rows('SELECT * FROM notification_prefs')).toEqual([]);
+
+    const saved = await prefsRequest(d1.db, 'PATCH', { moments: false });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual({ prefs: { ...ALL_ON, moments: false } });
   });
 
   it('answers that push is not ready for a moments change before migration 0016, and still saves the others', async () => {
-    const { db, writes } = prefsDb('before-0016');
-    const refused = await prefsRequest(db, 'PATCH', { moments: false });
+    d1 = prefsDb(15);
+    const refused = await prefsRequest(d1.db, 'PATCH', { moments: false });
     expect(refused.status).toBe(503);
     expect(((await refused.json()) as { error: { code: string } }).error.code).toBe('push_unavailable');
-    expect(writes).toEqual([]);
+    expect(d1.rows('SELECT * FROM notification_prefs')).toEqual([]);
 
-    const saved = await prefsRequest(db, 'PATCH', { events: false });
+    const saved = await prefsRequest(d1.db, 'PATCH', { events: false });
     expect(saved.status).toBe(200);
-    expect(await saved.json()).toEqual({ prefs: { messages: true, events: false, preview: true, moments: true } });
+    expect(await saved.json()).toEqual({ prefs: { ...ALL_ON, events: false } });
   });
 });
 

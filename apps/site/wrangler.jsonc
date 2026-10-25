@@ -19,6 +19,20 @@
     { "binding": "FILES", "bucket_name": "utmmsc-files" }
   ],
 
+  // utmmsc.com/api/* goes to the API Worker through this binding, so the member app calls its API on its own origin
+  // (no CORS preflight, no second connection). Deploy utmmsc-api before this Worker.
+  // utmmsc.com/api/* 通过这个绑定转给 API Worker，成员网络因此在自己的源上调用接口（没有 CORS 预检，也不用第二条连接）。先部署 utmmsc-api，再部署本 Worker。
+  "services": [
+    { "binding": "API", "service": "utmmsc-api" }
+  ],
+
+  "vars": {
+    // The URL the API Worker is given for a forwarded request. The API builds absolute addresses from it (the room
+    // socket in a ticket), so it is the API's own public address, which also works when reached directly.
+    // 转发请求时交给 API Worker 的地址。API 会用它拼出绝对地址（票据里的聊天室连接），所以它是 API 自己的公开地址，直接访问时也可用。
+    "API_ORIGIN": "https://utmmsc-api.utmmsc.workers.dev"
+  },
+
   // Apex is the public site. The member app stays on /UTMMSC/ and is not this Worker's root.
   // 根域名是官网。成员网络留在 /UTMMSC/，不是这个 Worker 的根路径。
   "routes": [

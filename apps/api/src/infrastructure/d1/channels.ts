@@ -16,6 +16,16 @@ export interface ChannelRow {
   /** 迁移 0013 执行之前为 undefined；此时调用方不设历史下限。 */
   history_visibility?: HistoryVisibility;
   history_floor_since?: string | null;
+  /**
+   * An uploaded icon under channel-icon/ or preset:<id>; null shows the text tile. Undefined until migration 0018
+   * runs, so readers fall back to the text tile and the icon routes answer 503.
+   * channel-icon/ 下上传的图标或 preset:<id>；为 null 时显示文字头像。迁移 0018 执行之前为 undefined，
+   * 此时读取方退回文字头像，图标接口返回 503。
+   */
+  icon_key?: string | null;
+  /** When the icon last changed, in toISOString form. */
+  /** 图标最后修改的时间，格式与 toISOString 一致。 */
+  icon_updated_at?: string | null;
 }
 
 /**
@@ -200,6 +210,22 @@ export async function updateChannel(db: D1Database, id: string, patch: ChannelPa
   if (sets.length === 0) return;
   params.push(id);
   await db.prepare(`UPDATE channels SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run();
+}
+
+/**
+ * Compare-and-swap of the channel icon: writes `next` only while the stored key is still `expected`, so two admins
+ * changing the icon at once never lose track of which uploaded objects are still in use. Returns false when the
+ * key moved on or the channel is gone; the caller reads the row again. Throws a missing-schema error before
+ * migration 0018.
+ * 频道图标的比较并交换：只有当已存的键仍为 `expected` 时才写入 `next`，两位管理员同时修改图标时也不会弄错哪些上传对象仍在使用。
+ * 键已被改动或频道已不存在时返回 false，由调用方重新读取。迁移 0018 之前抛出缺少表结构的错误。
+ */
+export async function setChannelIcon(db: D1Database, id: string, expected: string | null, next: string | null, at: string = nowIso()): Promise<boolean> {
+  const result = await db
+    .prepare('UPDATE channels SET icon_key = ?, icon_updated_at = ? WHERE id = ? AND icon_key IS ?')
+    .bind(next, at, id, expected)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 export async function listChannelMemberIds(db: D1Database, channelId: string): Promise<string[]> {

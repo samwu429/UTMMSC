@@ -50,8 +50,9 @@ afterEach(() => {
 
 describe('notification prefs defaults', () => {
   it('treats a missing row as every switch on', () => {
-    expect(prefsFromColumns({ pref_messages: null, pref_events: null, pref_preview: null })).toEqual({ messages: true, events: true, preview: true, moments: true });
-    expect(prefsFromColumns({ pref_messages: 0, pref_events: 1, pref_preview: 0 })).toEqual({ messages: false, events: true, preview: false, moments: true });
+    expect(prefsFromColumns({ pref_messages: null, pref_events: null, pref_preview: null })).toEqual({ messages: true, events: true, preview: true, moments: true, timetable: true });
+    expect(prefsFromColumns({ pref_messages: 0, pref_events: 1, pref_preview: 0 })).toEqual({ messages: false, events: true, preview: false, moments: true, timetable: true });
+    expect(prefsFromColumns({ pref_messages: 1, pref_events: 1, pref_preview: 1, pref_moments: null, pref_timetable: 0 })).toEqual({ messages: true, events: true, preview: true, moments: true, timetable: false });
   });
 });
 

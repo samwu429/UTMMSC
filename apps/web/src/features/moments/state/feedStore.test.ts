@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MomentComment, MomentMediaInput, MomentPerson, MomentPost } from '@utmmsc/shared';
+import { createUpdateHolds } from '../../../app/pwa';
 import { ApiClientError } from '../../../shared/api/errors';
 import { HOME_FEED, albumFeedKey, localPostKey, postFeedKey, type UploadBatch, type UploadItem } from '../model';
 import type { CachedFeed } from './feedCache';
@@ -96,6 +97,7 @@ function harness(options: { cached?: CachedFeed | null } = {}) {
   const api = Object.fromEntries((Object.keys(calls) as Method[]).map((method) => [method, fake(method)])) as unknown as FeedApi;
   let online = true;
   let clientIds = 0;
+  const holds = createUpdateHolds();
   const deps: FeedStoreDeps = {
     api,
     me: () => ME,
@@ -107,6 +109,7 @@ function harness(options: { cached?: CachedFeed | null } = {}) {
     isOnline: () => online,
     makeClientId: () => `cli_${String((clientIds += 1)).padStart(8, '0')}`,
     now: () => Date.now(),
+    holdUpdate: () => holds.take(),
   };
   const store = createFeedStore(deps);
   const answer = (method: Method, index: number, value: unknown) => calls[method][index]?.reply.resolve(value);
@@ -120,7 +123,7 @@ function harness(options: { cached?: CachedFeed | null } = {}) {
     store.getState().setOnline(true);
   };
   const views = (key = HOME_FEED) => store.memo.views(store.getState(), key);
-  return { store, deps, calls, answer, fail, goOffline, goOnline, views };
+  return { store, deps, calls, answer, fail, goOffline, goOnline, views, holds };
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -285,6 +288,29 @@ describe('feed store', () => {
       h.goOffline();
       h.goOnline();
       expect(h.calls.comment).toHaveLength(1);
+    });
+
+    it('holds back an app update while a comment is sending or waiting for the network, and lets go once it lands or fails', async () => {
+      const h = harness();
+      await openHome(h, [post(1)]);
+      const sent = h.store.getState().sendComment({ postId: 'p1', text: '好看', replyTo: null });
+      expect(h.holds.held).toBe(true);
+      h.answer('comment', 0, { comment: comment('c1', 5, { author: ME, clientId: sent, body: '好看' }), commentCount: 1 });
+      await flush();
+      expect(h.holds.held).toBe(false);
+      h.goOffline();
+      const waiting = h.store.getState().sendComment({ postId: 'p1', text: '离线', replyTo: null });
+      expect(h.store.getState().pendingComments.p1?.[0]?.status).toBe('waiting');
+      expect(h.holds.held).toBe(true);
+      h.goOnline();
+      h.fail('comment', 1, apiError(400, 'reply_unavailable', '无法回复这条评论'));
+      await flush();
+      expect(h.store.getState().pendingComments.p1?.[0]?.status).toBe('failed');
+      expect(h.holds.held).toBe(false);
+      h.store.getState().resendComment('p1', waiting);
+      expect(h.holds.held).toBe(true);
+      h.store.getState().discardComment('p1', waiting);
+      expect(h.holds.held).toBe(false);
     });
 
     it('sends a reply from 消息 for a post no list holds, without a pending row', async () => {
@@ -521,6 +547,53 @@ describe('feed store', () => {
       h.goOnline();
       await flush();
       expect(h.calls.create[0]?.args).toEqual([{ clientId: 'cli_textonly', text: '只发文字', audience: 'club', location: '图书馆' }]);
+    });
+
+    it('holds back an app update from 发表 until the post lands', async () => {
+      const h = harness();
+      await openHome(h, []);
+      const batch = fakeBatch([item('uploading', 0.4)]);
+      expect(h.holds.held).toBe(false);
+      h.store.getState().publish({ clientId: 'cli_hold', text: '', audience: 'friends', location: null, uploads: batch });
+      expect(h.holds.held).toBe(true);
+      batch.finish(serverMedia);
+      await flush();
+      expect(h.views()[0]?.local?.status).toBe('sending');
+      expect(h.holds.held).toBe(true);
+      h.answer('create', 0, { post: serverPost('cli_hold'), mediaToken: 'tok' });
+      await flush();
+      expect(h.views()[0]?.local).toBeNull();
+      expect(h.holds.held).toBe(false);
+    });
+
+    it('lets the update go when the post fails, holds again on 重试, and keeps holding while it waits for the network', async () => {
+      const h = harness();
+      await openHome(h, []);
+      h.store.getState().publish({ clientId: 'cli_retry', text: '再试一次', audience: 'friends', location: null, uploads: null });
+      await flush();
+      expect(h.holds.held).toBe(true);
+      h.fail('create', 0, apiError(500, 'server_error', '服务器出错，请稍后再试'));
+      await flush();
+      expect(h.views()[0]?.local?.status).toBe('failed');
+      expect(h.holds.held).toBe(false);
+      h.goOffline();
+      h.store.getState().retryPost('cli_retry');
+      await flush();
+      expect(h.views()[0]?.local?.status).toBe('waiting');
+      expect(h.holds.held).toBe(true);
+    });
+
+    it('lets the update go when the post is discarded and on sign-out', async () => {
+      const h = harness();
+      await openHome(h, []);
+      h.store.getState().publish({ clientId: 'cli_drop', text: '算了', audience: 'friends', location: null, uploads: null });
+      expect(h.holds.held).toBe(true);
+      h.store.getState().discardPost('cli_drop');
+      expect(h.holds.held).toBe(false);
+      h.store.getState().publish({ clientId: 'cli_signout', text: '退出前', audience: 'friends', location: null, uploads: null });
+      expect(h.holds.held).toBe(true);
+      h.store.getState().reset();
+      expect(h.holds.held).toBe(false);
     });
 
     it('releases the uploads of a discarded post', async () => {

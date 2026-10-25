@@ -13,9 +13,12 @@ export interface NotificationPrefs {
   /** 好友动态: comments and replies to the member, and a moderator acting on their content. Likes never push. */
   /** 好友动态：别人评论、回复了成员，或管理员处理了成员的内容。点赞从不推送。 */
   moments: boolean;
+  /** 课表提醒: class and assignment reminders. Their times are set in the timetable itself. */
+  /** 课表提醒：上课提醒和作业提醒。提醒时间在课表里设置。 */
+  timetable: boolean;
 }
 
-export const DEFAULT_NOTIFICATION_PREFS: Readonly<NotificationPrefs> = Object.freeze({ messages: true, events: true, preview: true, moments: true });
+export const DEFAULT_NOTIFICATION_PREFS: Readonly<NotificationPrefs> = Object.freeze({ messages: true, events: true, preview: true, moments: true, timetable: true });
 
 export const PUSH_DEVICE_KINDS = ['webpush', 'fcm'] as const;
 export type PushDeviceKind = (typeof PUSH_DEVICE_KINDS)[number];
@@ -78,11 +81,13 @@ export interface EventNotificationRow {
  * message: a new chat message. recall: replaces the notice of a message that was recalled or removed,
  * under the same tag, quietly where the device allows it. event: a club event notice. test: from Settings.
  * moment: a comment, a reply or a moderator's removal in 好友动态, which alerts. moment_recall: replaces the
- * notice of a comment that was deleted, under the same tag, quietly.
+ * notice of a comment that was deleted, under the same tag, quietly. class: a timetable class is about to
+ * start. assignment: a timetable assignment is due soon.
  * message：新聊天消息。recall：消息被撤回或删除后，以相同 tag 替换其通知，设备允许时不再提醒。event：社团活动通知。test：来自设置页。
  * moment：好友动态中的评论、回复或管理员移除，会提醒。moment_recall：评论被删除后，以相同 tag 安静地替换其通知。
+ * class：课表中的一节课快要开始。assignment：课表中的一项作业快要截止。
  */
-export const PUSH_KINDS = ['message', 'recall', 'event', 'test', 'moment', 'moment_recall'] as const;
+export const PUSH_KINDS = ['message', 'recall', 'event', 'test', 'moment', 'moment_recall', 'class', 'assignment'] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 
 /**
@@ -100,4 +105,18 @@ export interface PushPayload {
   roomId?: string;
   eventId?: string;
   postId?: string;
+  /**
+   * An https image for the notification, such as a channel icon. Web Push shows it; Android keeps the app icon,
+   * since an FCM notification message cannot carry a per-message large icon.
+   * 通知使用的 https 图片，例如频道图标。Web Push 会显示它；安卓仍显示 App 图标，因为 FCM 的 notification 消息不能逐条设置大图标。
+   */
+  icon?: string;
+  /**
+   * Server-only delivery hint: how long the push service may hold the push, so a class notice never shows after
+   * the class has started. It is clamped to 60 s - 2 days. Web Push sends only string fields and FCM builds its
+   * data field by field, so this number never reaches a device.
+   * 仅服务端使用的投递提示：推送服务最多保留这条推送多久，因此上课通知不会在开课后才显示。取值限制在 60 秒到 2 天之间。
+   * Web Push 只发送字符串字段，FCM 逐个字段组装 data，所以这个数字从不会到达设备。
+   */
+  ttlSeconds?: number;
 }

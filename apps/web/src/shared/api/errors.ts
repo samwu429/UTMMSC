@@ -1,6 +1,21 @@
 import { PROGRAM_EN, useLocaleStore } from '../i18n/locale';
+import { ENGLISH as ADMIN_ENGLISH, ENGLISH_PATTERNS as ADMIN_PATTERNS } from './errors/admin';
+import { ENGLISH as CHANNEL_ICON_ENGLISH, ENGLISH_PATTERNS as CHANNEL_ICON_PATTERNS } from './errors/channelIcons';
+import { ENGLISH as MEDIA_ENGLISH, ENGLISH_PATTERNS as MEDIA_PATTERNS } from './errors/media';
+import { ENGLISH as TIMETABLE_ENGLISH, ENGLISH_PATTERNS as TIMETABLE_PATTERNS } from './errors/timetable';
 
-const ENGLISH: Record<string, string> = {
+/**
+ * A server message that embeds a number or a field name, and how to say it in English.
+ * 含数字或字段名的服务端消息，以及它的英文说法。
+ */
+export type EnglishPattern = [RegExp, (m: RegExpMatchArray) => string];
+
+/**
+ * English for server messages. The messages of newer features live in errors/*.ts, one file per owner, and are
+ * merged here; this file only changes to add another such file.
+ * 服务端消息的英文。较新功能的消息放在 errors/*.ts 中，每个文件各有维护者，并在这里合并；本文件只在新增这类文件时才改动。
+ */
+const CORE_ENGLISH: Record<string, string> = {
   ...PROGRAM_EN,
   '邮箱或密码不正确': 'The email or password is incorrect.',
   '当前密码不正确': 'The current password is incorrect.',
@@ -98,6 +113,7 @@ const ENGLISH: Record<string, string> = {
   '通知时间必须晚于现在': 'Notification times must be in the future.',
   '通知时间不能晚于活动开始后一天': 'Notification times can be at most one day after the event starts.',
   '好友动态互动通知 格式错误': 'The friend update activity setting was not valid.',
+  '课表提醒 格式错误': 'The timetable reminder setting was not valid.',
   // 好友动态: refusals of the /moments routes, their input checks, and the media upload they use.
   // 好友动态：/moments 接口、其输入检查以及所用媒体上传的拒绝提示。
   '这条动态已删除或无法查看': "This update was deleted or isn't available.",
@@ -133,9 +149,17 @@ const ENGLISH: Record<string, string> = {
   '文件为空': 'The file is empty.',
 };
 
+const ENGLISH: Readonly<Record<string, string>> = {
+  ...CORE_ENGLISH,
+  ...TIMETABLE_ENGLISH,
+  ...ADMIN_ENGLISH,
+  ...CHANNEL_ICON_ENGLISH,
+  ...MEDIA_ENGLISH,
+};
+
 /** Patterns for server messages that embed a number or a field name. */
 /** 含数字或字段名的服务端消息。 */
-const ENGLISH_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
+const CORE_PATTERNS: EnglishPattern[] = [
   [/^你已被禁言 (\d+) 分钟$/, (m) => `You have been muted for ${m[1]} minutes.`],
   [/^自定义通知时间最多 (\d+) 个$/, (m) => `You can add at most ${m[1]} custom notification times.`],
   [/^请求失败（(\d+)）$/, (m) => `The request failed (${m[1]}).`],
@@ -145,9 +169,25 @@ const ENGLISH_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^补充说明不能超过 (\d+) 字$/, (m) => `Notes can be ${m[1]} characters at most.`],
   [/^原因不能超过 (\d+) 字$/, (m) => `Reasons can be ${m[1]} characters at most.`],
   [/^最多 (\d+) 张照片$/, (m) => `A post can have at most ${m[1]} photos.`],
+];
+
+/**
+ * The catch-all patterns go last, so a feature's more specific pattern always wins.
+ * 兜底的模式放在最后，功能各自更具体的模式总是优先匹配。
+ */
+const FALLBACK_PATTERNS: EnglishPattern[] = [
   [/^缺少 (.+)$/, () => 'A required field is missing.'],
   [/^(.+) 过长$/, () => 'A field is too long.'],
   [/^(.+) 格式错误$/, () => 'A field is not valid.'],
+];
+
+const ENGLISH_PATTERNS: readonly EnglishPattern[] = [
+  ...CORE_PATTERNS,
+  ...TIMETABLE_PATTERNS,
+  ...ADMIN_PATTERNS,
+  ...CHANNEL_ICON_PATTERNS,
+  ...MEDIA_PATTERNS,
+  ...FALLBACK_PATTERNS,
 ];
 
 export class ApiClientError extends Error {

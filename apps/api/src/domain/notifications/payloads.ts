@@ -72,12 +72,17 @@ export interface MessagePushInput {
   /** 收件人的「显示消息内容」开关。 */
   preview: boolean;
   baseUrl: string;
+  /** The channel's icon as an absolute https URL (icon.ts channelIconPushUrl); the device shows the app icon without it. */
+  /** 频道图标的 https 绝对地址（见 icon.ts 的 channelIconPushUrl）；没有时设备显示 App 图标。 */
+  icon?: string;
 }
 
 /**
  * WeChat style: a channel shows its name over "sender: text", a direct message shows the sender over
- * the text. The room id is the tag, so a newer push for the same chat replaces the older one.
+ * the text. The room id is the tag, so a newer push for the same chat replaces the older one. The channel
+ * icon goes only with the preview: the hidden notice names no chat, and an icon would.
  * 与微信一致：频道以频道名为标题、「发送人: 内容」为正文；私聊以发送人为标题、内容为正文。房间 id 作为 tag，同一聊天较新的推送会替换较旧的一条。
+ * 频道图标只随显示内容的通知一起发送：隐藏内容的通知不透露是哪个聊天，而图标会透露。
  */
 export function messagePushPayload(input: MessagePushInput): PushPayload {
   const base = { tag: input.roomId, url: roomUrl(input.baseUrl, input.roomId), kind: 'message' as const, roomId: input.roomId };
@@ -88,7 +93,12 @@ export function messagePushPayload(input: MessagePushInput): PushPayload {
     return { ...base, title: capped(author, TITLE_MAX), body: capped(content, BODY_MAX) };
   }
   const line = `${input.mentioned ? PUSH_COPY.mentionPrefix : ''}${author}: ${content}`;
-  return { ...base, title: capped(input.roomTitle.trim() || PUSH_COPY.appName, TITLE_MAX), body: capped(line, BODY_MAX) };
+  return {
+    ...base,
+    title: capped(input.roomTitle.trim() || PUSH_COPY.appName, TITLE_MAX),
+    body: capped(line, BODY_MAX),
+    ...(input.icon ? { icon: input.icon } : {}),
+  };
 }
 
 /** How a message left: recalled by its author, deleted by its author, or removed by a moderator. */
@@ -102,12 +112,15 @@ export interface RetractionPushInput {
   authorName: string;
   reason: Retraction;
   baseUrl: string;
+  /** The channel's icon, so the replacement looks like the notice it replaces. */
+  /** 频道图标，使替换后的通知与原通知外观一致。 */
+  icon?: string;
 }
 
 /**
- * Takes the place of a withdrawn message's notice: same tag and title, and a body that no longer holds
- * the text. Only members who see previews get it; the others were never shown the text.
- * 替换已撤回消息的通知：tag 和标题不变，正文不再包含原文。只发给开启了显示内容的成员；其他成员从未看到过原文。
+ * Takes the place of a withdrawn message's notice: same tag, title and channel icon, and a body that no
+ * longer holds the text. Only members who see previews get it; the others were never shown the text.
+ * 替换已撤回消息的通知：tag、标题和频道图标不变，正文不再包含原文。只发给开启了显示内容的成员；其他成员从未看到过原文。
  */
 export function retractionPushPayload(input: RetractionPushInput): PushPayload {
   const author = input.authorName.trim() || PUSH_COPY.appName;
@@ -128,6 +141,7 @@ export function retractionPushPayload(input: RetractionPushInput): PushPayload {
     url: roomUrl(input.baseUrl, input.roomId),
     kind: 'recall',
     roomId: input.roomId,
+    ...(!direct && input.icon ? { icon: input.icon } : {}),
   };
 }
 

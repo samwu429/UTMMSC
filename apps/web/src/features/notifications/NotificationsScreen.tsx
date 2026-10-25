@@ -8,6 +8,7 @@ import { Notice } from '../../shared/ui/Card';
 import { useAppUpdate } from '../../shared/native/AppUpdateBanner';
 import { ANDROID_APP_URL } from '../../shared/native/platform';
 import { Switch } from '../chat/info/Switch';
+import { refresh as refreshTimetable } from '../timetable/state/timetableStore';
 import { notificationsApi } from './api';
 import { openNativeSettings, type ChannelIssue } from './nativePush';
 import { disableOnThisDevice, enableNotifications, refreshAfterReturn, refreshNotificationStatus, useNotificationStore } from './notifications';
@@ -153,6 +154,7 @@ function DeviceHelp() {
           channelWarning({ zh: '消息', en: 'Message' }, channels?.messages ?? null, tr),
           channelWarning({ zh: '活动', en: 'Event' }, channels?.events ?? null, tr),
           channelWarning({ zh: '好友动态', en: 'Friend update' }, channels?.moments ?? null, tr),
+          channelWarning({ zh: '课表提醒', en: 'Timetable reminder' }, channels?.timetable ?? null, tr),
         ].filter((warning): warning is string => warning !== null)
       : [];
 
@@ -160,7 +162,9 @@ function DeviceHelp() {
     <div className="space-y-3 px-4 py-3">
       {message ? <p className="text-[15px] leading-relaxed text-stone-700">{message}</p> : null}
       {device === 'on' ? (
-        <p className="text-[15px] leading-relaxed text-stone-700">{tr('这台设备会收到新消息、活动和好友动态互动的通知。', 'This device gets new messages, event notices and friend update activity.')}</p>
+        <p className="text-[15px] leading-relaxed text-stone-700">
+          {tr('这台设备会收到新消息、活动、好友动态互动和课表提醒的通知。', 'This device gets new messages, event notices, friend update activity and timetable reminders.')}
+        </p>
       ) : null}
       {channelWarnings.map((warning) => (
         <Notice key={warning} tone="error">
@@ -169,7 +173,7 @@ function DeviceHelp() {
       ))}
       {canEnable && device === 'off' && !message ? (
         <p className="text-[15px] leading-relaxed text-stone-700">
-          {tr('开启后，有新消息、活动和好友动态互动时这台设备会收到通知。', 'Turn them on to get new messages, event notices and friend update activity on this device.')}
+          {tr('开启后，有新消息、活动、好友动态互动和课表提醒时这台设备会收到通知。', 'Turn them on to get new messages, event notices, friend update activity and timetable reminders on this device.')}
         </p>
       ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
@@ -211,9 +215,9 @@ function DeviceHelp() {
 }
 
 /**
- * Settings → Notifications: this device's status and switch, the member's four switches (shared by all
+ * Settings → Notifications: this device's status and switch, the member's five switches (shared by all
  * their devices), and a test push.
- * 设置 → 通知：这台设备的状态与开关、成员的四个开关（对所有设备生效），以及测试通知。
+ * 设置 → 通知：这台设备的状态与开关、成员的五个开关（对所有设备生效），以及测试通知。
  */
 export function NotificationsScreen({ onBack }: { onBack: () => void }) {
   const tr = useTr();
@@ -257,6 +261,10 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
     try {
       const res = await notificationsApi.updatePrefs({ [key]: value });
       setPrefs(res.prefs);
+      // The home card and the timetable read this switch from the timetable answer, which a throttled refresh could
+      // leave stale for half a minute; asking now updates them before the member is back.
+      // 首页卡片和课表从课表接口的应答中读取这个开关，按频率限制的刷新可能让它过时半分钟；现在就问一次，成员回去前它们就已更新。
+      if (key === 'timetable') void refreshTimetable({ force: true }).catch(() => undefined);
     } catch (err) {
       setPrefs(before);
       setPrefsError(errorMessage(err));
@@ -317,8 +325,15 @@ export function NotificationsScreen({ onBack }: { onBack: () => void }) {
             onChange={(next) => void change('moments', next)}
           />
           <ToggleRow
+            label={tr('课表提醒', 'Timetable reminders')}
+            hint={tr('上课前和作业截止前提醒，时间在课表里设置', 'Before classes and deadlines; set the times in your timetable')}
+            checked={prefs?.timetable ?? true}
+            disabled={loading}
+            onChange={(next) => void change('timetable', next)}
+          />
+          <ToggleRow
             label={tr('通知显示消息内容', 'Show message content')}
-            hint={tr('关闭后，通知只显示「你收到一条新消息」或「好友动态有新互动」', 'When off, notifications only say there is something new')}
+            hint={tr('关闭后，通知只显示「你收到一条新消息」「10 分钟后有课」这样的提示，不显示内容', 'When off, notifications only say there is something new')}
             checked={prefs?.preview ?? true}
             disabled={loading}
             onChange={(next) => void change('preview', next)}

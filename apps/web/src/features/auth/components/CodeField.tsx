@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { holdAppUpdate } from '../../../app/pwa';
 import { errorMessage } from '../../../shared/api/errors';
 import { useTr } from '../../../shared/i18n/locale';
 import { Button } from '../../../shared/ui/Button';
@@ -28,6 +29,12 @@ export function CodeField({ email, purpose, value, onChange, onError }: Props) {
     const timer = setTimeout(() => setSeconds((s) => s - 1), 1000);
     return () => clearTimeout(timer);
   }, [seconds]);
+
+  // The member leaves the app to read the code, so from 发送 until the form is left a waiting app update must not
+  // reload the page and empty the form.
+  // 成员会离开应用去查看验证码，所以从按下「发送」到离开这张表单，等待中的应用更新都不能重新加载页面、清空表单。
+  const awaitingCode = sending || sentTo !== null;
+  useEffect(() => (awaitingCode ? holdAppUpdate() : undefined), [awaitingCode]);
 
   async function send() {
     onError(null);

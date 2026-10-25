@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { useTr } from '../i18n/locale';
 import { Button } from './Button';
 import { useBackToClose } from './overlayHistory';
@@ -26,19 +26,22 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const resolver = useRef<((value: boolean) => void) | null>(null);
   const tr = useTr();
 
-  function ask(next: ConfirmRequest) {
+  // Stable for the provider's whole life: every message row asks through it, so a new function on each open or
+  // close would re-render all of them.
+  // 在提供者的整个生命周期内保持不变：每条消息行都通过它提问，若每次打开或关闭都换成新函数，所有消息行都会重新渲染。
+  const ask = useCallback((next: ConfirmRequest) => {
     resolver.current?.(false);
     return new Promise<boolean>((resolve) => {
       resolver.current = resolve;
       setRequest(next);
     });
-  }
+  }, []);
 
-  function finish(value: boolean) {
+  const finish = useCallback((value: boolean) => {
     resolver.current?.(value);
     resolver.current = null;
     setRequest(null);
-  }
+  }, []);
 
   // The system back gesture cancels, as a tap outside does, instead of leaving the page.
   // 系统返回手势与点按外部一样表示取消，而不是离开页面。

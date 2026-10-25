@@ -66,8 +66,10 @@ function offsetAt(ms: number, timeZone: string): number {
 
 /**
  * The instant a local wall time names. Day and month overflow roll over as in Date.UTC, so day 0 is
- * the last day of the previous month. A time skipped by a spring-forward lands one hour later.
- * 本地时间对应的时刻。日、月溢出时与 Date.UTC 一样顺延，第 0 日即上个月最后一天。春季拨快时被跳过的时间会落在一小时之后。
+ * the last day of the previous month. A time skipped by a spring-forward lands one hour earlier: 02:30 on
+ * 2027-03-14 gives 06:30Z, which is 01:30 EST. A time the autumn change repeats gives its first, daylight time.
+ * 本地时间对应的时刻。日、月溢出时与 Date.UTC 一样顺延，第 0 日即上个月最后一天。春季拨快时被跳过的时间会落在一小时之前：
+ * 2027-03-14 的 02:30 得到 06:30Z，即东部标准时间 01:30。秋季切换时重复出现的时间取第一次，即夏令时的那个时刻。
  */
 export function wallTimeToUtcMs(year: number, month: number, day: number, hour: number, minute: number, timeZone: string = NOTIFICATION_TIME_ZONE): number {
   const guess = Date.UTC(year, month - 1, day, hour, minute);

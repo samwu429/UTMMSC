@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Experience, MemberDetailResponse, MemberSelf, PresetAvatarId, PresetAvatarMotion } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useTr } from '../../../shared/i18n/locale';
+import { avatarProblemText, prepareAvatarUpload } from '../../../shared/media/avatarPrep';
 import { useSessionStore } from '../../../shared/session/store';
 import { useConfirm } from '../../../shared/ui/confirm';
 import { Notice, Spinner } from '../../../shared/ui/Card';
@@ -84,8 +85,19 @@ export function ProfilePanel({ onShowActivity }: { onShowActivity: () => void })
   async function pickAvatar(file: File) {
     setAvatarBusy(true);
     setError(null);
+    // A camera photo of several MB becomes a 320px square of about 25KB before it leaves the device; it is drawn
+    // in every chat row.
+    // 几 MB 的相机照片在离开设备前先变成约 25KB 的 320px 正方形；它会显示在每一个聊天行里。
+    let upload: File;
     try {
-      const res = await profileApi.uploadAvatar(file);
+      upload = await prepareAvatarUpload(file);
+    } catch (err) {
+      setError(avatarProblemText(err, tr));
+      setAvatarBusy(false);
+      return;
+    }
+    try {
+      const res = await profileApi.uploadAvatar(upload);
       applyMember(res.member, true);
       setMediaToken(res.mediaToken);
     } catch (err) {

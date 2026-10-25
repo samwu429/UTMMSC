@@ -106,6 +106,28 @@ describe('buildConversations: merge and sort', () => {
   });
 });
 
+describe('buildConversations: avatars', () => {
+  const UPLOAD = 'channel-icon/ch_a/cic_AAAAAAAAAAAAAAAA.webp';
+
+  it('carries the channel icon, and the text tile for a channel without one', () => {
+    const rows = build(overview([channel('a', { iconKey: UPLOAD }), channel('p', { iconKey: 'preset:events' }), channel('n', { iconKey: null })]));
+    expect(rowOf(rows, 'channel:a').avatar).toEqual({ kind: 'channel', name: '频道a', iconKey: UPLOAD });
+    expect(rowOf(rows, 'channel:p').avatar).toEqual({ kind: 'channel', name: '频道p', iconKey: 'preset:events' });
+    expect(rowOf(rows, 'channel:n').avatar).toEqual({ kind: 'channel', name: '频道n', iconKey: null });
+  });
+
+  it('reads a server that does not send iconKey yet as no icon', () => {
+    const legacy = channel('old');
+    delete legacy.iconKey;
+    expect(rowOf(build(overview([legacy])), 'channel:old').avatar).toEqual({ kind: 'channel', name: '频道old', iconKey: null });
+  });
+
+  it("gives direct messages the peer's photo", () => {
+    const rows = build(overview([], [direct('d', { peer: { id: 'mem_d', displayName: 'Peer d', role: 'student', enrollmentStatus: 'student', graduationYear: 2024, avatarKey: 'avatar/mem_d/x.jpg' } })]));
+    expect(rowOf(rows, 'direct:d').avatar).toEqual({ kind: 'direct', name: 'Peer d', avatarKey: 'avatar/mem_d/x.jpg' });
+  });
+});
+
 describe('buildConversations: hidden rows', () => {
   it('leaves out a row hidden at or after its newest message', () => {
     const rows = build(
@@ -247,6 +269,30 @@ describe('reuseConversations', () => {
     expect(merged[0]).not.toBe(first[0]);
     expect(merged[1]).toBe(first[1]);
   });
+
+  it('draws a row again when its channel icon changes, and only then', () => {
+    const before = build(overview([channel('a', { lastMessage: message() }), channel('b', { lastMessage: message({ at: at(9) }), iconKey: 'preset:chat' })]));
+    const same = build(overview([channel('a', { lastMessage: message() }), channel('b', { lastMessage: message({ at: at(9) }), iconKey: 'preset:chat' })]));
+    expect(reuseConversations(before, same)).toBe(before);
+
+    const uploaded = build(overview([channel('a', { lastMessage: message(), iconKey: 'preset:tech' }), channel('b', { lastMessage: message({ at: at(9) }), iconKey: 'preset:chat' })]));
+    const merged = reuseConversations(before, uploaded);
+    expect(merged[0]).not.toBe(before[0]);
+    expect(merged[0]?.avatar).toEqual({ kind: 'channel', name: '频道a', iconKey: 'preset:tech' });
+    expect(merged[1]).toBe(before[1]);
+
+    const restored = reuseConversations(merged, build(overview([channel('a', { lastMessage: message() }), channel('b', { lastMessage: message({ at: at(9) }) })])));
+    expect(restored[0]?.avatar).toEqual({ kind: 'channel', name: '频道a', iconKey: null });
+    expect(restored[1]).not.toBe(merged[1]);
+  });
+
+  it("draws a direct row again when the peer's photo changes", () => {
+    const peer = (avatarKey: string | null) => ({ id: 'mem_d', displayName: 'Peer d', role: 'student' as const, enrollmentStatus: 'student' as const, graduationYear: 2024, avatarKey });
+    const before = build(overview([], [direct('d', { peer: peer(null) })]));
+    expect(reuseConversations(before, build(overview([], [direct('d', { peer: peer(null) })])))).toBe(before);
+    const after = reuseConversations(before, build(overview([], [direct('d', { peer: peer('avatar/mem_d/y.jpg') })])));
+    expect(after[0]).not.toBe(before[0]);
+  });
 });
 
 describe('search helpers', () => {
@@ -270,13 +316,15 @@ describe('search helpers', () => {
     const data = overview(
       [
         channel('a', { name: 'Board room', lastMessage: message({ at: at(9) }) }),
-        channel('b', { name: 'Study ROOM', lastMessage: message({ at: at(11) }), prefs: prefs({ hiddenAt: at(12) }) }),
+        channel('b', { name: 'Study ROOM', lastMessage: message({ at: at(11) }), prefs: prefs({ hiddenAt: at(12) }), iconKey: 'preset:academic' }),
         channel('c', { name: 'Events' }),
       ],
       [direct('d', { peer: { id: 'mem_d', displayName: 'Roomie', role: 'student', enrollmentStatus: 'student', graduationYear: 2024, avatarKey: 'k' } })],
     );
     expect(searchConversations(data, 'room').map((item) => item.roomId)).toEqual(['channel:b', 'channel:a', 'direct:d']);
     expect(searchConversations(data, 'room')[2]?.avatar).toEqual({ kind: 'direct', name: 'Roomie', avatarKey: 'k' });
+    expect(searchConversations(data, 'room')[1]?.avatar).toEqual({ kind: 'channel', name: 'Board room', iconKey: null });
+    expect(searchConversations(data, 'room')[0]?.avatar).toEqual({ kind: 'channel', name: 'Study ROOM', iconKey: 'preset:academic' });
     expect(searchConversations(data, ' ')).toEqual([]);
     expect(searchConversations(null, 'room')).toEqual([]);
   });

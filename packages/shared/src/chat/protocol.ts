@@ -82,6 +82,12 @@ export interface ChatMessage {
   replyTo?: QuotePreview | null;
   imageWidth?: number | null;
   imageHeight?: number | null;
+  /**
+   * A 360 px preview of the image, uploaded beside it, that rows show instead of the full image. Null for images
+   * sent before thumbnails existed and for rows without an image; clients then show imageKey.
+   * 与图片一同上传的 360px 预览图，消息行显示它而不是完整图片。缩略图出现之前发送的图片以及没有图片的行为 null，此时客户端显示 imageKey。
+   */
+  thumbKey?: string | null;
   /** Sent only on the viewer's own rows, so an outbox can match its pending item. */
   /** 只出现在观看者自己的消息上，供发送队列匹配待发项。 */
   clientId?: string | null;
@@ -111,6 +117,9 @@ export interface SendFrame {
   mentionAll?: boolean;
   imageWidth?: number;
   imageHeight?: number;
+  /** The image's thumbnail, uploaded like imageKey; only together with imageKey. */
+  /** 图片的缩略图，与 imageKey 一样上传；只能与 imageKey 一起出现。 */
+  thumbKey?: string;
 }
 
 export interface HistoryFrame {
@@ -359,6 +368,9 @@ function parseSend(raw: Record<string, unknown>): SendFrame | null {
   if (!isShortId(raw.clientId)) return null;
   if (typeof raw.text !== 'string') return null;
   if (raw.imageKey !== undefined && (typeof raw.imageKey !== 'string' || raw.imageKey.length > IMAGE_KEY_MAX)) return null;
+  // A thumbnail only describes an attached image.
+  // 缩略图只用于描述附带的图片。
+  if (raw.thumbKey !== undefined && (typeof raw.thumbKey !== 'string' || raw.thumbKey.length === 0 || raw.thumbKey.length > IMAGE_KEY_MAX || raw.imageKey === undefined)) return null;
   if (raw.replyToId !== undefined && !isPositiveInt(raw.replyToId)) return null;
   if (raw.mentionAll !== undefined && typeof raw.mentionAll !== 'boolean') return null;
 
@@ -381,6 +393,7 @@ function parseSend(raw: Record<string, unknown>): SendFrame | null {
 
   const frame: SendFrame = { type: 'send', clientId: raw.clientId, text: raw.text };
   if (typeof raw.imageKey === 'string') frame.imageKey = raw.imageKey;
+  if (typeof raw.thumbKey === 'string') frame.thumbKey = raw.thumbKey;
   if (isPositiveInt(raw.replyToId)) frame.replyToId = raw.replyToId;
   if (mentions && mentions.length > 0) frame.mentions = mentions;
   if (raw.mentionAll === true) frame.mentionAll = true;
@@ -493,12 +506,13 @@ function dimensionOrNull(value: unknown): number | null {
  */
 export function normalizeChatMessage(message: ChatMessage): NormalizedChatMessage {
   const kind: MessageKind = message.kind === 'system' ? 'system' : 'user';
+  const imageKey = typeof message.imageKey === 'string' ? message.imageKey : null;
   return {
     id: message.id,
     roomId: message.roomId,
     author: message.author,
     text: typeof message.text === 'string' ? message.text : '',
-    imageKey: typeof message.imageKey === 'string' ? message.imageKey : null,
+    imageKey,
     createdAt: message.createdAt,
     deleted: message.deleted === true,
     recalled: message.recalled === true,
@@ -507,6 +521,9 @@ export function normalizeChatMessage(message: ChatMessage): NormalizedChatMessag
     replyTo: normalizeQuote(message.replyTo),
     imageWidth: dimensionOrNull(message.imageWidth),
     imageHeight: dimensionOrNull(message.imageHeight),
+    // A thumbnail without its image would show a picture the row no longer has.
+    // 没有原图的缩略图会显示一张这一行已不再拥有的图片。
+    thumbKey: imageKey !== null && typeof message.thumbKey === 'string' && message.thumbKey.length > 0 ? message.thumbKey : null,
     clientId: typeof message.clientId === 'string' && message.clientId.length > 0 ? message.clientId : null,
     deletedBy: message.deletedBy === 'author' || message.deletedBy === 'moderator' ? message.deletedBy : null,
     rev: isNonNegativeInt(message.rev) ? message.rev : 0,

@@ -18,6 +18,14 @@ export interface Env {
   /** CORS 允许的浏览器来源，逗号分隔。 */
   APP_ORIGIN: string;
   APP_BASE_URL: string;
+  /**
+   * The public address of this API, https://utmmsc.com/api, where the site Worker forwards /api/* to it. Absolute
+   * URLs the server hands out start with it: notification icons, and room sockets for requests that came through
+   * the site. Without it uploaded channel icons are left out of pushes, and preset icons still show.
+   * 本接口的公开地址 https://utmmsc.com/api，网站 Worker 把 /api/* 转发到这里。服务器给出的绝对地址以它开头：通知图标，
+   * 以及经由网站转发而来的请求所拿到的房间连接地址。没有它时，推送中不带上传的频道图标，预设图标照常显示。
+   */
+  API_PUBLIC_URL?: string;
   MAIL_FROM_EMAIL: string;
   MAIL_FROM_NAME: string;
   WEATHER_LATITUDE: string;

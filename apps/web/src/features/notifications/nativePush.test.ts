@@ -111,36 +111,44 @@ describe('channel settings', () => {
     expect(channelIssue(undefined)).toBeNull();
   });
 
-  it('reports the messages, events and moments channels, and nothing where Android has no channels', async () => {
+  it('reports the messages, events, moments and timetable channels, and nothing where Android has no channels', async () => {
     push.listChannels.mockResolvedValue({
       channels: [
         { id: 'messages', importance: 0 },
         { id: 'events', importance: 4 },
         { id: 'moments', importance: 2 },
+        { id: 'timetable', importance: 0 },
         { id: 'other', importance: 1 },
       ],
     });
-    expect(await nativeChannelIssues()).toEqual({ messages: 'off', events: null, moments: 'quiet' });
+    expect(await nativeChannelIssues()).toEqual({ messages: 'off', events: null, moments: 'quiet', timetable: 'off' });
+    push.listChannels.mockResolvedValue({ channels: [{ id: 'timetable', importance: 1 }] });
+    expect((await nativeChannelIssues())?.timetable).toBe('quiet');
     push.listChannels.mockRejectedValue(new Error('not available on Android 7'));
     expect(await nativeChannelIssues()).toBeNull();
   });
 
-  it('says nothing about the moments channel before the web has created it', async () => {
+  it('says nothing about the moments and timetable channels before the web has created them', async () => {
     push.listChannels.mockResolvedValue({ channels: [{ id: 'messages', importance: 5 }, { id: 'events', importance: 4 }] });
-    expect(await nativeChannelIssues()).toEqual({ messages: null, events: null, moments: null });
+    expect(await nativeChannelIssues()).toEqual({ messages: null, events: null, moments: null, timetable: null });
   });
 
-  it('creates the moments channel beside messages and events, at a level that sounds without a pop-up, once', async () => {
+  it('creates moments, at a level that sounds without a pop-up, and timetable, which pops up like events, once', async () => {
     await ensureNativeChannels();
     expect(push.createChannel.mock.calls.map(([channel]) => [channel.id, channel.importance])).toEqual([
       ['messages', 5],
       ['events', 4],
       ['moments', 3],
+      ['timetable', 4],
     ]);
-    expect(push.createChannel).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'moments', name: '好友动态', vibration: true }));
+    expect(push.createChannel).toHaveBeenCalledWith(expect.objectContaining({ id: 'moments', name: '好友动态', vibration: true }));
+    expect(push.createChannel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'timetable', name: '课表提醒', description: '上课前和作业截止前提醒，时间在课表里设置', vibration: true }),
+    );
     expect(channelIssue(3)).toBeNull();
+    expect(channelIssue(4)).toBeNull();
     await ensureNativeChannels();
-    expect(push.createChannel).toHaveBeenCalledTimes(3);
+    expect(push.createChannel).toHaveBeenCalledTimes(4);
   });
 });
 

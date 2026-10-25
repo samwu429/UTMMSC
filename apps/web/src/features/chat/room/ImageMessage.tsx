@@ -1,30 +1,44 @@
 import { useRef, useState } from 'react';
 import { useTr } from '../../../shared/i18n/locale';
+import { thumbKeyFor } from '../../../shared/media/thumbIndex';
 import type { LongPressHandlers } from '../../../shared/ui/useLongPress';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
 import { chatApi } from '../api';
 import { fitThumb } from './imageBox';
 
 /**
- * The first address that loaded for each image key. Media tokens are refreshed every 50 minutes; reusing
- * the address that already worked keeps thumbnails from reloading when that happens.
- * 每个图片键第一个加载成功的地址。媒体令牌每 50 分钟刷新一次；沿用已成功的地址，刷新时缩略图不会重新加载。
+ * The first address that loaded for each stored key (a thumbnail or a full image). Media tokens are refreshed from
+ * time to time; reusing the address that already worked keeps rows from reloading when that happens.
+ * 每个存储键（缩略图或完整图片）第一个加载成功的地址。媒体令牌会不时刷新；沿用已成功的地址，刷新时消息行不会重新加载。
  */
 const workingSrc = new Map<string, string>();
 const WORKING_SRC_MAX = 500;
 
-function remember(imageKey: string, src: string) {
-  if (workingSrc.get(imageKey) === src) return;
-  workingSrc.delete(imageKey);
-  workingSrc.set(imageKey, src);
+function remember(key: string, src: string) {
+  if (workingSrc.get(key) === src) return;
+  workingSrc.delete(key);
+  workingSrc.set(key, src);
   if (workingSrc.size > WORKING_SRC_MAX) {
     const oldest = workingSrc.keys().next().value;
     if (oldest !== undefined) workingSrc.delete(oldest);
   }
 }
 
+function srcOf(key: string, mediaToken: string | null): string | null {
+  return workingSrc.get(key) ?? (mediaToken ? chatApi.mediaUrl(key, mediaToken) : null);
+}
+
+/** The full image, which the viewer shows and 保存图片 saves. */
+/** 完整图片，查看器显示它，「保存图片」也保存它。 */
 export function chatImageSrc(imageKey: string, mediaToken: string | null): string | null {
-  return workingSrc.get(imageKey) ?? (mediaToken ? chatApi.mediaUrl(imageKey, mediaToken) : null);
+  return srcOf(imageKey, mediaToken);
+}
+
+/** The image's 360px thumbnail, or null when it has none (sent before thumbnails, or a GIF). */
+/** 图片的 360px 缩略图；没有缩略图时（缩略图出现之前发送的图片，或 GIF）为 null。 */
+export function chatThumbSrc(imageKey: string, mediaToken: string | null): string | null {
+  const thumbKey = thumbKeyFor(imageKey);
+  return thumbKey ? srcOf(thumbKey, mediaToken) : null;
 }
 
 export interface PendingImageView {
@@ -47,44 +61,58 @@ interface Props {
 }
 
 /**
- * Bare thumbnail with no bubble, in a box reserved before it loads so the list never shifts. It retries
- * once with the current token, then shows a gray 「图片已失效」 tile. A pending image shows the local
- * file dimmed with its upload percentage.
- * 不带气泡的缩略图，加载前就预留好尺寸，列表因此不会跳动。失败时用当前令牌重试一次，之后显示灰色的「图片已失效」。
- * 待发图片显示变暗的本地文件和上传百分比。
+ * Bare thumbnail with no bubble, in a box reserved before it loads so the list never shifts. It shows the 360px
+ * thumbnail stored beside the image when there is one and loads only once it nears the screen. A failed load is
+ * retried once with the current token; a thumbnail that still fails gives way to the full image, and only then does
+ * the gray 「图片已失效」 tile show. A pending image shows the local file dimmed with its upload percentage.
+ * 不带气泡的缩略图，加载前就预留好尺寸，列表因此不会跳动。有与图片一同存储的 360px 缩略图时显示缩略图，并且只在接近屏幕时才加载。
+ * 加载失败时用当前令牌重试一次；缩略图仍然失败就改用完整图片，之后才显示灰色的「图片已失效」。待发图片显示变暗的本地文件和上传百分比。
  */
 export function ImageMessage({ imageKey, width, height, mediaToken, pending, pressed = false, handlers, onOpen }: Props) {
   const tr = useTr();
   const box = fitThumb(width, height);
   const elementRef = useRef<HTMLButtonElement>(null);
-  const [pinned, setPinned] = useState<string | null>(null);
-  const [retrySrc, setRetrySrc] = useState<string | null>(null);
+  const [pinned, setPinned] = useState<{ key: string; src: string } | null>(null);
+  const [retry, setRetry] = useState<{ key: string; src: string } | null>(null);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const [thumbFailed, setThumbFailed] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
-  const known = imageKey ? (workingSrc.get(imageKey) ?? null) : null;
-  const fresh = imageKey && mediaToken ? chatApi.mediaUrl(imageKey, mediaToken) : null;
-  const src = pending ? pending.localUrl : (retrySrc ?? pinned ?? known ?? fresh);
+  const thumbKey = imageKey ? thumbKeyFor(imageKey) : null;
+  const shownKey = thumbKey && thumbKey !== thumbFailed ? thumbKey : imageKey;
+  const known = shownKey ? (workingSrc.get(shownKey) ?? null) : null;
+  const fresh = shownKey && mediaToken ? chatApi.mediaUrl(shownKey, mediaToken) : null;
+  const retrySrc = retry && retry.key === shownKey ? retry.src : null;
+  const pinnedSrc = pinned && pinned.key === shownKey ? pinned.src : null;
+  const src = pending ? pending.localUrl : (retrySrc ?? pinnedSrc ?? known ?? fresh);
   // An address that already loaded once is in the browser cache, so it shows without the placeholder.
   // 已经加载过的地址在浏览器缓存中，因此不经过占位即可显示。
   const loaded = Boolean(pending) || (src !== null && (src === loadedSrc || src === known));
-  // Once the upload is done, warm the cache with the stored copy so the confirmed row shows at once.
-  // 上传完成后预先加载存储副本，确认后的消息因此能立即显示。
+  // Once the upload is done, warm the cache with the copy the confirmed row will show, so it appears at once.
+  // 上传完成后预先加载确认后的消息行将要显示的副本，它因此能立即出现。
   const warm = pending && !pending.uploading && fresh ? fresh : null;
 
   function onLoad() {
-    if (!src || pending) return;
-    if (imageKey) remember(imageKey, src);
+    if (!src || pending || !shownKey) return;
+    remember(shownKey, src);
     setLoadedSrc(src);
-    setPinned(src);
+    setPinned({ key: shownKey, src });
   }
 
   function onError() {
-    if (pending || !imageKey) return;
+    if (pending || !imageKey || !shownKey) return;
     if (retrySrc === null && mediaToken) {
-      workingSrc.delete(imageKey);
+      workingSrc.delete(shownKey);
       setPinned(null);
-      setRetrySrc(`${chatApi.mediaUrl(imageKey, mediaToken)}&retry=1`);
+      setRetry({ key: shownKey, src: `${chatApi.mediaUrl(shownKey, mediaToken)}&retry=1` });
+      return;
+    }
+    if (shownKey !== imageKey && thumbKey) {
+      // The thumbnail is only a lighter copy; the full image may still load.
+      // 缩略图只是更轻的副本；完整图片仍可能加载成功。
+      setThumbFailed(thumbKey);
+      setPinned(null);
+      setRetry(null);
       return;
     }
     setFailed(true);
@@ -116,6 +144,7 @@ export function ImageMessage({ imageKey, width, height, mediaToken, pending, pre
               src={src}
               alt=""
               draggable={false}
+              loading={pending ? undefined : 'lazy'}
               decoding="async"
               onLoad={onLoad}
               onError={onError}
@@ -135,7 +164,7 @@ export function ImageMessage({ imageKey, width, height, mediaToken, pending, pre
         </>
       )}
       {pressed ? <span className="absolute inset-0 bg-black/15" aria-hidden /> : null}
-      {warm && imageKey ? <img src={warm} alt="" hidden onLoad={() => remember(imageKey, warm)} /> : null}
+      {warm && shownKey ? <img src={warm} alt="" hidden onLoad={() => remember(shownKey, warm)} /> : null}
     </button>
   );
 }

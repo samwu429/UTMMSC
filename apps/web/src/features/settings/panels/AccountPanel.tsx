@@ -390,7 +390,7 @@ export function AccountPanel({
       ) : null}
       <Group>
         <button type="button" onClick={onOpenProfile} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-stone-50">
-          <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-14 w-14 text-xl" />
+          <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} presetSize={256} className="h-14 w-14 text-xl" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[18px] font-medium text-brand-800">{member.displayName}</span>
             <span className="mt-0.5 block truncate text-sm text-stone-500">{member.headline || tr('去完善资料', 'Complete your profile')}</span>

@@ -1,9 +1,17 @@
+import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import { isHonoraryRole, isStaffRole, showsEnrollment, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
 import { useLabels } from '../../../shared/i18n/locale';
 import { MemberAvatar } from '../../profile/InitialAvatar';
 
-export function MemberRow({
+/**
+ * One directory row. It is memoised and its callbacks take the member id, so a keystroke in the search box, which
+ * re-renders the page, re-renders no row whose member and friendship are unchanged. Rows off screen skip layout
+ * and paint (content-visibility), sized as the 64px they take once drawn.
+ * 目录中的一行。它经过 memo，回调以成员 id 为参数；搜索框的每次按键虽然会重新渲染页面，但成员和好友关系未变的行都不会重新渲染。
+ * 屏幕外的行跳过布局和绘制（content-visibility），按绘制后的 64px 预留高度。
+ */
+export const MemberRow = memo(function MemberRow({
   member,
   friendship = 'none',
   busy = false,
@@ -13,13 +21,13 @@ export function MemberRow({
   member: MemberProfile;
   friendship?: FriendshipState;
   busy?: boolean;
-  onRequest?: () => void;
-  onAccept?: () => void;
+  onRequest?: (memberId: string) => void;
+  onAccept?: (memberId: string) => void;
 }) {
   const { tr, role, enrollment, year, major } = useLabels();
   const title = isStaffRole(member.role) || isHonoraryRole(member.role) ? role(member.role) : null;
   return (
-    <div className="flex items-center gap-2 pr-3 active:bg-stone-50">
+    <div className="flex items-center gap-2 pr-3 [contain-intrinsic-size:auto_64px] [content-visibility:auto] active:bg-stone-50">
       <Link to={`/directory/${member.id}`} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
         <MemberAvatar name={member.displayName} avatarKey={member.avatarKey} className="h-10 w-10 text-sm" />
         <div className="min-w-0 flex-1">
@@ -33,18 +41,18 @@ export function MemberRow({
       {friendship === 'friends' ? <span className="shrink-0 text-xs text-brand-700">{tr('好友', 'Friends')}</span> : null}
       {friendship === 'outgoing' ? <span className="shrink-0 text-xs text-stone-400">{tr('等待通过', 'Pending')}</span> : null}
       {friendship === 'incoming' && onAccept ? (
-        <button type="button" disabled={busy} onClick={onAccept} className="mr-1 shrink-0 rounded-full bg-brand-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">
+        <button type="button" disabled={busy} onClick={() => onAccept(member.id)} className="mr-1 shrink-0 rounded-full bg-brand-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">
           {tr('通过', 'Accept')}
         </button>
       ) : null}
       {friendship === 'none' && onRequest ? (
-        <button type="button" disabled={busy} onClick={onRequest} className="mr-1 shrink-0 rounded-full bg-brand-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">
+        <button type="button" disabled={busy} onClick={() => onRequest(member.id)} className="mr-1 shrink-0 rounded-full bg-brand-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40">
           {tr('加好友', 'Add')}
         </button>
       ) : null}
     </div>
   );
-}
+});
 
 function memberLine(
   member: MemberProfile,

@@ -1,7 +1,9 @@
 import { parseRoomId } from '@utmmsc/shared';
 import { canReadChannel } from '../../domain/authorization/channel-access';
+import { channelIconKeyOf, channelIconNeedsToken, channelIconPushUrl } from '../../domain/notifications/icon';
 import { messagePushPayload, retractionPushPayload, type Retraction } from '../../domain/notifications/payloads';
 import { selectMessageRecipients, type MessageRecipient } from '../../domain/notifications/recipients';
+import { issueProfileMediaToken } from '../../domain/profile/media-token';
 import type { Env } from '../../env';
 import { findChannel, listChannelMemberIds } from '../d1/channels';
 import { listMutedMemberIds } from '../d1/chat-prefs';
@@ -46,7 +48,27 @@ export interface ChatMessageNotice {
 interface ResolvedRecipients {
   kind: 'channel' | 'direct';
   title: string;
+  /** The channel's icon key from the row already read; null for direct messages and channels without one. */
+  /** 取自已读取的频道记录的图标键；私聊和没有图标的频道为 null。 */
+  iconKey: string | null;
   recipients: MessageRecipient[];
+}
+
+/**
+ * The icon URL for one fan-out. An uploaded icon needs a media token, issued once here for every recipient;
+ * it lives at least seven days, so a notice opened later still shows its icon. Never throws: without an icon
+ * the device shows the app icon.
+ * 一次推送分发所用的图标地址。上传的图标需要媒体令牌，这里为所有收件人只签发一次；令牌至少有效七天，稍后打开的通知仍能显示图标。
+ * 从不抛出异常：没有图标时设备显示 App 图标。
+ */
+export async function channelPushIcon(env: Env, iconKey: string | null): Promise<string | undefined> {
+  if (!iconKey) return undefined;
+  try {
+    const token = channelIconNeedsToken(iconKey) && env.API_PUBLIC_URL ? await issueProfileMediaToken(env.SESSION_SECRET) : null;
+    return channelIconPushUrl({ iconKey, apiBase: env.API_PUBLIC_URL, appBase: env.APP_BASE_URL, token });
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -61,6 +83,7 @@ export async function resolveMessageRecipients(env: Env, notice: ChatMessageNoti
 
   let kind: 'channel' | 'direct';
   let title: string;
+  let iconKey: string | null = null;
   let readers: string[];
   let prefsSource: Awaited<ReturnType<typeof listPushableMembers>>;
 
@@ -78,6 +101,7 @@ export async function resolveMessageRecipients(env: Env, notice: ChatMessageNoti
     readers = prefsSource.map((m) => m.id);
     kind = 'channel';
     title = channel.name;
+    iconKey = channelIconKeyOf(channel);
   } else {
     const conversation = await findDirect(env.DB, parsed.id);
     if (!conversation) return null;
@@ -89,7 +113,7 @@ export async function resolveMessageRecipients(env: Env, notice: ChatMessageNoti
     kind = 'direct';
     title = notice.authorName;
   }
-  if (readers.length === 0) return { kind, title, recipients: [] };
+  if (readers.length === 0) return { kind, title, iconKey, recipients: [] };
 
   const muted = await listMutedMemberIds(env.DB, notice.roomId);
   const recipients = selectMessageRecipients({
@@ -101,7 +125,7 @@ export async function resolveMessageRecipients(env: Env, notice: ChatMessageNoti
     mentions: notice.mentions,
     mentionAll: notice.mentionAll,
   });
-  return { kind, title, recipients };
+  return { kind, title, iconKey, recipients };
 }
 
 /**
@@ -120,6 +144,7 @@ export async function notifyChatMessage(env: Env, notice: ChatMessageNotice): Pr
     }
     if (recipients.length === 0) return null;
     const mentioned = new Map(recipients.map((r) => [r.memberId, r.mentioned]));
+    const icon = await channelPushIcon(env, resolved.iconKey);
     return await sendToMembers(env, [...mentioned.keys()], (memberId, prefs) =>
       !prefs.messages ? null : messagePushPayload({
         roomId: notice.roomId,
@@ -131,6 +156,7 @@ export async function notifyChatMessage(env: Env, notice: ChatMessageNotice): Pr
         mentioned: mentioned.get(memberId) ?? false,
         preview: prefs.preview,
         baseUrl: env.APP_BASE_URL,
+        icon,
       }),
     );
   } catch (err) {
@@ -161,10 +187,12 @@ export async function notifyChatRetraction(env: Env, notice: ChatRetractionNotic
     const parsed = parseRoomId(notice.roomId);
     if (!parsed) return null;
     let roomTitle = '';
+    let iconKey: string | null = null;
     if (parsed.kind === 'channel') {
       const channel = await findChannel(env.DB, parsed.id);
       if (!channel) return null;
       roomTitle = channel.name;
+      iconKey = channelIconKeyOf(channel);
     }
     const payload = retractionPushPayload({
       roomId: notice.roomId,
@@ -173,6 +201,7 @@ export async function notifyChatRetraction(env: Env, notice: ChatRetractionNotic
       authorName: notice.authorName,
       reason: notice.reason,
       baseUrl: env.APP_BASE_URL,
+      icon: await channelPushIcon(env, iconKey),
     });
     return await sendToMembers(env, notice.memberIds, (_memberId, prefs) => (prefs.preview ? payload : null));
   } catch (err) {

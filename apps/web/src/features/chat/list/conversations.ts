@@ -20,7 +20,12 @@ import { draftFor, type ChatDraft } from '../state/drafts';
 
 export type ConversationBadge = { type: 'count'; n: number } | { type: 'dot' } | null;
 
-export type ConversationAvatar = { kind: 'channel'; name: string } | { kind: 'direct'; name: string; avatarKey: string | null };
+/**
+ * iconKey is the channel's icon (an upload or preset:<id>), null for the text tile and for servers that do not send
+ * it yet.
+ * iconKey 是频道图标（上传的图标或 preset:<id>）；为 null 时显示文字头像，尚未返回该字段的旧服务端也是 null。
+ */
+export type ConversationAvatar = { kind: 'channel'; name: string; iconKey: string | null } | { kind: 'direct'; name: string; avatarKey: string | null };
 
 /** A red or gray bracket tag in front of the preview, such as [有人@我], [草稿] or [3条]. */
 /** 预览前面的红色或灰色方括号标记，例如 [有人@我]、[草稿] 或 [3条]。 */
@@ -169,7 +174,7 @@ function channelRow(channel: ChannelSummary, drafts: Record<string, ChatDraft>, 
     roomId,
     kind: 'channel',
     title: channel.name,
-    avatar: { kind: 'channel', name: channel.name },
+    avatar: { kind: 'channel', name: channel.name, iconKey: channel.iconKey ?? null },
     timeLabel: activityAt ? formatChatListTime(activityAt, nowMs, locale) : '',
     preview: previewFor(
       {
@@ -265,6 +270,14 @@ export function buildConversations(
   return rows.sort(compareConversations);
 }
 
+/** Same picture: the channel icon or the peer's photo, besides the name both share. */
+/** 头像是否相同：除了共有的名称，还比较频道图标或对方的头像。 */
+function sameAvatar(a: ConversationAvatar, b: ConversationAvatar): boolean {
+  if (a.kind === 'channel' && b.kind === 'channel') return a.name === b.name && a.iconKey === b.iconKey;
+  if (a.kind === 'direct' && b.kind === 'direct') return a.name === b.name && a.avatarKey === b.avatarKey;
+  return false;
+}
+
 function sameConversation(a: Conversation, b: Conversation): boolean {
   return (
     a.roomId === b.roomId &&
@@ -276,9 +289,7 @@ function sameConversation(a: Conversation, b: Conversation): boolean {
     a.unreadCount === b.unreadCount &&
     a.markedUnread === b.markedUnread &&
     a.activityAt === b.activityAt &&
-    a.avatar.kind === b.avatar.kind &&
-    a.avatar.name === b.avatar.name &&
-    (a.avatar.kind === 'direct' && b.avatar.kind === 'direct' ? a.avatar.avatarKey === b.avatar.avatarKey : true) &&
+    sameAvatar(a.avatar, b.avatar) &&
     a.preview.text === b.preview.text &&
     a.preview.tag?.text === b.preview.tag?.text &&
     a.preview.tag?.tone === b.preview.tag?.tone &&
@@ -326,7 +337,7 @@ export function searchConversations(overview: ChatOverviewResponse | null, query
       roomId: channelRoomId(channel.id),
       kind: 'channel',
       title: channel.name,
-      avatar: { kind: 'channel', name: channel.name },
+      avatar: { kind: 'channel', name: channel.name, iconKey: channel.iconKey ?? null },
       activityAt: channel.lastMessage?.at ?? channel.lastMessageAt ?? channel.joinedAt ?? null,
     });
   }

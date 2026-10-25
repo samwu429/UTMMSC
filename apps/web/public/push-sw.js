@@ -1,11 +1,14 @@
 /*
  * Push handling, loaded into the generated service worker with importScripts (vite.config.ts).
- * The server sends a JSON PushPayload: { title, body, tag, url, kind, roomId?, eventId?, postId? }. Kind recall
+ * The server sends a JSON PushPayload: { title, body, tag, url, kind, roomId?, eventId?, postId?, icon? }. Kind recall
  * replaces the notice of a withdrawn message under the same tag, without sound. Kind moment is a comment, a
  * reply or a moderator's removal in 好友动态, and moment_recall quietly replaces the notice of a deleted comment.
+ * Kinds class and assignment are timetable reminders. icon, such as a channel's icon, is used only when it is an
+ * https address; otherwise the notice shows the app icon.
  * 推送处理，通过 importScripts 加载到生成的 Service Worker 中（见 vite.config.ts）。
- * 服务器发送 JSON 格式的 PushPayload：{ title, body, tag, url, kind, roomId?, eventId?, postId? }。recall 类型以相同 tag
+ * 服务器发送 JSON 格式的 PushPayload：{ title, body, tag, url, kind, roomId?, eventId?, postId?, icon? }。recall 类型以相同 tag
  * 替换已撤回消息的通知，且不发出声音。moment 类型是好友动态中的评论、回复或管理员移除；moment_recall 安静地替换已删除评论的通知。
+ * class 和 assignment 类型是课表提醒。icon（例如频道图标）只有是 https 地址时才使用，否则通知显示应用图标。
  */
 (function () {
   var SCOPE = self.registration.scope;
@@ -20,6 +23,28 @@
   var MOMENTS = 'utmmsc:moments';
   var MOMENTS_PATH = SCOPE_PATH + 'discover/feed';
   var WHERE_WAIT_MS = 500;
+  // A newer notice under the same tag alerts again for these kinds: the next message in a chat, the next comment on
+  // a post, the next class, a deadline coming closer. The others only replace the notice in place.
+  // 这些类型在相同 tag 下的新通知会再次提醒：同一聊天的下一条消息、同一动态的下一条评论、下一节课、越来越近的截止时间。
+  // 其他类型只原地替换通知。
+  var RENOTIFY_KINDS = ['message', 'moment', 'class', 'assignment'];
+  var ICON_MAX_LENGTH = 2048;
+
+  /**
+   * The notice's picture: an https address the server chose, such as a channel's icon. Anything else, a plain
+   * http address, a data or javascript address, or a relative path, gives null and the app icon is used.
+   * 通知的图片：服务器给出的 https 地址，例如频道图标。其他任何地址（普通 http、data 或 javascript 地址、相对路径）都返回 null，
+   * 改用应用图标。
+   */
+  function iconOf(raw) {
+    if (typeof raw !== 'string' || raw.length > ICON_MAX_LENGTH || raw.indexOf('https://') !== 0) return null;
+    try {
+      var url = new URL(raw);
+      return url.protocol === 'https:' && url.hostname ? url.href : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   function readPayload(event) {
     var fallback = { title: 'UTMMSC', body: '你收到一条新消息', tag: 'utmmsc', url: SCOPE, kind: 'message' };
@@ -35,6 +60,7 @@
         kind: typeof data.kind === 'string' ? data.kind : 'message',
         roomId: typeof data.roomId === 'string' ? data.roomId : null,
         postId: typeof data.postId === 'string' ? data.postId : null,
+        icon: iconOf(data.icon),
       };
     } catch (_) {
       return fallback;
@@ -161,13 +187,13 @@
     var quiet = payload.kind === 'recall' || payload.kind === 'moment_recall';
     return self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: ICON,
+      icon: payload.icon || ICON,
       badge: BADGE,
       tag: payload.tag,
-      // A newer message in the same chat, or a newer comment on the same post, replaces the older notice and
-      // still alerts; a withdrawal or a deleted comment only replaces it.
-      // 同一聊天的新消息、同一动态的新评论替换旧通知，并仍然提醒；撤回和已删除的评论只替换，不提醒。
-      renotify: payload.kind === 'message' || payload.kind === 'moment',
+      // A newer message in the same chat, a newer comment on the same post, the next class or a nearer deadline
+      // replaces the older notice and still alerts; a withdrawal or a deleted comment only replaces it.
+      // 同一聊天的新消息、同一动态的新评论、下一节课或更近的截止时间替换旧通知，并仍然提醒；撤回和已删除的评论只替换，不提醒。
+      renotify: RENOTIFY_KINDS.indexOf(payload.kind) >= 0,
       silent: quiet,
       lang: 'zh-CN',
       data: { url: localUrl(payload.url), kind: payload.kind, roomId: payload.roomId, postId: payload.postId },

@@ -80,6 +80,17 @@ describe('wall clock conversion', () => {
     expect(new Date(wallTimeToUtcMs(2026, 11, 0, 21, 0)).toISOString()).toBe('2026-11-01T01:00:00.000Z');
   });
 
+  it('puts a time skipped by the spring change one hour earlier', () => {
+    // 02:30 does not exist on 2027-03-14; 06:30Z is 01:30 EST, before the jump.
+    expect(new Date(wallTimeToUtcMs(2027, 3, 14, 2, 30)).toISOString()).toBe('2027-03-14T06:30:00.000Z');
+    expect(wallClockAt(wallTimeToUtcMs(2027, 3, 14, 2, 30))).toMatchObject({ hour: 1, minute: 30 });
+  });
+
+  it('gives the daylight-time instant for a time the autumn change repeats', () => {
+    // 01:30 happens twice on 2026-11-01; the first is 05:30Z (EDT), the second 06:30Z (EST).
+    expect(new Date(wallTimeToUtcMs(2026, 11, 1, 1, 30)).toISOString()).toBe('2026-11-01T05:30:00.000Z');
+  });
+
   it('reads midnight as hour 0', () => {
     expect(wallClockAt(Date.parse('2026-10-25T04:00:00Z')).hour).toBe(0);
   });

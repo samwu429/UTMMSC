@@ -183,5 +183,7 @@ export function announcementMail(to: { email: string; name: string }[], title: s
     `<div style="white-space:pre-wrap;">${escapeHtml(body)}</div>${linkParagraph(appBaseUrl)}`,
     title,
   );
-  return { to, subject: `UTMMSC 公告：${title}`, text: plainLetter(title, [body, appBaseUrl]), html };
+  // A batch of members, so each gets their own copy and never sees the others' addresses.
+  // 收件人是一批成员，因此每人各收一份，看不到其他人的地址。
+  return { to, separate: true, subject: `UTMMSC 公告：${title}`, text: plainLetter(title, [body, appBaseUrl]), html };
 }

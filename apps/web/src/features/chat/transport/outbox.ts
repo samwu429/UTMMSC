@@ -1,4 +1,5 @@
 import { IMAGE_DIMENSION_MAX, MENTIONS_MAX, type QuotePreview, type SendFrame, type ServerFrame } from '@utmmsc/shared';
+import { holdAppUpdate } from '../../../app/pwa';
 import type { PendingImage, PendingMessage } from '../room/types';
 
 /** How long a sent item may wait for its echo, counted only while the socket is ready and the page is visible. */
@@ -8,13 +9,25 @@ export const ACK_TIMEOUT_MS = 12_000;
 /** 两次发送之间的最小间隔，使较长的队列不超过房间的发送频率限制。 */
 export const FLUSH_SPACING_MS = 900;
 
+/**
+ * A finished image upload: the stored key, the thumbnail's key when one was stored beside it, and the stored image's
+ * size when it differs from the picked one (a photo re-encoded at a 2048px long edge).
+ * 已完成的图片上传：存储键、一同存储的缩略图的键，以及存储图片与所选图片尺寸不同时（照片按 2048px 长边重新编码）的新尺寸。
+ */
+export interface UploadedImage {
+  imageKey: string;
+  thumbKey?: string | null;
+  width?: number;
+  height?: number;
+}
+
 export interface OutboxTransport {
   /** Returns false when the socket is not open and nothing was sent. */
   /** 连接未打开、未发送时返回 false。 */
   send(frame: SendFrame): boolean;
-  /** Resolves with the stored image key. */
-  /** 返回存储后的图片键。 */
-  upload(file: Blob, options: { signal: AbortSignal; onProgress(fraction: number): void }): Promise<string>;
+  /** Resolves with the stored image key, or the keys and size of an upload that also stored a thumbnail. */
+  /** 返回存储后的图片键；同时存储了缩略图时返回各个键和尺寸。 */
+  upload(file: Blob, options: { signal: AbortSignal; onProgress(fraction: number): void; size: { width: number; height: number } }): Promise<string | UploadedImage>;
   /** False while the device is known to be offline, so uploads wait instead of failing at once. */
   /** 设备已知离线时为 false，上传因此等待而不是立即失败。 */
   online?(): boolean;
@@ -53,6 +66,12 @@ export interface OutboxOptions {
   ackTimeoutMs?: number;
   spacingMs?: number;
   makeClientId?(): string;
+  /**
+   * Keeps a waiting app update from reloading the page and returns the release; by default the app's own (pwa.ts).
+   * The items live only in memory, so a reload would lose them without a word.
+   * 阻止等待中的应用更新重新加载页面，并返回释放函数；默认使用应用自己的（pwa.ts）。待发项只保存在内存中，重新加载会让它们无声无息地丢失。
+   */
+  holdUpdate?(): () => void;
 }
 
 export interface OutboxInput {
@@ -60,7 +79,7 @@ export interface OutboxInput {
   replyTo?: QuotePreview | null;
   mentions?: string[];
   mentionAll?: boolean;
-  image?: { file: Blob | null; localUrl: string; width: number; height: number; imageKey?: string | null } | null;
+  image?: { file: Blob | null; localUrl: string; width: number; height: number; imageKey?: string | null; thumbKey?: string | null } | null;
 }
 
 /** Time spent waiting for one echo, counting only stretches while the socket is ready and the page is visible. */
@@ -82,6 +101,9 @@ type Unanswered = 'deduplicated' | 'legacy' | null;
 interface OutboxItem {
   view: PendingMessage;
   file: Blob | null;
+  /** Stored beside the image by its upload; the view has no use for it, so it stays here. */
+  /** 上传时与图片一同存储；视图用不到它，因此只保存在这里。 */
+  thumbKey: string | null;
   /** Set while the item waits for its echo. */
   /** 等待回显期间设置。 */
   clock: AckClock | null;
@@ -107,10 +129,10 @@ function isNetworkError(error: unknown): boolean {
 
 /**
  * Builds the send frame; a resend produces the same frame with the same clientId. An old server gets
- * no quote or mentions, which it cannot take.
- * 生成发送帧；重发得到的帧与 clientId 都相同。旧服务端不支持引用和提醒，发给它的帧不带这些内容。
+ * no quote, mentions or thumbnail, which it cannot take.
+ * 生成发送帧；重发得到的帧与 clientId 都相同。旧服务端不支持引用、提醒和缩略图，发给它的帧不带这些内容。
  */
-export function buildSendFrame(item: PendingMessage, capable = true): SendFrame {
+export function buildSendFrame(item: PendingMessage, capable = true, thumbKey: string | null = null): SendFrame {
   const frame: SendFrame = { type: 'send', clientId: item.clientId, text: item.text };
   if (item.image?.imageKey) {
     frame.imageKey = item.image.imageKey;
@@ -118,6 +140,7 @@ export function buildSendFrame(item: PendingMessage, capable = true): SendFrame 
       frame.imageWidth = item.image.width;
       frame.imageHeight = item.image.height;
     }
+    if (capable && thumbKey) frame.thumbKey = thumbKey;
   }
   if (!capable) return frame;
   if (item.replyTo && item.replyTo.state === 'ok') frame.replyToId = item.replyTo.id;
@@ -175,6 +198,9 @@ export class Outbox {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ackTimer: ReturnType<typeof setTimeout> | null = null;
   private upload: { clientId: string; controller: AbortController } | null = null;
+  /** Releases the app update hold taken while an item is on its way. */
+  /** 释放有待发项正在发送期间获取的应用更新占用。 */
+  private releaseUpdate: (() => void) | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly ackTimeoutMs: number;
   private readonly spacingMs: number;
@@ -336,7 +362,8 @@ export class Outbox {
       failure: null,
       createdAt: new Date().toISOString(),
     };
-    this.items = [...this.items, { view, file: input.image?.file ?? null, clock: null, unanswered: null, retryUpload: false }];
+    const thumbKey = input.image?.imageKey ? (input.image.thumbKey ?? null) : null;
+    this.items = [...this.items, { view, file: input.image?.file ?? null, thumbKey, clock: null, unanswered: null, retryUpload: false }];
     this.emit();
     this.pump();
     return clientId;
@@ -448,7 +475,27 @@ export class Outbox {
 
   private emit(): void {
     this.snapshot = this.items.map((i) => i.view);
+    this.syncUpdateHold();
     for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * Holds back a waiting app update while an item will still go out by itself: queued, uploading, waiting for its
+   * echo, or an image whose upload failed for lack of a network and goes again once the socket is back. Items outlive
+   * a detach, so a room left mid-send keeps holding until it is entered again and they go. Failed items that wait for
+   * the member do not hold it back.
+   * 只要还有待发项会自行发出，就推迟等待中的应用更新：排队、上传、等待回显，或者因没有网络而上传失败、连接恢复后会重新上传的图片。
+   * 解除绑定后待发项仍然保留，所以发送中途离开的房间会一直占用，直到再次进入、待发项发出为止。等成员处理的失败项不推迟更新。
+   */
+  private syncUpdateHold(): void {
+    const busy = this.items.some((i) => i.view.status !== 'failed' || i.retryUpload);
+    if (busy && !this.releaseUpdate) {
+      this.releaseUpdate = (this.options.holdUpdate ?? holdAppUpdate)();
+    } else if (!busy && this.releaseUpdate) {
+      const release = this.releaseUpdate;
+      this.releaseUpdate = null;
+      release();
+    }
   }
 
   private clearTimers(): void {
@@ -491,7 +538,7 @@ export class Outbox {
       }, wait);
       return;
     }
-    if (!this.transport.send(buildSendFrame(next.view, this.capable))) return;
+    if (!this.transport.send(buildSendFrame(next.view, this.capable, next.thumbKey))) return;
     const now = Date.now();
     this.lastSentAt = now;
     this.replace(
@@ -519,6 +566,7 @@ export class Outbox {
     this.transport
       .upload(item.file, {
         signal: controller.signal,
+        size: { width: item.view.image.width, height: item.view.image.height },
         onProgress: (fraction) => {
           if (!owns()) return;
           const percent = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
@@ -528,10 +576,19 @@ export class Outbox {
         },
       })
       .then(
-        (imageKey) => {
+        (result) => {
           if (!owns()) return;
           this.upload = null;
-          this.patchImage(clientId, { progress: 1, imageKey }, { status: 'queued' });
+          const uploaded: UploadedImage = typeof result === 'string' ? { imageKey: result } : result;
+          const patch: Partial<PendingImage> = { progress: 1, imageKey: uploaded.imageKey };
+          // The frame must carry the stored image's size, which differs from the picked one after a re-encode.
+          // 发送帧必须带上存储图片的尺寸；重新编码后它与所选图片的尺寸不同。
+          if (uploaded.width !== undefined && uploaded.height !== undefined && validDimension(uploaded.width) && validDimension(uploaded.height)) {
+            patch.width = uploaded.width;
+            patch.height = uploaded.height;
+          }
+          this.items = this.items.map((i) => (i.view.clientId === clientId ? { ...i, thumbKey: uploaded.thumbKey ?? null } : i));
+          this.patchImage(clientId, patch, { status: 'queued' });
           this.pump();
         },
         (error: unknown) => {

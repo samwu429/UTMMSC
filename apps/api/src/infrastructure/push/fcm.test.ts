@@ -181,6 +181,26 @@ describe('buildFcmMessage', () => {
     expect(recall.message.data).toEqual({ url: 'u', kind: 'moment_recall', tag: 'moment:pst_1', postId: 'pst_1' });
   });
 
+  it('sends timetable reminders on the timetable channel at high priority, collapsed by tag, without the TTL hint in data', () => {
+    type Built = { message: { android: Record<string, unknown> & { notification: Record<string, unknown> }; data: Record<string, string> } };
+    for (const [kind, tag] of [
+      ['class', 'tt:class'],
+      ['assignment', 'tt:due:ta_1'],
+    ] as const) {
+      const url = 'https://utmmsc.com/UTMMSC/timetable';
+      const built = buildFcmMessage('t', { title: 'a', body: 'b', tag, url, kind, ttlSeconds: 480 }, { ttl: 480, urgency: 'high' }) as Built;
+      expect(built.message.android).toMatchObject({ priority: 'HIGH', ttl: '480s', collapse_key: tag });
+      expect(built.message.android.notification).toMatchObject({
+        channel_id: 'timetable',
+        tag,
+        notification_priority: 'PRIORITY_HIGH',
+        default_sound: true,
+        default_vibrate_timings: true,
+      });
+      expect(built.message.data).toEqual({ url, kind, tag });
+    }
+  });
+
   it('leaves chat, event and test pushes as they were', () => {
     type Built = { message: { android: Record<string, unknown> & { notification: Record<string, unknown> }; data: Record<string, string> } };
     const options = { ttl: 3600, urgency: 'high' as const };

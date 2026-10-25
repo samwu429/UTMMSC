@@ -7,7 +7,7 @@ import { ActionSheet } from '../../../shared/ui/ActionSheet';
 import { useBackToClose } from '../../../shared/ui/overlayHistory';
 import { toast } from '../../../shared/ui/toast';
 import { centredBox, clampPan, coverTransform, fitContain, VIEWER_SCALE_MAX, zoomAbout, type Size } from './imageBox';
-import { chatImageSrc } from './ImageMessage';
+import { chatImageSrc, chatThumbSrc } from './ImageMessage';
 
 export interface ViewerImage {
   id: number;
@@ -28,8 +28,11 @@ interface Props {
   /** Address of an image's full copy, which 保存图片 saves too. Chat builds it from the image key. */
   /** 图片完整副本的地址，「保存图片」也保存它。聊天按图片键生成。 */
   srcFor?: (image: ViewerImage, mediaToken: string | null) => string | null;
-  /** A smaller copy that is already loaded (a preview), shown at once until the full copy has loaded. */
-  /** 已经加载过的较小副本（预览图），在完整副本加载完成之前立即显示。 */
+  /**
+   * A smaller copy that is already loaded (a preview), shown at once until the full copy has loaded. Chat uses the
+   * image's 360px thumbnail when it has one.
+   * 已经加载过的较小副本（预览图），在完整副本加载完成之前立即显示。聊天在图片有 360px 缩略图时使用它。
+   */
   placeholderFor?: (image: ViewerImage) => string | null;
   /** Controls along the bottom edge. They take no part in the gestures and fade with the backdrop. */
   /** 沿底边显示的控件。它们不参与手势，随背景一起淡入淡出。 */
@@ -74,6 +77,7 @@ function reducedMotion(): boolean {
  */
 export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect, onClose, srcFor = chatSrc, placeholderFor, footer }: Props) {
   const tr = useTr();
+  const previewOf = placeholderFor ?? (srcFor === chatSrc ? (image: ViewerImage) => chatThumbSrc(image.imageKey, mediaToken) : null);
   const rootRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   // Images whose full copy has loaded and decoded, so it can replace the placeholder without a blank frame.
@@ -480,7 +484,7 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
       <div className="absolute inset-0" style={{ transform: `translate3d(${stripX}px, 0, 0)`, transition }}>
         {slides.map(({ offset, image }) => {
           const src = srcFor(image, mediaToken);
-          const placeholder = placeholderFor?.(image) ?? null;
+          const placeholder = previewOf?.(image) ?? null;
           // The placeholder stays until the full copy, loading out of sight, is ready to take its place.
           // 占位图一直显示，直到在后台加载的完整副本可以接替它。
           const waiting = placeholder !== null && placeholder !== src && !ready[image.id];

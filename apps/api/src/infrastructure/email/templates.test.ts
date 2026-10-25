@@ -19,6 +19,12 @@ describe('letterhead mail', () => {
     expect(mail.html).toContain('brand/logo-horizontal.png');
     expect(mail.html).toContain('请准时到场。');
     expect(mail.subject).toBe('UTMMSC 公告：周五集会');
+    expect(mail.separate).toBe(true);
+  });
+
+  it('sends one-person letters as a plain message', () => {
+    expect(verificationCodeMail('person@mail.utoronto.ca', '482913', 'reset').separate).toBeUndefined();
+    expect(advisorInviteMail('advisor@example.com', 'https://utmmsc.com/UTMMSC/register?invite=abc').separate).toBeUndefined();
   });
 
   it('writes the advisor invitation in the language the sender chose', () => {

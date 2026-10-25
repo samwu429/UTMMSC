@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { DailyCardResponse } from '@utmmsc/shared';
 import { isHonoraryRole, showsEnrollment } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
@@ -9,22 +8,46 @@ import { AndroidAppBanner } from '../../../shared/native/AndroidAppBanner';
 import { useSessionStore } from '../../../shared/session/store';
 import { EmptyState, List, Notice, Spinner } from '../../../shared/ui/Card';
 import { MemberAvatar } from '../../profile/InitialAvatar';
+import { TodayCard } from '../../timetable/home/TodayCard';
 import { homeApi } from '../api';
+import { forgetDaily, initialDaily, needsRefresh, presentDaily, rememberDaily, type CachedDaily } from '../dailyCache';
 
+// Sign-out or a member switch removes the saved daily card, as the other caches on this device do.
+// 退出登录或切换成员时删除保存的每日卡片，与这台设备上的其他缓存一致。
+useSessionStore.subscribe((state, prev) => {
+  const signedOut = prev.token !== null && state.token === null;
+  const switched = prev.member !== null && state.member !== null && prev.member.id !== state.member.id;
+  if (signedOut || switched) forgetDaily();
+});
+
+/**
+ * Home: the header, 今日课表, today's weather and the club's upcoming events. The daily card shows the last data at
+ * once, from this session or the device, and refreshes in the background; a spinner appears only when there is
+ * nothing to show yet.
+ * 首页：标题、今日课表、今天的天气和社团近期活动。每日卡片立即显示上次的内容（来自本次使用或这台设备），并在后台刷新；
+ * 只有在还没有任何内容可显示时才出现加载圈。
+ */
 export function HomePage() {
   const { tr, role, enrollment, year, major, locale } = useLabels();
   const member = useSessionStore((s) => s.member);
+  const memberId = member?.id ?? null;
   const programs = member ? major(member.major) : null;
-  const [card, setCard] = useState<DailyCardResponse | null>(null);
+  const [entry, setEntry] = useState<CachedDaily | null>(() => (memberId ? initialDaily(memberId, locale) : null));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const cached = memberId ? initialDaily(memberId, locale) : null;
+    setEntry(cached);
+    setError(null);
+    if (!needsRefresh(cached)) return;
     let cancelled = false;
     homeApi
       .daily(locale)
-      .then((res) => {
+      .then((card) => {
         if (cancelled) return;
-        setCard(res);
+        const fresh: CachedDaily = { card, lang: locale, savedAt: Date.now() };
+        if (memberId) rememberDaily(memberId, fresh);
+        setEntry(fresh);
         setError(null);
       })
       .catch((err) => {
@@ -33,7 +56,13 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [memberId, locale]);
+
+  const shown = useMemo(() => (entry ? presentDaily(entry) : null), [entry]);
+  const card = shown?.card ?? null;
+  // Yesterday's weather is not shown as today's; it waits for the refresh.
+  // 昨天的天气不会当作今天的显示，而是等待刷新。
+  const weatherPending = Boolean(shown?.staleDay) && !error;
 
   return (
     <div>
@@ -61,7 +90,13 @@ export function HomePage() {
 
       <AndroidAppBanner />
 
-      {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
+      <TodayCard />
+
+      {error && !card ? (
+        <div className="mt-4">
+          <Notice tone="error">{error}</Notice>
+        </div>
+      ) : null}
       {!card && !error ? <Spinner /> : null}
 
       {card ? (
@@ -69,7 +104,12 @@ export function HomePage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm text-brand-700">{card.date}</p>
-              {card.weather ? (
+              {weatherPending ? (
+                <div aria-busy="true" aria-label={tr('正在更新天气', 'Updating the weather')}>
+                  <div className="mt-2 h-10 w-20 rounded bg-stone-100 motion-safe:animate-pulse" />
+                  <div className="mt-2 h-4 w-32 rounded bg-stone-100 motion-safe:animate-pulse" />
+                </div>
+              ) : card.weather && !shown?.staleDay ? (
                 <>
                   <p className="mt-1 text-[40px] font-semibold leading-none tracking-tight text-brand-800">{card.weather.temperatureC}°</p>
                   <p className="mt-2 text-sm text-brand-700">
@@ -81,7 +121,7 @@ export function HomePage() {
                 <p className="mt-2 text-sm text-stone-500">{tr('天气暂时取不到', 'Weather is unavailable')}</p>
               )}
             </div>
-            {card.weather?.precipitationChance !== null && card.weather ? (
+            {card.weather && card.weather.precipitationChance !== null && !shown?.staleDay ? (
               <p className="pt-1 text-right text-sm text-stone-500">
                 {tr('降水', 'Rain')}
                 <span className="mt-0.5 block text-base font-medium text-stone-800">{card.weather.precipitationChance}%</span>
@@ -110,7 +150,6 @@ export function HomePage() {
           </List>
         )}
       </section>
-
     </div>
   );
 }

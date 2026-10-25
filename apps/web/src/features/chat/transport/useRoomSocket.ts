@@ -14,6 +14,8 @@ import {
 } from '@utmmsc/shared';
 import { ApiClientError, errorMessage, localizedMessage } from '../../../shared/api/errors';
 import { useLocaleStore } from '../../../shared/i18n/locale';
+import { mediaRefreshDelay } from '../../../shared/media/mediaToken';
+import { forgetThumbs, rememberThumb, rememberThumbsOf } from '../../../shared/media/thumbIndex';
 import { isOnScreen, onScreenChange } from '../../../shared/native/onScreen';
 import { useSessionStore } from '../../../shared/session/store';
 import { refreshMember } from '../../auth/refreshMember';
@@ -43,8 +45,9 @@ import {
   type MessageStoreState,
 } from './messageStore';
 import { Outbox, ackedClientIds, type OutboxLink, type OutboxTransport } from './outbox';
+import { ReadReceipts } from './readReceipts';
 import { dropRoomSnapshot, getRoomSnapshot, putRoomSnapshot } from './roomCache';
-import { uploadWithProgress } from './uploadWithProgress';
+import { uploadChatImage } from './uploadWithProgress';
 
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 15_000;
@@ -52,9 +55,14 @@ const HEARTBEAT_MS = 25_000;
 /** Must match the Durable Object's auto-response pair exactly. */
 /** 必须与 Durable Object 的自动应答字符串完全一致。 */
 const PING = JSON.stringify({ type: 'ping' } satisfies ClientFrame);
-/** Room media tokens live an hour; refresh before that so lazy-loaded images keep working. */
-/** 房间媒体令牌有效期一小时；提前刷新，延迟加载的图片才不会失效。 */
-const MEDIA_REFRESH_MS = 50 * 60 * 1000;
+/**
+ * A media token is replaced shortly before the expiry it carries (mediaRefreshDelay), so lazy-loaded images keep
+ * working: about every 50 minutes for an hour-long token, once a day for a day token. A failed refresh tries again
+ * after this long.
+ * 媒体令牌在其携带的过期时间之前不久被替换（mediaRefreshDelay），延迟加载的图片因此一直可用：一小时有效的令牌约每 50 分钟一次，
+ * 按天签发的令牌每天一次。刷新失败时在这段时间后重试。
+ */
+const MEDIA_RETRY_MS = 2 * 60 * 1000;
 const UNTIL_PAGES_MAX = 10;
 const TRIM_KEEP = 200;
 const RECALL_STASH_MS = 5 * 60 * 1000;
@@ -124,6 +132,7 @@ useSessionStore.subscribe((state, prev) => {
   if (!signedOut && !switched) return;
   for (const box of outboxes.values()) box.dispose();
   outboxes.clear();
+  forgetThumbs();
 });
 
 type RoomMethods = Pick<
@@ -239,8 +248,26 @@ class RoomSession {
   private reportedOnScreen = true;
   private stopScreenWatch: (() => void) | null = null;
 
+  /** The messages array whose thumbnails were last indexed, so an unchanged list is not walked again. */
+  /** 上次登记过缩略图的消息数组；列表没有变化时不再遍历。 */
+  private indexedMessages: readonly NormalizedChatMessage[] | null = null;
+
+  /**
+   * Read frames, at most one a second. Nothing on screen shows lastReadId, so a read sent changes it without a
+   * re-render; the room list clears its badge through the overview store.
+   * read 帧，每秒最多一个。屏幕上没有任何地方显示 lastReadId，因此发出已读后修改它不会重新渲染；会话列表通过 overview store 清除角标。
+   */
+  private readonly reads = new ReadReceipts((id) => {
+    if (!this.sendFrame({ type: 'read', messageId: id })) return false;
+    if (id > this.data.lastReadId) this.data = { ...this.data, lastReadId: id };
+    return true;
+  });
+
   private heartbeat: ReturnType<typeof setInterval> | null = null;
-  private mediaRefresh: ReturnType<typeof setInterval> | null = null;
+  private mediaRefresh: ReturnType<typeof setTimeout> | null = null;
+  /** Device time at which the current media token is due to be replaced. */
+  /** 当前媒体令牌应被替换时的设备时间。 */
+  private mediaRefreshAt = Number.POSITIVE_INFINITY;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private legacyOlderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -275,7 +302,7 @@ class RoomSession {
       },
       resend: (clientId) => outboxFor(this.roomId).resend(clientId),
       discard: (clientId) => outboxFor(this.roomId).discard(clientId),
-      markRead: (id) => this.markRead(id),
+      markRead: (id) => this.reads.mark(id),
       hide: (id) => this.hide(id),
       removeAsModerator: (id) => this.sendOrNotice({ type: 'delete', messageId: id }),
       recall: (id) => this.recall(id),
@@ -304,7 +331,13 @@ class RoomSession {
     this.unsubscribeOutbox = this.outbox.subscribe(() => this.commit());
     const transport: OutboxTransport = {
       send: (frame) => this.sendFrame(frame),
-      upload: (file, options) => uploadWithProgress(this.roomId, file, options).then((res) => res.imageKey),
+      upload: (file, options) =>
+        uploadChatImage(this.roomId, file, options).then((res) => {
+          // The confirmed row and the viewer find the thumbnail before the echo arrives.
+          // 回显到达之前，确认后的消息行和查看器就能找到缩略图。
+          rememberThumb(res.imageKey, res.thumbKey);
+          return res;
+        }),
       online: () => navigator.onLine !== false,
     };
     this.outboxLink = this.outbox.attach(transport);
@@ -314,7 +347,6 @@ class RoomSession {
     document.addEventListener('visibilitychange', this.onWake);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.stopScreenWatch = onScreenChange(() => this.reportScreen());
-    this.mediaRefresh = setInterval(() => this.refreshMedia(), MEDIA_REFRESH_MS);
     this.commit();
     void this.connect();
   }
@@ -328,10 +360,15 @@ class RoomSession {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.stopScreenWatch?.();
     this.stopScreenWatch = null;
-    if (this.mediaRefresh) clearInterval(this.mediaRefresh);
+    if (this.mediaRefresh) clearTimeout(this.mediaRefresh);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.mediaRefresh = null;
+    this.mediaRefreshAt = Number.POSITIVE_INFINITY;
     this.reconnectTimer = null;
+
+    // The newest read goes out before the socket closes, so the list shows the room read.
+    // 在连接关闭之前发出最新的已读，列表因此显示该房间已读。
+    this.reads.flush();
 
     const socket = this.socket;
     this.socket = null;
@@ -386,6 +423,12 @@ class RoomSession {
 
   private buildView(): RoomView {
     const pending: PendingMessage[] = this.outbox?.list() ?? outboxes.get(this.roomId)?.list() ?? [];
+    if (this.store.messages !== this.indexedMessages) {
+      // Rows read thumbnails from the index, so it is filled before the listeners render them.
+      // 消息行从索引读取缩略图，因此在监听器渲染之前先登记好。
+      this.indexedMessages = this.store.messages;
+      rememberThumbsOf(this.store.messages);
+    }
     return {
       ...this.data,
       messages: this.store.messages,
@@ -436,7 +479,14 @@ class RoomSession {
   /* 连接 */
 
   private readonly onVisibility = () => {
-    this.outboxLink?.setVisible(document.visibilityState !== 'hidden');
+    const hidden = document.visibilityState === 'hidden';
+    this.outboxLink?.setVisible(!hidden);
+    // A hidden page may be frozen before the read timer fires.
+    // 隐藏的页面可能在已读计时器触发前就被冻结。
+    if (hidden) this.reads.flush();
+    // Timers sleep with the device; a token that came due meanwhile is replaced as soon as the page is back.
+    // 计时器会随设备休眠；期间到期的令牌在页面回来时立即替换。
+    else if (this.running && Date.now() >= this.mediaRefreshAt) this.refreshMedia();
   };
 
   /**
@@ -471,14 +521,35 @@ class RoomSession {
     }, delay);
   }
 
+  /** Arms the timer that replaces the current media token, or retries after a failed refresh. */
+  /** 设置替换当前媒体令牌的计时器，或在刷新失败后重试。 */
+  private scheduleMediaRefresh(delay: number = mediaRefreshDelay(this.data.mediaToken, Date.now(), this.data.clockSkewMs)): void {
+    if (this.mediaRefresh) clearTimeout(this.mediaRefresh);
+    if (!this.running) return;
+    this.mediaRefreshAt = Date.now() + delay;
+    this.mediaRefresh = setTimeout(() => {
+      this.mediaRefresh = null;
+      this.refreshMedia();
+    }, delay);
+  }
+
   private refreshMedia(): void {
     const generation = this.generation;
+    if (this.mediaRefresh) clearTimeout(this.mediaRefresh);
+    this.mediaRefresh = null;
+    this.mediaRefreshAt = Number.POSITIVE_INFINITY;
     chatApi
       .ticket(this.roomId)
       .then((ticket) => {
-        if (generation === this.generation) this.setData({ mediaToken: ticket.mediaToken });
+        if (generation !== this.generation) return;
+        // A day token comes back unchanged until the day ends, so nothing re-renders for it.
+        // 按天签发的令牌在当天结束前原样返回，因此不会为它重新渲染。
+        if (ticket.mediaToken !== this.data.mediaToken) this.setData({ mediaToken: ticket.mediaToken });
+        this.scheduleMediaRefresh();
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (generation === this.generation) this.scheduleMediaRefresh(MEDIA_RETRY_MS);
+      });
   }
 
   private async connect(): Promise<void> {
@@ -508,6 +579,9 @@ class RoomSession {
       meta: ticket.room ?? this.data.meta,
       fatalError: null,
     });
+    // Each ticket brings a token, so the refresh is timed from the newest one.
+    // 每张票据都带来一个令牌，因此刷新时间以最新的令牌为准。
+    this.scheduleMediaRefresh();
     this.open(ticket.socketUrl, generation);
   }
 
@@ -677,6 +751,9 @@ class RoomSession {
     lastServerCapable = capable;
     this.serverKnown = true;
     this.outboxLink?.setCapable(capable);
+    // The server's own record decides what still needs telling, so a read lost with the old socket goes again.
+    // 以服务端自己的记录为准决定还需要告诉它什么，随旧连接丢失的已读因此会再发一次。
+    this.reads.reset(frame.lastReadId);
     const patch: Partial<SessionData> = { capable, lastReadId: frame.lastReadId };
     if (!this.entrySeen) {
       this.entrySeen = true;
@@ -1036,12 +1113,6 @@ class RoomSession {
       mentions: legacy ? [] : (input.mentions ?? []),
       mentionAll: !legacy && input.mentionAll === true,
     });
-  }
-
-  private markRead(id: number): void {
-    if (id <= this.data.lastReadId) return;
-    if (!this.sendFrame({ type: 'read', messageId: id })) return;
-    this.setData({ lastReadId: id });
   }
 
   private hide(id: number): void {

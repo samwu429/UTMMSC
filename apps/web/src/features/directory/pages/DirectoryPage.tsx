@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_STATUSES, enrollmentYearMax, type EnrollmentStatus, type FriendSummary, type FriendshipState, type MemberProfile } from '@utmmsc/shared';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { ADMIN_ENROLLMENT_YEAR_MIN, ENROLLMENT_STATUSES, enrollmentYearMax, type EnrollmentStatus, type FriendSummary, type MemberProfile } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
@@ -10,12 +10,16 @@ import { toast } from '../../../shared/ui/toast';
 import { friendsApi } from '../../friends/api';
 import { directoryApi } from '../api';
 import { MemberRow } from '../components/MemberRow';
+import { afterAccept, afterRequest, friendshipOf, indexFriendships, keepUnchanged } from '../friendships';
 
 const YEARS: number[] = [];
 for (let y = enrollmentYearMax(); y >= ADMIN_ENROLLMENT_YEAR_MIN; y--) YEARS.push(y);
 
 export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
   const [q, setQ] = useState('');
+  // The box shows every keystroke at once; the search and the dimmed list follow the deferred value.
+  // 搜索框立即显示每次按键；搜索请求和变暗的列表跟随延后的值。
+  const query = useDeferredValue(q);
   const [enrollment, setEnrollment] = useState<EnrollmentStatus | ''>('');
   const [year, setYear] = useState('');
   const [members, setMembers] = useState<MemberProfile[]>([]);
@@ -32,26 +36,16 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
     friendsApi.summary().then(setFriends).catch(() => undefined);
   }, []);
 
-  function stateFor(id: string): FriendshipState {
-    if (id === selfId) return 'self';
-    if (friends?.friendIds.includes(id)) return 'friends';
-    if (friends?.outgoingIds.includes(id)) return 'outgoing';
-    if (friends?.incoming.some((card) => card.member.id === id)) return 'incoming';
-    return 'none';
-  }
+  const friendships = useMemo(() => indexFriendships(friends, selfId), [friends, selfId]);
 
-  async function request(id: string) {
+  // Stable, and given the member id by the row, so the memoised rows are not re-rendered by every page render.
+  // 保持不变，并由行传入成员 id，经过 memo 的行因此不会随页面的每次渲染而重新渲染。
+  const request = useCallback(async (id: string) => {
     setBusyId(id);
     setError(null);
     try {
       const res = await friendsApi.request(id);
-      setFriends((prev) => {
-        const base = prev ?? { incoming: [], outgoingIds: [], friendIds: [] };
-        if (res.friendship === 'friends') {
-          return { ...base, friendIds: [...base.friendIds, id], incoming: base.incoming.filter((card) => card.member.id !== id), outgoingIds: base.outgoingIds.filter((item) => item !== id) };
-        }
-        return { ...base, outgoingIds: base.outgoingIds.includes(id) ? base.outgoingIds : [...base.outgoingIds, id] };
-      });
+      setFriends((prev) => afterRequest(prev, id, res.friendship));
     } catch (err) {
       // A toast, because the list's notice sits above the row that was tapped and may be off screen.
       // 用浮动提示，因为列表的提示条在被点的那一行上方，可能不在屏幕内。
@@ -59,23 +53,20 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
     } finally {
       setBusyId(null);
     }
-  }
+  }, []);
 
-  async function accept(id: string) {
+  const accept = useCallback(async (id: string) => {
     setBusyId(id);
     setError(null);
     try {
       await friendsApi.accept(id);
-      setFriends((prev) => {
-        const base = prev ?? { incoming: [], outgoingIds: [], friendIds: [] };
-        return { ...base, friendIds: [...base.friendIds, id], incoming: base.incoming.filter((card) => card.member.id !== id) };
-      });
+      setFriends((prev) => afterAccept(prev, id));
     } catch (err) {
       toast(errorMessage(err), { ms: 2500 });
     } finally {
       setBusyId(null);
     }
-  }
+  }, []);
 
   // Debounce the search box so each keystroke does not hit the directory endpoint.
   // 搜索框防抖，避免每次击键都请求目录接口。
@@ -84,10 +75,10 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
     setLoading(true);
     const timer = setTimeout(() => {
       directoryApi
-        .list({ q: q || undefined, enrollmentStatus: enrollment || undefined, graduationYear: year ? Number(year) : undefined })
+        .list({ q: query || undefined, enrollmentStatus: enrollment || undefined, graduationYear: year ? Number(year) : undefined })
         .then((res) => {
           if (cancelled) return;
-          setMembers(res.members);
+          setMembers((prev) => keepUnchanged(prev, res.members));
           setCursor(res.nextCursor);
           setError(null);
         })
@@ -98,9 +89,9 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [q, enrollment, year]);
+  }, [query, enrollment, year]);
 
-  const filterKey = `${q}|${enrollment}|${year}`;
+  const filterKey = `${query}|${enrollment}|${year}`;
   const filterKeyRef = useRef(filterKey);
   filterKeyRef.current = filterKey;
   const loadingMoreRef = useRef(false);
@@ -111,7 +102,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
     setLoadingMore(true);
     const requestedFor = filterKey;
     try {
-      const res = await directoryApi.list({ q: q || undefined, enrollmentStatus: enrollment || undefined, graduationYear: year ? Number(year) : undefined, cursor });
+      const res = await directoryApi.list({ q: query || undefined, enrollmentStatus: enrollment || undefined, graduationYear: year ? Number(year) : undefined, cursor });
       // Drop the page if the filters changed while it loaded.
       // 加载期间筛选条件变了，就丢弃这一页。
       if (filterKeyRef.current !== requestedFor) return;
@@ -136,7 +127,7 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
           <h2 className="mb-2 text-[15px] font-medium text-brand-800">{tr('新的朋友', 'New friends')}</h2>
           <List>
             {friends.incoming.map((card) => (
-              <MemberRow key={card.member.id} member={card.member} friendship="incoming" busy={busyId === card.member.id} onAccept={() => accept(card.member.id)} />
+              <MemberRow key={card.member.id} member={card.member} friendship="incoming" busy={busyId === card.member.id} onAccept={accept} />
             ))}
           </List>
         </div>
@@ -194,16 +185,19 @@ export function DirectoryPage({ embedded = false }: { embedded?: boolean }) {
       {members.length > 0 ? (
         <div className={`space-y-3 transition-opacity ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
           <List>
-            {members.map((m) => (
-              <MemberRow
-                key={m.id}
-                member={m}
-                friendship={stateFor(m.id)}
-                busy={busyId === m.id}
-                onRequest={stateFor(m.id) === 'none' ? () => request(m.id) : undefined}
-                onAccept={stateFor(m.id) === 'incoming' ? () => accept(m.id) : undefined}
-              />
-            ))}
+            {members.map((m) => {
+              const friendship = friendshipOf(friendships, m.id);
+              return (
+                <MemberRow
+                  key={m.id}
+                  member={m}
+                  friendship={friendship}
+                  busy={busyId === m.id}
+                  onRequest={friendship === 'none' ? request : undefined}
+                  onAccept={friendship === 'incoming' ? accept : undefined}
+                />
+              );
+            })}
           </List>
           {cursor && !loading ? (
             <Button variant="secondary" block onClick={loadMore} loading={loadingMore}>

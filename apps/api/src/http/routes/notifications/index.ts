@@ -144,6 +144,7 @@ const PREF_FIELDS: Record<keyof NotificationPrefs, string> = {
   events: '活动通知',
   preview: '通知显示消息内容',
   moments: '好友动态互动通知',
+  timetable: '课表提醒',
 };
 
 notificationRoutes.patch('/prefs', rateLimit(60, 60_000), requireSession, async (c) => {

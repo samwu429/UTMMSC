@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { NotificationPrefs } from '@utmmsc/shared';
 import { selectMessageRecipients, type RecipientInput } from './recipients';
 
-const off = (patch: Partial<NotificationPrefs>): NotificationPrefs => ({ messages: true, events: true, preview: true, moments: true, ...patch });
+const off = (patch: Partial<NotificationPrefs>): NotificationPrefs => ({ messages: true, events: true, preview: true, moments: true, timetable: true, ...patch });
 
 function input(patch: Partial<RecipientInput> = {}): RecipientInput {
   return {
@@ -53,8 +53,8 @@ describe('selectMessageRecipients', () => {
     expect(selectMessageRecipients(input({ readers: ['a', 'a', 'author'] }))).toEqual([{ memberId: 'a', mentioned: false }]);
   });
 
-  it('ignores the events switch for messages', () => {
-    const prefs = new Map([['a', off({ events: false, preview: false })]]);
+  it('ignores the events and timetable switches for messages', () => {
+    const prefs = new Map([['a', off({ events: false, preview: false, timetable: false })]]);
     expect(selectMessageRecipients(input({ prefs })).map((r) => r.memberId)).toEqual(['a', 'b', 'c']);
   });
 });

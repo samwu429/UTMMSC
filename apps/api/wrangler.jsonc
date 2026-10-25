@@ -6,6 +6,11 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
+  // Runs the Worker close to the database it waits on, instead of next to each visitor: every request makes several
+  // database calls in a row, and the site Worker in front of it answers visitors at the edge.
+  // 让 Worker 在它所依赖的数据库附近运行，而不是在每位访问者附近：每个请求都要依次访问数据库好几次，而访问者面前的网站 Worker 仍在边缘节点应答。
+  "placement": { "mode": "smart" },
+
   // Non-secret configuration. Secrets (SESSION_SECRET, BREVO_API_KEY, VAPID_PRIVATE_KEY, FCM_SERVICE_ACCOUNT) are set with
   // `wrangler secret put` and never written here.
   // 非密钥配置。密钥通过 `wrangler secret put` 设置，不写在此处。
@@ -14,6 +19,10 @@
     // 成员网络在 utmmsc.com 的 /UTMMSC/。旧地址仍允许，已打开的会话可以继续用。
     "APP_ORIGIN": "https://utmmsc.com,https://topphi.com,https://samwu429.github.io",
     "APP_BASE_URL": "https://utmmsc.com/UTMMSC/",
+    // Where the app reaches this API: the site Worker forwards utmmsc.com/api/* here. Absolute URLs the server puts in
+    // pushes, such as notification icons, start with it.
+    // App 访问本接口的地址：网站 Worker 把 utmmsc.com/api/* 转发到这里。服务器放进推送里的绝对地址（例如通知图标）以它开头。
+    "API_PUBLIC_URL": "https://utmmsc.com/api",
     "MAIL_FROM_EMAIL": "wuyihang429@gmail.com",
     "MAIL_FROM_NAME": "UTMMSC 国语学者联盟",
     "WEATHER_LATITUDE": "43.6532",
@@ -25,9 +34,11 @@
     "VAPID_PUBLIC_KEY": "BASuOfQiqZX5mp1tIrEIAkOfCtwkyGDq7QlqOgfL5yZ_vCK8iRkSW47tyZiWOoXBuphDs6M6qfZmfUNwu-neqDc"
   },
 
-  // Sends event notices that are due. Notices are planned to the minute, so they go out up to five minutes late.
-  // 发送到期的活动通知。通知计划精确到分钟，因此最多晚五分钟发出。
-  "triggers": { "crons": ["*/5 * * * *"] },
+  // Every five minutes: event notices that are due (planned to the minute, so up to five minutes late) and the
+  // housekeeping that goes with them. Every minute: timetable class and assignment reminders, in their own invocation.
+  // 每五分钟一次：发送到期的活动通知（计划精确到分钟，因此最多晚五分钟发出）以及相关的整理工作。每分钟一次：课表的上课提醒和作业提醒，
+  // 在单独的一次调用中运行。
+  "triggers": { "crons": ["*/5 * * * *", "* * * * *"] },
 
   "d1_databases": [
     {
