@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { planAssignmentReminders, type SaveCourseBody, type TimetableMeeting } from '@utmmsc/shared';
-import { createSqliteD1, sqlite, type SqliteD1 } from './testing/sqlite-d1';
+import { compoundTerms, createSqliteD1, sqlite, type SqliteD1 } from './testing/sqlite-d1';
 import {
   clearTimetable,
   deleteTimetableAssignment,
@@ -350,13 +350,18 @@ describe.skipIf(!sqlite)('timetable store', () => {
       expect(facts.skips).toEqual(new Set(['2026-10-12|*', `2026-10-19|${tid('tm', 1)}`]));
       expect(facts.counts).toEqual({ terms: 1, courses: 1, openAssignments: 1, assignments: 1, skips: 2 });
 
-      // One statement, and nothing at all when nothing is asked.
-      // 只有一条语句；什么都不问时完全不查询。
+      // An import names every kind and asks every count: still at most five terms per compound SELECT, as D1 allows,
+      // in one batch of two statements. Nothing at all is read when nothing is asked.
+      // 导入会涉及每一类 id 并询问全部数量：每个复合 SELECT 仍最多五项（D1 的上限），一次批量两条语句。什么都不问时完全不查询。
+      const wide = d1.statements.slice(-2);
+      expect(wide.map((s) => compoundTerms(s.sql))).toEqual([5, 1]);
       const before = d1.statements.length;
       await readTimetableFacts(d1.db, A, { courseIds: [tid('tc', 1)], counts: ['courses'] });
-      expect(d1.statements.length).toBe(before + 1);
+      expect(d1.statements.length).toBe(before + 2);
+      await readTimetableFacts(d1.db, A, { courseIds: [tid('tc', 1)] });
+      expect(d1.statements.length).toBe(before + 3);
       await readTimetableFacts(d1.db, A, { courseIds: [], meetingIds: [] });
-      expect(d1.statements.length).toBe(before + 1);
+      expect(d1.statements.length).toBe(before + 3);
     });
 
     it('counts the assignments GET returns: open ones and those done in the last 30 days, of this member only', async () => {

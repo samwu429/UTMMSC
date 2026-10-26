@@ -327,11 +327,13 @@ interface FactRow {
 }
 
 /**
- * The pre-check of a write in one statement: a UNION ALL of the owner of every named id (whoever it is), the
- * course of every named meeting, which named skips the member already has, and the counts asked for. The member
- * is ?1. Nothing here is ever sent back.
- * 一条语句完成写入的预检查：UNION ALL 合并所涉每个 id 的所有者（不论是谁）、所涉每个上课时间所属的课程、成员已有的所涉停课记录，
- * 以及所需的数量。成员为 ?1。这里的内容从不返回给客户端。
+ * The pre-check of a write in one round trip of at most two statements. The first is a UNION ALL of the owner of
+ * every named id (whoever it is), the course of every named meeting and which named skips the member already has:
+ * at most five terms, D1's limit for a compound SELECT. The second is one row with every count asked for. The member
+ * is ?1 in both. Nothing here is ever sent back.
+ * 一次往返、最多两条语句完成写入的预检查。第一条用 UNION ALL 合并所涉每个 id 的所有者（不论是谁）、所涉每个上课时间所属的课程，以及
+ * 成员已有的所涉停课记录：最多五项，正是 D1 对复合 SELECT 的上限。第二条是一行，包含所需的全部数量。两条语句中成员都是 ?1。
+ * 这里的内容从不返回给客户端。
  */
 export async function readTimetableFacts(db: D1Database, memberId: string, request: TimetableFactsRequest): Promise<TimetableFacts> {
   const params: unknown[] = [memberId];
@@ -340,7 +342,11 @@ export async function readTimetableFacts(db: D1Database, memberId: string, reque
     return `?${params.length}`;
   };
   const json = (value: unknown): string => `json_each(${bind(JSON.stringify(value))})`;
-  const keptSince = () => bind(iso((request.nowMs ?? Date.now()) - DONE_ASSIGNMENT_KEEP_MS));
+  const countParams: unknown[] = [memberId];
+  const keptSince = () => {
+    countParams.push(iso((request.nowMs ?? Date.now()) - DONE_ASSIGNMENT_KEEP_MS));
+    return `?${countParams.length}`;
+  };
   const parts: string[] = [];
   const owners = (kind: string, table: string, ids: readonly string[] | undefined, parent = 'NULL') => {
     if (ids && ids.length > 0) {
@@ -358,15 +364,18 @@ export async function readTimetableFacts(db: D1Database, memberId: string, reque
        JOIN timetable_skips k ON k.member_id = ?1 AND k.on_date = j.value ->> '$.onDate' AND IFNULL(k.meeting_id, '') = IFNULL(j.value ->> '$.meetingId', '')`,
     );
   }
-  for (const count of request.counts ?? []) {
-    parts.push(`SELECT 'count:${count}' AS kind, NULL AS id, NULL AS owner, NULL AS parent, (${COUNT_SQL[count](keptSince)}) AS n`);
-  }
+  const counts = [...new Set(request.counts ?? [])];
   const facts = emptyTimetableFacts();
-  if (parts.length === 0) return facts;
-  const { results } = await db
-    .prepare(parts.join('\nUNION ALL\n'))
-    .bind(...params)
-    .all<FactRow>();
+  const statements: D1PreparedStatement[] = [];
+  if (parts.length > 0) statements.push(db.prepare(parts.join('\nUNION ALL\n')).bind(...params));
+  if (counts.length > 0) {
+    statements.push(db.prepare(`SELECT ${counts.map((count) => `(${COUNT_SQL[count](keptSince)}) AS "${count}"`).join(', ')}`).bind(...countParams));
+  }
+  if (statements.length === 0) return facts;
+  const answers = await db.batch<Record<string, unknown>>(statements);
+  const results = (parts.length > 0 ? (answers[0]?.results ?? []) : []) as unknown as FactRow[];
+  const countRow = counts.length > 0 ? answers[answers.length - 1]?.results[0] : undefined;
+  for (const count of counts) facts.counts[count] = Number(countRow?.[count] ?? 0);
   const terms = facts.terms as Map<string, string>;
   const courses = facts.courses as Map<string, string>;
   const meetings = facts.meetings as Map<string, { memberId: string; courseId: string }>;
@@ -380,7 +389,6 @@ export async function readTimetableFacts(db: D1Database, memberId: string, reque
     else if (row.kind === 'meeting') meetings.set(id, { memberId: owner, courseId: row.parent ?? '' });
     else if (row.kind === 'assignment') assignments.set(id, { memberId: owner, doneAt: row.parent });
     else if (row.kind === 'skip') skips.add(skipKey(id, row.parent));
-    else if (row.kind.startsWith('count:')) facts.counts[row.kind.slice(6) as keyof TimetableCounts] = Number(row.n ?? 0);
   }
   return facts;
 }

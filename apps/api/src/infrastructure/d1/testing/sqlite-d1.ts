@@ -118,6 +118,43 @@ function plain(row: SqliteRow): SqliteRow {
   return { ...row };
 }
 
+/** D1's own limits, far below SQLite's defaults, so a statement that passes here also runs in production. */
+/** D1 自己的上限，远低于 SQLite 的默认值；在这里通过的语句在生产环境也能运行。 */
+export const D1_LIMITS = { boundParameters: 100, statementBytes: 100_000, compoundTerms: 5 } as const;
+
+/** The SQL with string literals, quoted names and comments blanked out, so keywords inside them are not counted. */
+/** 把字符串字面量、带引号的名称和注释替换为空白后的 SQL，其中的关键字因此不会被计入。 */
+function codeOnly(sql: string): string {
+  return sql.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|--[^\n]*|\/\*[\s\S]*?\*\//g, (match) => ' '.repeat(match.length));
+}
+
+/**
+ * The most terms any one compound SELECT in the statement has: UNION, UNION ALL, INTERSECT and EXCEPT are counted
+ * per parenthesis level, since a compound inside a subquery is a compound of its own.
+ * 语句中任一复合 SELECT 的最多项数：按括号层级统计 UNION、UNION ALL、INTERSECT 和 EXCEPT，因为子查询中的复合查询是独立的一个。
+ */
+export function compoundTerms(sql: string): number {
+  const levels = [0];
+  let most = 1;
+  for (const match of codeOnly(sql).matchAll(/\(|\)|\b(?:UNION|INTERSECT|EXCEPT)\b/gi)) {
+    const token = match[0];
+    if (token === '(') levels.push(0);
+    else if (token === ')') most = Math.max(most, (levels.pop() ?? 0) + 1);
+    else levels[levels.length - 1] = (levels[levels.length - 1] ?? 0) + 1;
+  }
+  for (const count of levels) most = Math.max(most, count + 1);
+  return most;
+}
+
+/** Refuses a statement D1 would refuse for its size, its bound values or its compound SELECTs. */
+/** 拒绝 D1 会因大小、绑定值数量或复合 SELECT 而拒绝的语句。 */
+function checkD1Limits(sql: string, params: readonly SqliteValue[]): void {
+  if (new TextEncoder().encode(sql).length > D1_LIMITS.statementBytes) throw new Error('SQL statement too long (D1 allows 100 KB)');
+  if (params.length > D1_LIMITS.boundParameters) throw new Error(`too many SQL variables: ${params.length} (D1 allows ${D1_LIMITS.boundParameters})`);
+  const terms = compoundTerms(sql);
+  if (terms > D1_LIMITS.compoundTerms) throw new Error(`too many terms in compound SELECT: ${terms} (D1 allows ${D1_LIMITS.compoundTerms})`);
+}
+
 /**
  * A fresh in-memory database behind a D1Database. Foreign keys are enforced, as D1 always does. With
  * `migrate: false` nothing is applied, so a test can migrate in steps and seed rows in between.
@@ -134,6 +171,7 @@ export function createSqliteD1(options: { migrate?: boolean } = {}): SqliteD1 {
     statements.push({ sql, params: [...params] });
     const started = Date.now();
     try {
+      checkD1Limits(sql, params);
       const prepared = raw.prepare(sql);
       const reads = typeof prepared.columns === 'function' ? prepared.columns().length > 0 : READS.test(sql);
       let results: SqliteRow[] = [];
