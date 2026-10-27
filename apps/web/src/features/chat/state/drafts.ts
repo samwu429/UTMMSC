@@ -56,15 +56,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Keeps only the QuotePreview fields, and never stores an excerpt for a quote that is no longer visible. */
-/** 只保留 QuotePreview 的字段；对已不可见的引用，绝不保存摘录。 */
+/**
+ * Keeps only the QuotePreview fields, the sticker flag included, and never stores an excerpt for a quote that is no
+ * longer visible.
+ * 只保留 QuotePreview 的字段（包括表情标记）；对已不可见的引用，绝不保存摘录。
+ */
 function cleanQuote(value: unknown): QuotePreview | null {
   if (!isRecord(value)) return null;
-  const { id, authorId, authorName, excerpt, hasImage, state } = value;
+  const { id, authorId, authorName, excerpt, hasImage, hasSticker, state } = value;
   if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return null;
   if (typeof authorId !== 'string' || typeof authorName !== 'string' || typeof excerpt !== 'string') return null;
   if (typeof state !== 'string' || !QUOTE_STATES.includes(state as QuoteState)) return null;
-  const quote: QuotePreview = { id, authorId, authorName, excerpt: excerpt.slice(0, QUOTE_EXCERPT_MAX), hasImage: hasImage === true, state: state as QuoteState };
+  const quote: QuotePreview = {
+    id,
+    authorId,
+    authorName,
+    excerpt: excerpt.slice(0, QUOTE_EXCERPT_MAX),
+    hasImage: hasImage === true,
+    hasSticker: hasSticker === true,
+    state: state as QuoteState,
+  };
   return redactQuotePreview(quote, quote.state);
 }
 
@@ -115,7 +126,15 @@ function withoutKey(drafts: Record<string, ChatDraft>, key: string): Record<stri
 function sameQuote(a: QuotePreview | null, b: QuotePreview | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.id === b.id && a.state === b.state && a.excerpt === b.excerpt && a.hasImage === b.hasImage && a.authorName === b.authorName && a.authorId === b.authorId;
+  return (
+    a.id === b.id &&
+    a.state === b.state &&
+    a.excerpt === b.excerpt &&
+    a.hasImage === b.hasImage &&
+    (a.hasSticker === true) === (b.hasSticker === true) &&
+    a.authorName === b.authorName &&
+    a.authorId === b.authorId
+  );
 }
 
 /**

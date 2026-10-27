@@ -1,6 +1,16 @@
 import type { QuotePreview } from '@utmmsc/shared';
 import { useTr } from '../../../shared/i18n/locale';
-import { imageLabel, type Translate } from '../format/systemText';
+import { imageLabel, stickerLabel, type Translate } from '../format/systemText';
+
+/**
+ * The body a live quote shows: the localized sticker label for a sticker (its excerpt is the fallback for old
+ * clients), else the excerpt, else the photo label.
+ * 有效引用显示的正文：表情显示本地化的表情标签（其摘录是给旧客户端的后备文字），否则显示摘录，再否则显示图片标签。
+ */
+export function quoteBody(quote: QuotePreview, tr: Translate): string {
+  if (quote.hasSticker) return stickerLabel(tr);
+  return quote.excerpt || (quote.hasImage ? imageLabel(tr) : '');
+}
 
 export function quoteText(quote: QuotePreview, tr: Translate): string {
   switch (quote.state) {
@@ -12,7 +22,7 @@ export function quoteText(quote: QuotePreview, tr: Translate): string {
       return tr('引用内容不可见', 'Quoted message is not available');
     default: {
       const name = quote.authorName.trim() || tr('成员', 'Member');
-      const body = quote.excerpt || (quote.hasImage ? imageLabel(tr) : '');
+      const body = quoteBody(quote, tr);
       return tr(`${name}：${body}`, `${name}: ${body}`);
     }
   }

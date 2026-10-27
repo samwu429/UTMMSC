@@ -7,11 +7,13 @@
 
 /**
  * 6 adds messages.thumb_key, the 360 px preview uploaded beside a chat image. 7 indexes image_key and thumb_key,
- * so a send and a withdrawal can ask which messages name a key without reading the whole room.
+ * so a send and a withdrawal can ask which messages name a key without reading the whole room. 8 adds
+ * messages.sticker_json, the sticker a row shows, as the room read it from D1 when it was sent, with the sender's still.
  * 6 增加 messages.thumb_key，即与聊天图片一同上传的 360px 预览图。7 为 image_key 和 thumb_key 建立索引，
- * 发送和撤回时查询哪些消息使用了某个键，不必读取整个房间。
+ * 发送和撤回时查询哪些消息使用了某个键，不必读取整个房间。8 增加 messages.sticker_json，即这一行显示的表情：
+ * 发送时房间从 D1 读取到的描述，附带发送者的静态图。
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 function readMeta(sql: SqlStorage, key: string): string | null {
   const row = sql.exec<{ value: string }>('SELECT value FROM meta WHERE key = ?', key).toArray()[0];
@@ -71,6 +73,7 @@ export function ensureRoomSchema(sql: SqlStorage): void {
   addColumn(sql, 'ALTER TABLE messages ADD COLUMN deleted_by TEXT');
   addColumn(sql, 'ALTER TABLE messages ADD COLUMN rev INTEGER NOT NULL DEFAULT 0');
   addColumn(sql, 'ALTER TABLE messages ADD COLUMN thumb_key TEXT');
+  addColumn(sql, 'ALTER TABLE messages ADD COLUMN sticker_json TEXT');
 
   sql.exec(`
     CREATE TABLE IF NOT EXISTS mentions (

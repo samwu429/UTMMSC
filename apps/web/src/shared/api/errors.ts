@@ -2,6 +2,7 @@ import { PROGRAM_EN, useLocaleStore } from '../i18n/locale';
 import { ENGLISH as ADMIN_ENGLISH, ENGLISH_PATTERNS as ADMIN_PATTERNS } from './errors/admin';
 import { ENGLISH as CHANNEL_ICON_ENGLISH, ENGLISH_PATTERNS as CHANNEL_ICON_PATTERNS } from './errors/channelIcons';
 import { ENGLISH as MEDIA_ENGLISH, ENGLISH_PATTERNS as MEDIA_PATTERNS } from './errors/media';
+import { ENGLISH as STICKER_ENGLISH, ENGLISH_PATTERNS as STICKER_PATTERNS } from './errors/stickers';
 import { ENGLISH as TIMETABLE_ENGLISH, ENGLISH_PATTERNS as TIMETABLE_PATTERNS } from './errors/timetable';
 
 /**
@@ -155,6 +156,7 @@ const ENGLISH: Readonly<Record<string, string>> = {
   ...ADMIN_ENGLISH,
   ...CHANNEL_ICON_ENGLISH,
   ...MEDIA_ENGLISH,
+  ...STICKER_ENGLISH,
 };
 
 /** Patterns for server messages that embed a number or a field name. */
@@ -187,6 +189,7 @@ const ENGLISH_PATTERNS: readonly EnglishPattern[] = [
   ...ADMIN_PATTERNS,
   ...CHANNEL_ICON_PATTERNS,
   ...MEDIA_PATTERNS,
+  ...STICKER_PATTERNS,
   ...FALLBACK_PATTERNS,
 ];
 

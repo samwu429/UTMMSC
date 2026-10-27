@@ -1,13 +1,16 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { issueProfileMediaToken } from '../../../domain/profile/media-token';
 import type { Env } from '../../../env';
 import { relation } from '../../../infrastructure/d1/friends';
 import { findMemberById, type MemberRow } from '../../../infrastructure/d1/members';
 import { countMomentsSince, recordMomentUpload } from '../../../infrastructure/d1/moments';
 import { deletePost, insertPost, listExperiences, listFeed, listMemberPosts } from '../../../infrastructure/d1/profile';
+import { IMMUTABLE_MEDIA_CACHE } from '../../../infrastructure/r2/objects';
 import type { AppEnv } from '../../context';
 import { errorResponse } from '../../errors';
 import { memberRoutes } from './index';
+import { isServableMediaKey, serveMemberMedia } from './media';
 
 /** Members the stand-in session knows, by the id sent in x-member. */
 /** 替身会话认识的成员，按 x-member 中的 id 查找。 */
@@ -190,5 +193,81 @@ describe('legacy routes under the moments rules', () => {
     expect(remove).toHaveBeenCalledWith(['moments/a/1.jpg', 'moments/a/1-preview.jpg']);
     vi.mocked(deletePost).mockResolvedValue(null);
     expect((await send(member, 'DELETE', '/me/posts/post_2')).status).toBe(404);
+  });
+});
+
+describe('member media', () => {
+  const STICKER = 'stk_0123456789abcdefghijkl';
+  const THUMB = 'AbCdEfGhIjKlMnOpQrStUv';
+  const stored = new Map<string, Uint8Array>([
+    ['avatar/mem_1/a.jpg', new Uint8Array(10)],
+    [`sticker/${STICKER}.gif`, new Uint8Array(20)],
+    [`sticker/${STICKER}-t-${THUMB}`, new Uint8Array(5)],
+  ]);
+  const bucket = {
+    get: async (key: string, options?: { onlyIf?: unknown }) => {
+      const bytes = stored.get(key);
+      if (!bytes) return null;
+      const meta = { key, size: bytes.length, etag: 'e1', httpEtag: '"e1"', uploaded: new Date(0), httpMetadata: { contentType: 'image/gif' } };
+      if (options?.onlyIf instanceof Headers && options.onlyIf.get('if-none-match') === '"e1"') return meta;
+      return { ...meta, range: { offset: 0, length: bytes.length }, body: new Response(bytes).body };
+    },
+  } as unknown as R2Bucket;
+  const media = new Hono<AppEnv>();
+  media.onError(errorResponse);
+  media.get('/members/media/*', serveMemberMedia);
+  const mediaEnv = { SESSION_SECRET: 'test-secret', FILES: bucket } as unknown as Env;
+  const fetchKey = async (key: string, headers: Record<string, string> = {}, encode = true) => {
+    const token = await issueProfileMediaToken('test-secret');
+    const path = encode ? encodeURIComponent(key) : key;
+    return media.request(`/members/media/${path}?t=${encodeURIComponent(token)}`, { headers }, mediaEnv);
+  };
+
+  it('serves sticker originals and stills, encoded or not, with immutable caching', async () => {
+    for (const key of [`sticker/${STICKER}.gif`, `sticker/${STICKER}-t-${THUMB}`]) {
+      for (const encode of [true, false]) {
+        const res = await fetchKey(key, {}, encode);
+        expect(res.status).toBe(200);
+        expect(res.headers.get('cache-control')).toBe(IMMUTABLE_MEDIA_CACHE);
+      }
+    }
+    expect((await fetchKey(`sticker/${STICKER}.png`)).status).toBe(404);
+  });
+
+  it('refuses anything under sticker/ that is not exactly a sticker object', () => {
+    expect(isServableMediaKey(`sticker/${STICKER}.gif`)).toBe(true);
+    expect(isServableMediaKey(`sticker/${STICKER}.jpeg`)).toBe(true);
+    expect(isServableMediaKey(`sticker/${STICKER}-t-${THUMB}`)).toBe(true);
+    for (const key of [
+      'sticker/stk_short.gif',
+      `sticker/${STICKER}.bmp`,
+      `sticker/${STICKER}.gif.png`,
+      `sticker/${STICKER}-thumb`,
+      `sticker/${STICKER}-t-${THUMB.slice(1)}`,
+      `sticker/x/${STICKER}.gif`,
+      `sticker/../avatar/${STICKER}.gif`,
+      `stickers/${STICKER}.gif`,
+      `sticker/${STICKER}`,
+      'sticker/',
+    ]) {
+      expect(isServableMediaKey(key), key).toBe(false);
+    }
+  });
+
+  it('answers look-alikes with 403 and an expired token with 401', async () => {
+    expect((await fetchKey(`sticker/${STICKER}-thumb`)).status).toBe(403);
+    expect((await fetchKey(`sticker/x/${STICKER}.gif`)).status).toBe(403);
+    const expired = await issueProfileMediaToken('test-secret', Date.now() - 30 * 86_400_000);
+    expect((await media.request(`/members/media/${encodeURIComponent(`sticker/${STICKER}.gif`)}?t=${encodeURIComponent(expired)}`, {}, mediaEnv)).status).toBe(401);
+  });
+
+  it('sends the sandbox policy and nosniff with every media response, and no cross-origin-resource-policy', async () => {
+    const responses = [await fetchKey('avatar/mem_1/a.jpg'), await fetchKey(`sticker/${STICKER}.gif`), await fetchKey(`sticker/${STICKER}.gif`, { 'if-none-match': '"e1"' })];
+    expect(responses.map((res) => res.status)).toEqual([200, 200, 304]);
+    for (const res of responses) {
+      expect(res.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(res.headers.get('cross-origin-resource-policy')).toBeNull();
+    }
   });
 });

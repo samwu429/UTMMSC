@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createSqliteD1, migrationFiles, sqlite, type SqliteD1 } from './testing/sqlite-d1';
 
 /**
- * Migrations 0017 (timetable) and 0018 (channel icons) on real SQLite: they apply on top of a database that already
- * has rows, keep those rows, and enforce what their tables promise. Store and route tests cover the queries.
- * 迁移 0017（课表）和 0018（频道图标）在真实 SQLite 上的检查：它们能在已有数据的数据库上执行、保留已有的行，并保证表所承诺的约束。
- * 查询本身由各存储和接口的测试覆盖。
+ * Migrations 0017 (timetable), 0018 (channel icons) and 0019 (stickers) on real SQLite: they apply on top of a
+ * database that already has rows, keep those rows, and enforce what their tables promise. Store and route tests cover
+ * the queries.
+ * 迁移 0017（课表）、0018（频道图标）和 0019（表情）在真实 SQLite 上的检查：它们能在已有数据的数据库上执行、保留已有的行，
+ * 并保证表所承诺的约束。查询本身由各存储和接口的测试覆盖。
  */
 
 const NOW = '2026-10-24T16:00:00.000Z';
@@ -24,12 +25,13 @@ function count(d1: SqliteD1, sql: string, ...params: unknown[]): number {
   return Number(d1.rows<{ n: number }>(sql, ...params)[0]?.n ?? 0);
 }
 
-describe.skipIf(!sqlite)('migrations 0017 and 0018', () => {
+describe.skipIf(!sqlite)('migrations 0017 to 0019', () => {
   it('follow 0016 in order, with no number used twice', () => {
     const files = migrationFiles();
     const names = files.map((migration) => migration.name);
     expect(names.indexOf('0017_timetable.sql')).toBe(names.indexOf('0016_moments.sql') + 1);
     expect(names.indexOf('0018_channel_icons.sql')).toBe(names.indexOf('0017_timetable.sql') + 1);
+    expect(names.indexOf('0019_stickers.sql')).toBe(names.indexOf('0018_channel_icons.sql') + 1);
     expect(files.map((migration) => migration.number)).toEqual(files.map((_, index) => index + 1));
   });
 
@@ -170,6 +172,140 @@ describe.skipIf(!sqlite)('migrations 0017 and 0018', () => {
       d1.rows("UPDATE channels SET icon_key = NULL WHERE id = 'ch_1'");
       expect(() => d1.rows("UPDATE channels SET icon_key = 'avatar/m1/ava_x.jpg' WHERE id = 'ch_1'")).toThrow(/CHECK constraint/);
       expect(() => d1.rows("UPDATE channels SET icon_key = 'https://example.com/x.png' WHERE id = 'ch_1'")).toThrow(/CHECK constraint/);
+    });
+  });
+});
+
+describe.skipIf(!sqlite)('migration 0019 (stickers)', () => {
+  const STICKER = 'stk_0123456789abcdefghijkl';
+  const OTHER = 'stk_lkjihgfedcba9876543210';
+
+  const object = (d1: SqliteD1, id: string, createdBy: string | null, fields: Record<string, unknown> = {}) => {
+    const row = { type: 'gif', width: 240, height: 240, bytes: 1000, animated: 1, state: 'ready', ...fields };
+    d1.rows(
+      'INSERT INTO sticker_objects (id, type, width, height, bytes, animated, state, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id,
+      row.type,
+      row.width,
+      row.height,
+      row.bytes,
+      row.animated,
+      row.state,
+      createdBy,
+      NOW,
+    );
+  };
+  const collect = (d1: SqliteD1, memberId: string, stickerId: string, position: number) =>
+    d1.rows("INSERT INTO member_stickers (member_id, sticker_id, thumb, position, added_at) VALUES (?, ?, 'AbCdEfGhIjKlMnOpQrStUv', ?, ?)", memberId, stickerId, position, NOW);
+
+  it('applies on top of 0018, keeps the rows already there and starts empty', () => {
+    const d1 = createSqliteD1({ migrate: false });
+    try {
+      d1.migrate({ to: 18 });
+      member(d1, 'm1');
+      d1.rows("INSERT INTO channels (id, slug, name, audience, post_policy, created_at, icon_key) VALUES ('ch_1', 'general', 'General', 'all', 'members', ?, 'preset:chat')", NOW);
+      d1.migrate({ from: 19 });
+      expect(d1.rows('SELECT id, display_name FROM members')).toEqual([{ id: 'm1', display_name: 'A' }]);
+      expect(d1.rows("SELECT icon_key FROM channels WHERE id = 'ch_1'")).toEqual([{ icon_key: 'preset:chat' }]);
+      for (const table of ['sticker_objects', 'sticker_thumbs', 'member_stickers', 'sticker_counts', 'sticker_daily']) {
+        expect(count(d1, `SELECT count(*) AS n FROM ${table}`)).toBe(0);
+      }
+    } finally {
+      d1.close();
+    }
+  });
+
+  describe('constraints', () => {
+    let d1: SqliteD1;
+
+    beforeEach(() => {
+      d1 = createSqliteD1();
+      member(d1, 'm1');
+      member(d1, 'm2');
+    });
+
+    afterEach(() => {
+      d1.close();
+    });
+
+    it('gives a file row the documented defaults and refuses values outside its CHECKs', () => {
+      d1.rows("INSERT INTO sticker_objects (id, type, width, height, bytes, created_by, created_at) VALUES (?, 'png', 10, 20, 30, 'm1', ?)", STICKER, NOW);
+      expect(d1.rows('SELECT animated, state, sent_at, sweep_at, blocked_at, reserves FROM sticker_objects')).toEqual([
+        { animated: 0, state: 'pending', sent_at: null, sweep_at: null, blocked_at: null, reserves: 1 },
+      ]);
+      // reserves starts at 1 for the reserve that wrote the row and can never be unset or fall to 0.
+      // reserves 从写入这条记录的那次预留的 1 开始，永远不能为空，也不能降到 0。
+      expect(() => d1.rows('UPDATE sticker_objects SET reserves = 0')).toThrow(/CHECK constraint/);
+      expect(() => d1.rows('UPDATE sticker_objects SET reserves = NULL')).toThrow(/NOT NULL constraint/);
+      expect(() => object(d1, OTHER, 'm1', { type: 'jpg' })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'm1', { type: 'svg' })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'm1', { width: 0 })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'm1', { height: -1 })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'm1', { bytes: 0 })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'm1', { animated: 2 })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'm1', { state: 'gone' })).toThrow(/CHECK constraint/);
+      expect(() => object(d1, OTHER, 'nobody')).toThrow(/FOREIGN KEY constraint/);
+      for (const state of ['pending', 'ready', 'deleting']) d1.rows('UPDATE sticker_objects SET state = ? WHERE id = ?', state, STICKER);
+      expect(() => d1.rows("UPDATE sticker_objects SET type = 'bmp'")).toThrow(/CHECK constraint/);
+    });
+
+    it('keeps one collection row per member and file, and gives counters their defaults', () => {
+      object(d1, STICKER, 'm1');
+      collect(d1, 'm1', STICKER, 1);
+      expect(() => collect(d1, 'm1', STICKER, 2)).toThrow(/UNIQUE constraint/);
+      expect(() => collect(d1, 'm1', OTHER, 2)).toThrow(/FOREIGN KEY constraint/);
+      collect(d1, 'm2', STICKER, 1);
+      d1.rows("INSERT INTO sticker_counts (scope) VALUES ('m1'), ('*')");
+      expect(d1.rows("SELECT items, live_bytes, version, token FROM sticker_counts WHERE scope = '*'")).toEqual([{ items: 0, live_bytes: 0, version: 0, token: null }]);
+      d1.rows("INSERT INTO sticker_daily (day, scope) VALUES ('2026-10-26', 'm1')");
+      expect(d1.rows('SELECT uploads, upload_bytes, edits, lists, token FROM sticker_daily')).toEqual([{ uploads: 0, upload_bytes: 0, edits: 0, lists: 0, token: null }]);
+      expect(() => d1.rows("INSERT INTO sticker_daily (day, scope) VALUES ('2026-10-26', 'm1')")).toThrow(/UNIQUE constraint/);
+      d1.rows("INSERT INTO sticker_daily (day, scope) VALUES ('2026-10-26', '*'), ('2026-10-27', 'm1')");
+      expect(count(d1, 'SELECT count(*) AS n FROM sticker_daily')).toBe(3);
+    });
+
+    it('cascades a member delete to their collection and keeps the files they created, without a creator', () => {
+      object(d1, STICKER, 'm1');
+      object(d1, OTHER, 'm2');
+      collect(d1, 'm1', STICKER, 1);
+      collect(d1, 'm1', OTHER, 2);
+      collect(d1, 'm2', STICKER, 1);
+      d1.rows("DELETE FROM members WHERE id = 'm1'");
+      expect(d1.rows('SELECT member_id, sticker_id FROM member_stickers')).toEqual([{ member_id: 'm2', sticker_id: STICKER }]);
+      expect(d1.rows('SELECT id, created_by FROM sticker_objects ORDER BY id')).toEqual([
+        { id: STICKER, created_by: null },
+        { id: OTHER, created_by: 'm2' },
+      ]);
+    });
+
+    it('cascades a file delete to its stills, and refuses it while a collection uses the file', () => {
+      object(d1, STICKER, 'm1');
+      object(d1, OTHER, 'm1');
+      d1.rows("INSERT INTO sticker_thumbs (sticker_id, thumb, created_at) VALUES (?, 'AAAAAAAAAAAAAAAAAAAAAA', ?), (?, 'BBBBBBBBBBBBBBBBBBBBBB', ?), (?, 'CCCCCCCCCCCCCCCCCCCCCC', ?)", STICKER, NOW, STICKER, NOW, OTHER, NOW);
+      expect(() => d1.rows("INSERT INTO sticker_thumbs (sticker_id, thumb, created_at) VALUES (?, 'AAAAAAAAAAAAAAAAAAAAAA', ?)", STICKER, NOW)).toThrow(/UNIQUE constraint/);
+      collect(d1, 'm2', OTHER, 1);
+      d1.rows('DELETE FROM sticker_objects WHERE id = ?', STICKER);
+      expect(d1.rows('SELECT sticker_id, thumb FROM sticker_thumbs')).toEqual([{ sticker_id: OTHER, thumb: 'CCCCCCCCCCCCCCCCCCCCCC' }]);
+      expect(() => d1.rows('DELETE FROM sticker_objects WHERE id = ?', OTHER)).toThrow(/FOREIGN KEY constraint/);
+      expect(count(d1, 'SELECT count(*) AS n FROM sticker_objects')).toBe(1);
+    });
+
+    it('creates the indexes the sweep, the list and the foreign keys rely on', () => {
+      const indexes = d1.rows<{ name: string; tbl_name: string; sql: string }>(
+        "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL AND (tbl_name LIKE 'sticker_%' OR tbl_name = 'member_stickers') ORDER BY name",
+      );
+      expect(indexes.map((index) => `${index.tbl_name}.${index.name}`)).toEqual([
+        'member_stickers.member_stickers_order',
+        'member_stickers.member_stickers_sticker',
+        'sticker_objects.sticker_objects_creator',
+        'sticker_objects.sticker_objects_sweep',
+      ]);
+      expect(indexes.find((index) => index.name === 'sticker_objects_sweep')?.sql).toMatch(/WHERE sent_at IS NULL AND blocked_at IS NULL/);
+      const sweep = d1.explain({ sql: 'SELECT id FROM sticker_objects WHERE sent_at IS NULL AND blocked_at IS NULL AND sweep_at <= ? ORDER BY sweep_at LIMIT 50', params: [NOW] }).join('\n');
+      expect(sweep).toMatch(/USING INDEX sticker_objects_sweep/);
+      const list = d1.explain({ sql: 'SELECT sticker_id FROM member_stickers WHERE member_id = ? ORDER BY position DESC', params: ['m1'] }).join('\n');
+      expect(list).toMatch(/USING (COVERING )?INDEX member_stickers_order/);
+      expect(list).not.toMatch(/TEMP B-TREE/);
     });
   });
 });

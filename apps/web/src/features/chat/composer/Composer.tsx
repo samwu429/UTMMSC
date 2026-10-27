@@ -12,15 +12,18 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from 'react';
-import { MESSAGE_TEXT_MAX, type QuotePreview } from '@utmmsc/shared';
+import { useNavigate } from 'react-router-dom';
+import { MESSAGE_TEXT_MAX, type QuotePreview, type StickerItem } from '@utmmsc/shared';
 import { useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
 import { toast } from '../../../shared/ui/toast';
 import type { ComposerHandle, ComposerProps, QuoteTargetState } from '../room/types';
 import { draftKey, useDraftsStore } from '../state/drafts';
 import type { Translate } from '../format/systemText';
+import { STICKER_PICK_ACCEPT } from '../stickers/prep';
+import { useStickerLibrary } from '../stickers/store';
 import { EmojiIcon, KeyboardIcon, PlusCircleIcon } from './composerIcons';
-import { EmojiPanel } from './EmojiPanel';
+import { ExpressionPanel } from './ExpressionPanel';
 import { IMAGE_PICK_ACCEPT, IMAGES_PER_PICK_MAX, ImagePrepError, prepareImage } from './imagePrep';
 import { besideKeyboard, expectsSoftKeyboard, lastKeyboardHeight, rememberKeyboardHeight, watchKeyboard } from './keyboardHeight';
 import { MentionPicker } from './MentionPicker';
@@ -41,6 +44,8 @@ import {
 } from './mentionTokens';
 import { PlusPanel } from './PlusPanel';
 import { QuoteStrip } from './QuoteStrip';
+import { addPickedStickers, roomForStickerPick } from './StickerPanel';
+import { quoteForSticker, stickerRefOf } from './stickerGrid';
 import { useAutoGrow } from './useAutoGrow';
 
 type Panel = 'none' | 'emoji' | 'plus';
@@ -128,6 +133,7 @@ function RoomComposer({
   handleRef,
 }: ComposerProps & { handleRef: ForwardedRef<ComposerHandle> }) {
   const tr = useTr();
+  const navigate = useNavigate();
   const meId = useSessionStore((s) => s.member?.id ?? null);
   const [restored] = useState(() => restoreDraft(meId, roomId));
   const [text, setText] = useState(restored.text);
@@ -143,6 +149,7 @@ function RoomComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const stickersRef = useRef<HTMLInputElement>(null);
   const mentionsRef = useRef<MentionTarget[]>(restored.mentions);
   const latestRef = useRef({ text: restored.text, quote: restored.quote });
   // The caret while the textarea is blurred (a panel or the picker is open); the element is the truth while focused.
@@ -340,6 +347,46 @@ function RoomComposer({
     onSent();
   }
 
+  /**
+   * Sends a sticker at once. The panel and the typed text stay; a pending quote goes along only when the input is empty,
+   * and is then cleared as send() clears it.
+   * 立即发送表情。面板和已输入的文字保持不变；只有输入框为空时才带上待发送的引用，随后像 send() 一样清除它。
+   */
+  function sendSticker(sticker: StickerItem) {
+    const unavailable = tr('表情暂时无法发送，请稍后再试', "Stickers can't be sent right now. Try again later.");
+    if (!room.sendSticker || room.stickers === false) {
+      toast(unavailable);
+      return;
+    }
+    const replyTo = quoteForSticker(latestRef.current.text, latestRef.current.quote);
+    const clientId = room.sendSticker(stickerRefOf(sticker), { replyTo });
+    if (!clientId) {
+      toast(unavailable);
+      return;
+    }
+    useStickerLibrary.getState().pushRecent(sticker.id);
+    if (replyTo) {
+      setQuote(null);
+      latestRef.current = { ...latestRef.current, quote: null };
+    }
+    onSent();
+  }
+
+  function collapse() {
+    textareaRef.current?.blur();
+    setHandoff(false);
+    setPanel('none');
+  }
+
+  function manageStickers() {
+    collapse();
+    navigate('/chat/stickers', { state: { from: 'chat' } });
+  }
+
+  function chooseStickers() {
+    if (roomForStickerPick()) stickersRef.current?.click();
+  }
+
   function onChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const element = event.target;
     const prev = latestRef.current.text;
@@ -454,11 +501,7 @@ function RoomComposer({
 
   useImperativeHandle(handleRef, () => ({
     focus: focusInput,
-    collapse: () => {
-      textareaRef.current?.blur();
-      setHandoff(false);
-      setPanel('none');
-    },
+    collapse,
     insertMention: (member) => {
       if (kind !== 'channel') return;
       if (insertTarget({ kind: 'member', id: member.id, label: mentionLabel(member.displayName) || tr('成员', 'Member') }, false)) focusInput();
@@ -539,7 +582,16 @@ function RoomComposer({
           </div>
           {activePanel === 'emoji' ? (
             <div className="shrink-0 overflow-hidden" style={panelBox}>
-              <EmojiPanel height={panelHeight} canSend={hasText} onInsert={insertEmoji} onBackspace={backspace} onSend={send} />
+              <ExpressionPanel
+                height={panelHeight}
+                canSend={hasText}
+                onInsert={insertEmoji}
+                onBackspace={backspace}
+                onSend={send}
+                onSendSticker={sendSticker}
+                onAddStickers={chooseStickers}
+                onManageStickers={manageStickers}
+              />
             </div>
           ) : null}
           {activePanel === 'plus' ? (
@@ -571,6 +623,21 @@ function RoomComposer({
             className="hidden"
             onChange={(event) => {
               pickFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+          {/* Lives here rather than in the panel, so a pick still arrives when the panel closed meanwhile. */}
+          {/* 放在这里而不是面板中，即使期间面板已关闭，选中的文件也能送达。 */}
+          <input
+            ref={stickersRef}
+            type="file"
+            multiple
+            accept={STICKER_PICK_ACCEPT}
+            tabIndex={-1}
+            aria-hidden
+            className="hidden"
+            onChange={(event) => {
+              addPickedStickers(event.target.files, tr);
               event.target.value = '';
             }}
           />

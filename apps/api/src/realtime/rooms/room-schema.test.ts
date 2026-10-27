@@ -38,16 +38,29 @@ function version5Room(storage: TestSqlStorage): void {
   `);
 }
 
+/** A room last opened by the version 7 code, before stickers: thumb_key and the image key indexes, no sticker_json. */
+/** 由版本 7 的代码最后打开过的房间（表情出现之前）：有 thumb_key 和图片键索引，没有 sticker_json。 */
+function version7Room(storage: TestSqlStorage): void {
+  ensureRoomSchema(storage.sql);
+  storage.raw.exec(`
+    ALTER TABLE messages DROP COLUMN sticker_json;
+    UPDATE meta SET value = '7' WHERE key = 'schema_version';
+    UPDATE meta SET value = '12' WHERE key = 'rev';
+    INSERT INTO messages (author_id, author_name, text, image_key, thumb_key, created_at, rev)
+    VALUES ('mem_a', 'A', '', 'chat/channel/ch_all/img_old.jpg', 'chat/channel/ch_all/img_oldthumb.jpg', '2026-10-01T00:00:00.000Z', 12);
+  `);
+}
+
 describe.skipIf(!sqlite)('room schema', () => {
   let storage: TestSqlStorage;
   afterEach(() => storage.close());
 
-  it('creates a new room at the current version, with thumb_key and the image key indexes', () => {
+  it('creates a new room at the current version, with thumb_key, sticker_json and the image key indexes', () => {
     storage = createTestSqlStorage();
     ensureRoomSchema(storage.sql);
-    expect(SCHEMA_VERSION).toBe(7);
-    expect(version(storage)).toBe(7);
-    expect(columns(storage, 'messages')).toContain('thumb_key');
+    expect(SCHEMA_VERSION).toBe(8);
+    expect(version(storage)).toBe(8);
+    expect(columns(storage, 'messages')).toEqual(expect.arrayContaining(['thumb_key', 'sticker_json']));
     expect(indexes(storage, 'messages')).toEqual(expect.arrayContaining(['messages_image_key', 'messages_thumb_key']));
     expect(currentRev(storage.sql)).toBe(0);
   });
@@ -57,11 +70,25 @@ describe.skipIf(!sqlite)('room schema', () => {
     version5Room(storage);
     ensureRoomSchema(storage.sql);
     expect(version(storage)).toBe(SCHEMA_VERSION);
-    expect(columns(storage, 'messages')).toContain('thumb_key');
-    const rows = storage.raw.prepare('SELECT image_key, thumb_key FROM messages').all();
-    expect(rows).toEqual([{ image_key: 'chat/channel/ch_all/img_old.jpg', thumb_key: null }]);
+    expect(columns(storage, 'messages')).toEqual(expect.arrayContaining(['thumb_key', 'sticker_json']));
+    const rows = storage.raw.prepare('SELECT image_key, thumb_key, sticker_json FROM messages').all();
+    expect(rows).toEqual([{ image_key: 'chat/channel/ch_all/img_old.jpg', thumb_key: null, sticker_json: null }]);
     expect(currentRev(storage.sql)).toBe(7);
     expect(nextRev(storage.sql)).toBe(8);
+  });
+
+  it('adds sticker_json to a version 7 room and keeps its rows, keys and revision', () => {
+    storage = createTestSqlStorage();
+    version7Room(storage);
+    expect(columns(storage, 'messages')).not.toContain('sticker_json');
+    ensureRoomSchema(storage.sql);
+    expect(version(storage)).toBe(8);
+    expect(columns(storage, 'messages')).toContain('sticker_json');
+    expect(storage.raw.prepare('SELECT image_key, thumb_key, sticker_json, rev FROM messages').all()).toEqual([
+      { image_key: 'chat/channel/ch_all/img_old.jpg', thumb_key: 'chat/channel/ch_all/img_oldthumb.jpg', sticker_json: null, rev: 12 },
+    ]);
+    expect(indexes(storage, 'messages')).toEqual(expect.arrayContaining(['messages_image_key', 'messages_thumb_key']));
+    expect(currentRev(storage.sql)).toBe(12);
   });
 
   it('reads one row and does nothing else once a room is current', () => {
@@ -86,7 +113,7 @@ describe.skipIf(!sqlite)('room schema', () => {
     ensureRoomSchema(storage.sql);
     storage.raw.exec("DROP INDEX messages_image_key; DROP INDEX messages_thumb_key; UPDATE meta SET value = '6' WHERE key = 'schema_version'");
     ensureRoomSchema(storage.sql);
-    expect(version(storage)).toBe(7);
+    expect(version(storage)).toBe(SCHEMA_VERSION);
     expect(indexes(storage, 'messages')).toEqual(expect.arrayContaining(['messages_image_key', 'messages_thumb_key']));
     // The statement of ChatRoom.rowsNamingKeys, for two keys.
     // ChatRoom.rowsNamingKeys 的语句，两个键时的形式。

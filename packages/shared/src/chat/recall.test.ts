@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage, QuotePreview } from './protocol';
 import { RECALL_WINDOW_MS, decideRecall, redactChatBody, redactChatMessage, redactQuotePreview, withinRecallWindow } from './recall';
+import type { StickerRef } from './stickers';
 
 const base = {
   authorId: 'mem_a',
@@ -96,16 +97,58 @@ describe('redactChatMessage', () => {
   });
 });
 
+const sticker: StickerRef = { id: 'stk_0123456789abcdefghijkl', type: 'webp', width: 300, height: 300, animated: false, bytes: 40_000, thumb: 'AbCdEfGhIjKlMnOpQrStUv' };
+
+describe('redactChatMessage with stickers and thumbnails', () => {
+  const withdrawn: ChatMessage = { ...message, text: '', imageKey: null, imageWidth: null, imageHeight: null, replyTo: null, recalled: true };
+
+  it('clears the sticker of a recalled or deleted message', () => {
+    const recalled = redactChatMessage({ ...withdrawn, sticker });
+    expect(recalled.sticker).toBeNull();
+    expect(JSON.stringify(recalled)).not.toContain(sticker.id);
+    expect(redactChatMessage({ ...withdrawn, recalled: false, deleted: true, sticker }).sticker).toBeNull();
+  });
+
+  it('clears a thumbnail left on a withdrawn message', () => {
+    const redacted = redactChatMessage({ ...withdrawn, thumbKey: 'chat/channel/ch_1/img_t.jpg' });
+    expect(redacted.thumbKey).toBeNull();
+    expect(redacted.sticker).toBeNull();
+  });
+
+  it('is still free once clean, with or without the new fields present', () => {
+    expect(redactChatMessage(withdrawn)).toBe(withdrawn);
+    const explicit = { ...withdrawn, thumbKey: null, sticker: null };
+    expect(redactChatMessage(explicit)).toBe(explicit);
+    const once = redactChatMessage({ ...withdrawn, sticker });
+    expect(redactChatMessage(once)).toBe(once);
+  });
+
+  it('keeps the sticker of a live message', () => {
+    const live = { ...withdrawn, recalled: false, sticker };
+    expect(redactChatMessage(live)).toBe(live);
+  });
+});
+
 describe('redactQuotePreview', () => {
-  it('drops excerpt and image flag unless the target is live', () => {
+  it('drops excerpt, image flag and sticker flag unless the target is live', () => {
     for (const state of ['recalled', 'deleted', 'unavailable'] as const) {
-      expect(redactQuotePreview(quote, state)).toEqual({ ...quote, state, excerpt: '', hasImage: false });
+      expect(redactQuotePreview(quote, state)).toEqual({ ...quote, state, excerpt: '', hasImage: false, hasSticker: false });
     }
     expect(redactQuotePreview(quote, 'ok')).toBe(quote);
+  });
+
+  it('clears the sticker flag of a quote whose target went away', () => {
+    const stickerQuote: QuotePreview = { ...quote, excerpt: '[表情]', hasImage: false, hasSticker: true };
+    expect(redactQuotePreview(stickerQuote, 'recalled')).toMatchObject({ state: 'recalled', excerpt: '', hasImage: false, hasSticker: false });
+    expect(redactQuotePreview(stickerQuote, 'ok')).toBe(stickerQuote);
+    const cleared = { ...stickerQuote, state: 'deleted' as const, excerpt: '' };
+    expect(redactQuotePreview(cleared, 'deleted').hasSticker).toBe(false);
   });
 
   it('is idempotent', () => {
     const once = redactQuotePreview(quote, 'recalled');
     expect(redactQuotePreview(once, 'recalled')).toBe(once);
+    const old: QuotePreview = { id: 2, authorId: 'mem_b', authorName: 'B', excerpt: '', hasImage: false, state: 'deleted' };
+    expect(redactQuotePreview(old, 'deleted')).toBe(old);
   });
 });

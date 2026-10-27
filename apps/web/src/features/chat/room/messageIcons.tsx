@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { StickerPlayIcon } from '../composer/composerIcons';
 
 /**
  * Line icons for the message popover, the jump pills and the timeline. They draw in currentColor.
@@ -74,6 +75,40 @@ export function MuteIcon() {
       <path d="m3 3.5 18 17" />
     </Line>
   );
+}
+
+/** 添加到表情: a smiling face with a plus where its top right would be. */
+/** 「添加到表情」：一张笑脸，右上角的位置换成加号。 */
+export function AddStickerIcon() {
+  return (
+    <Line>
+      <path d="M19.5 12.5a7.5 7.5 0 1 1-8-7.48" />
+      <path d="M9.2 14.2c.7.9 1.7 1.4 2.8 1.4s2.1-.5 2.8-1.4" />
+      <path d="M9.5 10.25h.01M14.5 10.25h.01" strokeWidth="2.2" />
+      <path d="M18 3v5.5M15.25 5.75h5.5" />
+    </Line>
+  );
+}
+
+/** 封禁表情: a shield crossed out. */
+/** 「封禁表情」：被划掉的盾牌。 */
+export function BlockStickerIcon() {
+  return (
+    <Line>
+      <path d="M12 3.5 5.5 6v5.6c0 4 2.8 7.3 6.5 8.9 3.7-1.6 6.5-4.9 6.5-8.9V6L12 3.5Z" />
+      <path d="m8.8 8.8 6.4 6.4" />
+    </Line>
+  );
+}
+
+/**
+ * The mark on an animated sticker shown as its still: a dark disc with a white triangle, so it reads on any sticker.
+ * It is the sticker grid's own mark, drawn larger here, so chats and grids show the same one.
+ * 以静态图显示的动态表情上的标记：深色圆片加白色三角形，在任何表情上都看得清。
+ * 它就是表情格子使用的标记，这里画得更大一些，因此聊天和表情格子显示的是同一个标记。
+ */
+export function StickerPlayMark({ className = 'h-7 w-7' }: { className?: string }) {
+  return <StickerPlayIcon className={className} />;
 }
 
 export function ChevronUpIcon({ className = 'h-4 w-4' }: { className?: string }) {

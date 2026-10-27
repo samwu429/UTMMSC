@@ -1,7 +1,7 @@
-import { QUOTE_EXCERPT_MAX, withinRecallWindow, type FloorReason, type MessageKind, type NormalizedChatMessage, type QuotePreview } from '@utmmsc/shared';
+import { QUOTE_EXCERPT_MAX, STICKER_TEXT, withinRecallWindow, type FloorReason, type MessageKind, type NormalizedChatMessage, type QuotePreview } from '@utmmsc/shared';
 import { formatDividerTime, showChatTimeDivider } from '../../../shared/format/time';
 import type { Locale } from '../../../shared/i18n/locale';
-import { imageLabel, joinText, legacyDeletedText, moderatorDeletedText, recallText, selfJoinTip, type Translate } from '../format/systemText';
+import { imageLabel, joinText, legacyDeletedText, moderatorDeletedText, recallText, selfJoinTip, stickerLabel, type Translate } from '../format/systemText';
 import type { PendingMessage } from './types';
 
 /**
@@ -147,7 +147,7 @@ export function buildTimeline(input: TimelineInput, previous: readonly TimelineI
 /* Message actions */
 /* 消息操作 */
 
-export type MessageActionId = 'copy' | 'quote' | 'recall' | 'hide' | 'translate' | 'remove' | 'mute';
+export type MessageActionId = 'copy' | 'addSticker' | 'quote' | 'recall' | 'hide' | 'translate' | 'remove' | 'mute' | 'blockSticker';
 
 export interface MessageActionInput {
   own: boolean;
@@ -162,6 +162,18 @@ export interface MessageActionInput {
   /** Device time corrected by the server clock offset. */
   /** 经服务器时钟偏差校正后的设备时间。 */
   nowMs: number;
+  /** The row shows a sticker. */
+  /** 这一行显示的是表情。 */
+  hasSticker: boolean;
+  /** The row shows a photo. */
+  /** 这一行显示的是图片。 */
+  hasImage: boolean;
+  /** 添加到表情 can be offered here: the room's server takes stickers. */
+  /** 这里可以提供「添加到表情」：房间所在的服务端支持表情。 */
+  canAddSticker: boolean;
+  /** The viewer is the system administrator, who may block a sticker everywhere. */
+  /** 观看者是系统管理员，可以在所有地方封禁一个表情。 */
+  canBlockSticker: boolean;
 }
 
 /**
@@ -173,20 +185,27 @@ export function canModerateAuthor(canModerate: boolean, own: boolean, authorId: 
   return canModerate && (own || !exempt.has(authorId));
 }
 
-/** Popover items in WeChat order. Items that do not apply are left out, never greyed out. */
-/** 按微信顺序排列的浮层操作。不适用的项直接省略，而不是置灰。 */
+/**
+ * Popover items in WeChat order. Items that do not apply are left out, never greyed out. A sticker or a photo offers
+ * 添加到表情 right after 复制; a sticker has no text, so it never offers 复制 or 翻译, and the system administrator gets
+ * 封禁表情 last.
+ * 按微信顺序排列的浮层操作。不适用的项直接省略，而不是置灰。表情或图片在「复制」之后紧接着提供「添加到表情」；表情没有文字，
+ * 因此从不提供「复制」和「翻译」；系统管理员在最后多一项「封禁表情」。
+ */
 export function messageActions(input: MessageActionInput): MessageActionId[] {
-  const hasText = !input.redacted && input.text.trim().length > 0;
+  const hasText = !input.redacted && !input.hasSticker && input.text.trim().length > 0;
   const live = !input.pending && !input.redacted && input.kind === 'user';
   const ids: MessageActionId[] = [];
   if (hasText) ids.push('copy');
   if (input.pending) return ids;
+  if (live && (input.hasSticker || input.hasImage) && input.canAddSticker) ids.push('addSticker');
   if (live && input.capable && input.canPost !== false) ids.push('quote');
   if (live && input.own && withinRecallWindow(input.createdAt, input.nowMs)) ids.push('recall');
   if (input.kind === 'user' && input.capable) ids.push('hide');
   if (hasText && input.kind === 'user') ids.push('translate');
   if (input.kind === 'user' && input.canModerate) ids.push('remove');
   if (input.kind === 'user' && input.canModerate && !input.own) ids.push('mute');
+  if (live && input.hasSticker && input.canBlockSticker) ids.push('blockSticker');
   return ids;
 }
 
@@ -199,17 +218,22 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** The quote a reply carries, built from a live row. */
-/** 回复所携带的引用，由一条有效消息生成。 */
+/**
+ * The quote a reply carries, built from a live row. A sticker quote has the shape the room builds: the fallback
+ * excerpt for old clients and `hasSticker`, which this build shows as its own label.
+ * 回复所携带的引用，由一条有效消息生成。表情的引用与房间生成的形式相同：给旧客户端的后备摘录，以及 `hasSticker`，本版本据此显示自己的标签。
+ */
 export function quoteFrom(message: NormalizedChatMessage): QuotePreview {
+  const hasSticker = Boolean(message.sticker);
   const chars = Array.from(collapse(message.text));
   return {
     id: message.id,
     authorId: message.author.id,
     authorName: message.author.displayName,
-    excerpt: chars.slice(0, QUOTE_EXCERPT_MAX).join(''),
-    hasImage: message.imageKey !== null,
+    excerpt: hasSticker ? STICKER_TEXT : chars.slice(0, QUOTE_EXCERPT_MAX).join(''),
+    hasImage: !hasSticker && message.imageKey !== null,
     state: 'ok',
+    hasSticker,
   };
 }
 
@@ -217,6 +241,7 @@ export function quoteFrom(message: NormalizedChatMessage): QuotePreview {
 /** 供读屏播报的一行消息预览；没有正文的消息返回空串。 */
 export function spokenPreview(message: NormalizedChatMessage, tr: Translate): string {
   if (message.kind !== 'user' || message.recalled || message.deleted) return '';
+  if (message.sticker) return stickerLabel(tr);
   const text = collapse(message.text);
   if (text) return clip(text, PREVIEW_MAX);
   return message.imageKey ? imageLabel(tr) : '';

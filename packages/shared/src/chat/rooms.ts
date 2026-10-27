@@ -80,10 +80,14 @@ export interface ChatPrefs {
   hiddenAt: string | null;
 }
 
-export type LastMessageKind = 'text' | 'image' | 'recalled' | 'moderator_deleted' | 'deleted' | 'system';
+/**
+ * What the newest row is. 'sticker' carries '[表情]' as its text, which builds that predate the kind show as is.
+ * 最新一条的类型。'sticker' 的 text 为 '[表情]'，早于这个类型的版本会直接显示它。
+ */
+export type LastMessageKind = 'text' | 'image' | 'recalled' | 'moderator_deleted' | 'deleted' | 'system' | 'sticker';
 
-/** Newest row a member may see, for the conversation list. `text` is empty for every non-text kind. */
-/** 会话列表用的、成员可见的最新一条。非文字类型的 `text` 一律为空。 */
+/** Newest row a member may see, for the conversation list. `text` is empty for every non-text kind but 'sticker'. */
+/** 会话列表用的、成员可见的最新一条。除 'sticker' 外，非文字类型的 `text` 一律为空。 */
 export interface LastMessagePreview {
   id: number;
   kind: LastMessageKind;

@@ -1,4 +1,8 @@
-import { MEDIA_CACHE_NAME } from './swRoutes';
+import { MEDIA_CACHE_NAME, STICKER_FILE_CACHE_NAME, STICKER_THUMB_CACHE_NAME } from './swRoutes';
+
+/** Every cache of member media, the two sticker caches included. */
+/** 所有成员媒体缓存，包括两个表情缓存。 */
+export const MEMBER_MEDIA_CACHES: readonly string[] = [MEDIA_CACHE_NAME, STICKER_THUMB_CACHE_NAME, STICKER_FILE_CACHE_NAME];
 
 interface SessionView {
   token: string | null;
@@ -24,7 +28,7 @@ export function mediaCacheOutlived(previous: SessionView, next: SessionView): bo
 
 export async function clearMediaCache(): Promise<void> {
   try {
-    if (typeof caches !== 'undefined') await caches.delete(MEDIA_CACHE_NAME);
+    if (typeof caches !== 'undefined') await Promise.all(MEMBER_MEDIA_CACHES.map((name) => caches.delete(name)));
   } catch {
     // Storage can be blocked (private windows, storage pressure); there is then nothing to clear.
     // 存储可能被禁用（无痕窗口、存储空间不足）；这时也就没有需要清空的东西。

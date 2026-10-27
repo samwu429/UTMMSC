@@ -102,3 +102,9 @@ export function selfJoinTip(name: string | null | undefined, tr: Translate): str
 export function imageLabel(tr: Translate): string {
   return tr('[图片]', '[Photo]');
 }
+
+/** A sticker in lists, quotes and screen-reader announcements. */
+/** 表情在列表、引用和读屏播报中的显示文字。 */
+export function stickerLabel(tr: Translate): string {
+  return tr('[表情]', '[Sticker]');
+}

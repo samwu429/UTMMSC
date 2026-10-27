@@ -96,6 +96,33 @@ describe('drafts store', () => {
     expect(store.getState().getDraft('mem_a', 'r')?.quote).toMatchObject({ state: 'recalled', excerpt: '', hasImage: false });
   });
 
+  it('keeps the sticker flag of a quote through storage, and drops it once the quote is no longer visible', () => {
+    const backend = memoryBackend();
+    const store = createDraftsStore(createSafeStorage(() => backend));
+    const stickerQuote: QuotePreview = { ...quote, excerpt: '[表情]', hasSticker: true };
+    store.getState().setDraft('mem_a', 'r', { text: '', quote: stickerQuote });
+    expect(store.getState().getDraft('mem_a', 'r')?.quote).toEqual(stickerQuote);
+    expect(createDraftsStore(createSafeStorage(() => backend)).getState().getDraft('mem_a', 'r')?.quote).toEqual(stickerQuote);
+
+    // Saving the same quote again changes nothing; losing the flag is a change.
+    // 再次保存相同的引用不会有任何变化；去掉标记则算作变化。
+    const saved = store.getState().drafts;
+    store.getState().setDraft('mem_a', 'r', { text: '', quote: { ...stickerQuote } });
+    expect(store.getState().drafts).toBe(saved);
+    store.getState().setDraft('mem_a', 'r', { text: '', quote: { ...stickerQuote, hasSticker: false } });
+    expect(store.getState().getDraft('mem_a', 'r')?.quote?.hasSticker).toBe(false);
+
+    store.getState().setDraft('mem_a', 'r', { text: 'reply', quote: { ...stickerQuote, state: 'recalled' } });
+    expect(store.getState().getDraft('mem_a', 'r')?.quote).toMatchObject({ state: 'recalled', excerpt: '', hasImage: false, hasSticker: false });
+
+    const odd = memoryBackend();
+    odd.data.set(
+      DRAFTS_STORAGE_KEY,
+      JSON.stringify({ version: 1, state: { drafts: { 'mem_a|r': { text: 'x', quote: { ...stickerQuote, hasSticker: 'yes' }, updatedAt: '2026-10-22T00:00:00.000Z' } }, recentEmoji: [] } }),
+    );
+    expect(createDraftsStore(createSafeStorage(() => odd)).getState().getDraft('mem_a', 'r')?.quote?.hasSticker).toBe(false);
+  });
+
   it('keeps only the newest drafts', () => {
     const store = createDraftsStore(memoryStorage());
     for (let index = 0; index <= DRAFTS_MAX; index += 1) store.getState().setDraft('mem_a', `room${index}`, { text: `t${index}` });

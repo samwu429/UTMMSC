@@ -1,13 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTr } from '../../../shared/i18n/locale';
-import { extensionForMime } from '../../../shared/native/fileName';
-import { saveFile } from '../../../shared/native/native';
-import { ActionSheet } from '../../../shared/ui/ActionSheet';
+import { ActionSheet, type ActionSheetOption } from '../../../shared/ui/ActionSheet';
 import { useBackToClose } from '../../../shared/ui/overlayHistory';
-import { toast } from '../../../shared/ui/toast';
 import { centredBox, clampPan, coverTransform, fitContain, VIEWER_SCALE_MAX, zoomAbout, type Size } from './imageBox';
 import { chatImageSrc, chatThumbSrc } from './ImageMessage';
+import { saveImageFromUrl } from './saveImage';
 
 export interface ViewerImage {
   id: number;
@@ -37,6 +35,9 @@ interface Props {
   /** Controls along the bottom edge. They take no part in the gestures and fade with the backdrop. */
   /** 沿底边显示的控件。它们不参与手势，随背景一起淡入淡出。 */
   footer?: ReactNode;
+  /** More long-press options for an image, listed above 保存图片. Chat offers 添加到表情; moments pass nothing. */
+  /** 某张图片长按菜单中的更多选项，排在「保存图片」之上。聊天提供「添加到表情」；朋友圈不传。 */
+  extraOptions?: (image: ViewerImage) => ActionSheetOption[];
 }
 
 function chatSrc(image: ViewerImage, mediaToken: string | null): string | null {
@@ -75,7 +76,7 @@ function reducedMotion(): boolean {
  * 全屏图片查看器。从缩略图放大打开，支持双指和双击缩放、放大后拖动、左右滑动切换已加载的图片、下拉关闭；
  * 单击关闭，长按可保存图片。键盘：Escape 关闭，方向键切换图片。
  */
-export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect, onClose, srcFor = chatSrc, placeholderFor, footer }: Props) {
+export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect, onClose, srcFor = chatSrc, placeholderFor, footer, extraOptions }: Props) {
   const tr = useTr();
   const previewOf = placeholderFor ?? (srcFor === chatSrc ? (image: ViewerImage) => chatThumbSrc(image.imageKey, mediaToken) : null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -421,14 +422,7 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
     if (!current) return;
     const src = srcFor(current, mediaToken);
     if (!src) return;
-    try {
-      const res = await fetch(src);
-      if (!res.ok) throw new Error(String(res.status));
-      const blob = await res.blob();
-      await saveFile(blob, `utmmsc-${current.id}.${extensionForMime(blob.type) ?? 'jpg'}`, blob.type || 'image/jpeg');
-    } catch {
-      toast(tr('保存失败', 'Couldn’t save the image'));
-    }
+    await saveImageFromUrl(src, `utmmsc-${current.id}`, tr);
   }
 
   if (!current) return null;
@@ -529,7 +523,9 @@ export function ImageViewer({ images, startId, startRect, mediaToken, thumbRect,
       >
         {tr('关闭', 'Close')}
       </button>
-      {sheet ? <ActionSheet onClose={() => setSheet(false)} options={[{ label: tr('保存图片', 'Save image'), onSelect: () => void save() }]} /> : null}
+      {sheet ? (
+        <ActionSheet onClose={() => setSheet(false)} options={[...(extraOptions?.(current) ?? []), { label: tr('保存图片', 'Save image'), onSelect: () => void save() }]} />
+      ) : null}
     </div>,
     document.body,
   );

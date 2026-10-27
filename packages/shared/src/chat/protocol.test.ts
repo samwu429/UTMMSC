@@ -8,7 +8,9 @@ import {
   parseClientFrame,
   parseServerFrame,
   type ChatMessage,
+  type QuotePreview,
 } from './protocol';
+import type { StickerRef } from './stickers';
 
 describe('parseClientFrame', () => {
   it('parses a valid send frame and drops unknown fields', () => {
@@ -241,6 +243,7 @@ describe('normalizeChatMessage', () => {
       clientId: null,
       deletedBy: null,
       rev: 0,
+      sticker: null,
     });
   });
 
@@ -264,7 +267,7 @@ describe('normalizeChatMessage', () => {
     });
     expect(normalized.kind).toBe('system');
     expect(normalized.system).toEqual({ type: 'join', actor: { id: 'mem_x', displayName: 'X' }, members: [{ id: 'mem_y', displayName: 'Y' }], more: 2 });
-    expect(normalized.replyTo).toEqual({ id: 3, authorId: 'mem_b', authorName: 'B', excerpt: '', hasImage: false, state: 'recalled' });
+    expect(normalized.replyTo).toEqual({ id: 3, authorId: 'mem_b', authorName: 'B', excerpt: '', hasImage: false, state: 'recalled', hasSticker: false });
     expect(normalized.imageWidth).toBeNull();
     expect(normalized.clientId).toBe('c9');
     expect(normalized.deletedBy).toBeNull();
@@ -312,5 +315,115 @@ describe('parseServerFrame', () => {
   it('passes through the extended ready frame', () => {
     const ready = { type: 'ready', roomId: 'r', memberId: 'm', lastReadId: 4, onlineCount: 0, visibleFromId: 5, floorReason: 'join', rev: 0 };
     expect(parseServerFrame(ready)).toEqual(ready);
+    expect(parseServerFrame({ ...ready, stickers: true })).toEqual({ ...ready, stickers: true });
+  });
+});
+
+const STICKER_ID = 'stk_0123456789abcdefghijkl';
+const STILL = 'AbCdEfGhIjKlMnOpQrStUv';
+const stickerRef: StickerRef = { id: STICKER_ID, type: 'gif', width: 240, height: 200, animated: true, bytes: 182_044, thumb: STILL };
+
+describe('parseClientFrame sticker sends', () => {
+  const send = { type: 'send', clientId: 'c1', text: '', sticker: STICKER_ID };
+
+  it('keeps the sticker, its still and the reply, and drops unknown fields', () => {
+    expect(parseClientFrame(send)).toEqual(send);
+    expect(parseClientFrame({ ...send, stickerThumb: STILL, replyToId: 9, extra: 1 })).toEqual({ ...send, stickerThumb: STILL, replyToId: 9 });
+  });
+
+  it('requires empty text', () => {
+    expect(parseClientFrame({ ...send, text: 'hi' })).toBeNull();
+    expect(parseClientFrame({ ...send, text: ' ' })).toBeNull();
+    expect(parseClientFrame({ ...send, text: undefined })).toBeNull();
+  });
+
+  it('refuses image fields and mentions beside a sticker', () => {
+    expect(parseClientFrame({ ...send, imageKey: 'chat/channel/ch_1/img_a.png' })).toBeNull();
+    expect(parseClientFrame({ ...send, imageKey: 'k', thumbKey: 't' })).toBeNull();
+    expect(parseClientFrame({ ...send, imageKey: 'k', imageWidth: 10, imageHeight: 10 })).toBeNull();
+    expect(parseClientFrame({ ...send, mentions: ['mem_a'] })).toBeNull();
+    expect(parseClientFrame({ ...send, mentions: [] })).toBeNull();
+    expect(parseClientFrame({ ...send, mentionAll: true })).toBeNull();
+    expect(parseClientFrame({ ...send, mentionAll: false })).toBeNull();
+  });
+
+  it('allows a still only beside a sticker, and only as a token', () => {
+    expect(parseClientFrame({ type: 'send', clientId: 'c1', text: '', stickerThumb: STILL })).toBeNull();
+    expect(parseClientFrame({ type: 'send', clientId: 'c1', text: 'hi', stickerThumb: STILL })).toBeNull();
+    expect(parseClientFrame({ ...send, stickerThumb: 'short' })).toBeNull();
+    expect(parseClientFrame({ ...send, stickerThumb: `${STILL}A` })).toBeNull();
+    expect(parseClientFrame({ ...send, stickerThumb: null })).toBeNull();
+  });
+
+  it('rejects bad sticker ids', () => {
+    expect(parseClientFrame({ ...send, sticker: 'stk_short' })).toBeNull();
+    expect(parseClientFrame({ ...send, sticker: `${STICKER_ID}x` })).toBeNull();
+    expect(parseClientFrame({ ...send, sticker: `sticker/${STICKER_ID}.gif` })).toBeNull();
+    expect(parseClientFrame({ ...send, sticker: '' })).toBeNull();
+    expect(parseClientFrame({ ...send, sticker: null })).toBeNull();
+    expect(parseClientFrame({ ...send, sticker: 7 })).toBeNull();
+  });
+
+  it('leaves text and image sends as they were', () => {
+    expect(parseClientFrame({ type: 'send', clientId: 'c1', text: 'hi' })).toEqual({ type: 'send', clientId: 'c1', text: 'hi' });
+    expect(parseClientFrame({ type: 'send', clientId: 'c1', text: '', imageKey: 'k' })).not.toHaveProperty('sticker');
+  });
+});
+
+describe('normalizeChatMessage stickers', () => {
+  const alias = `chat/channel/ch_1/${STICKER_ID}.gif`;
+  const wire: ChatMessage = { ...legacyMessage, text: '', imageKey: alias, imageWidth: 240, imageHeight: 200, thumbKey: null, sticker: stickerRef };
+
+  it('keeps a valid sticker and drops the alias image and its size', () => {
+    const normalized = normalizeChatMessage(wire);
+    expect(normalized.sticker).toEqual(stickerRef);
+    expect(normalized).toMatchObject({ imageKey: null, imageWidth: null, imageHeight: null, thumbKey: null, text: '' });
+  });
+
+  it('drops a thumbnail key sent beside a sticker', () => {
+    expect(normalizeChatMessage({ ...wire, thumbKey: 'chat/channel/ch_1/img_b.jpg' }).thumbKey).toBeNull();
+  });
+
+  it('keeps the alias as a photo when the sticker is invalid', () => {
+    const normalized = normalizeChatMessage({ ...wire, sticker: { ...stickerRef, id: 'stk_bad' } });
+    expect(normalized.sticker).toBeNull();
+    expect(normalized).toMatchObject({ imageKey: alias, imageWidth: 240, imageHeight: 200 });
+    expect(normalizeChatMessage({ ...wire, sticker: 'stk' as never }).imageKey).toBe(alias);
+  });
+
+  it('keeps the sticker with its still dropped when only the still is bad', () => {
+    expect(normalizeChatMessage({ ...wire, sticker: { ...stickerRef, thumb: 'bad' } }).sticker).toEqual({ ...stickerRef, thumb: null });
+  });
+
+  it('never gives a system row a sticker', () => {
+    const normalized = normalizeChatMessage({ ...wire, kind: 'system', system: { type: 'join', actor: null, members: [], more: 0 } });
+    expect(normalized.sticker).toBeNull();
+    expect(normalized.imageKey).toBe(alias);
+  });
+
+  it('is idempotent', () => {
+    const once = normalizeChatMessage(wire);
+    expect(normalizeChatMessage(once)).toEqual(once);
+  });
+
+  it('normalizes the sticker in message and history frames', () => {
+    const frame = parseServerFrame({ type: 'message', message: wire });
+    if (frame?.type !== 'message') throw new Error('expected message');
+    expect(frame.message).toMatchObject({ sticker: stickerRef, imageKey: null });
+  });
+});
+
+describe('normalizeChatMessage quotes of stickers', () => {
+  const quote = { id: 3, authorId: 'mem_b', authorName: 'B', excerpt: '[表情]', hasImage: false, state: 'ok', hasSticker: true };
+
+  it('keeps hasSticker on a live quote', () => {
+    expect(normalizeChatMessage({ ...legacyMessage, replyTo: quote as QuotePreview }).replyTo).toEqual(quote);
+  });
+
+  it('drops it on a quote that is no longer live, or when it is not true', () => {
+    expect(normalizeChatMessage({ ...legacyMessage, replyTo: { ...quote, state: 'recalled' } as QuotePreview }).replyTo).toMatchObject({ hasSticker: false, excerpt: '' });
+    expect(normalizeChatMessage({ ...legacyMessage, replyTo: { ...quote, hasSticker: 'yes' } as never }).replyTo?.hasSticker).toBe(false);
+    const old: QuotePreview = { id: 3, authorId: 'mem_b', authorName: 'B', excerpt: '[表情]', hasImage: false, state: 'ok' };
+    expect(normalizeChatMessage({ ...legacyMessage, replyTo: old }).replyTo?.hasSticker).toBe(false);
   });
 });

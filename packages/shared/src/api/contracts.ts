@@ -1,6 +1,7 @@
 import type { AdminCounts, AdminSectionKey } from '../admin/sections';
 import type { ChannelIconPresetId } from '../chat/channel-icons';
 import type { ChannelSummary, DirectConversationSummary, ChannelAudience, ChatPrefs, HistoryVisibility, PostPolicy } from '../chat/rooms';
+import type { StickerRef } from '../chat/stickers';
 import type { FileCategory, FileRecord } from '../files/categories';
 import type { FriendshipState } from '../identity/friends';
 import type { EnrollmentStatus, MemberProfile, MemberSelf } from '../identity/member';
@@ -291,6 +292,67 @@ export interface TranslateMessageResponse {
   text: string;
   sourceLang: 'zh-CN' | 'en';
   targetLang: 'zh-CN' | 'en';
+}
+
+/* Stickers */
+/* 表情 */
+
+/** One sticker in a member's collection (我的表情), with when it was added. */
+/** 成员表情列表（我的表情）中的一个表情，附带添加时间。 */
+export interface StickerItem extends StickerRef {
+  addedAt: string;
+}
+
+/**
+ * GET /stickers?v=<version>: the collection, newest first, or `unchanged` when the client's version is current.
+ * `mediaToken` loads the files from /members/media.
+ * GET /stickers?v=<版本>：表情列表，最新的在前；客户端的版本已是最新时为 `unchanged`。`mediaToken` 用于从 /members/media 加载文件。
+ */
+export type StickerListResponse =
+  | { unchanged?: false; stickers: StickerItem[]; max: number; version: number; mediaToken: string }
+  | { unchanged: true; max: number; version: number; mediaToken: string };
+
+/** Body of POST /stickers/add: a sticker id and the still of the message it is added from. */
+/** POST /stickers/add 的请求体：表情 id，以及所添加自的那条消息的静态图。 */
+export interface StickerAddBody {
+  id: string;
+  thumb?: string | null;
+}
+
+/** POST /stickers/upload and POST /stickers/add: 201 when added, 200 with `duplicate` when it moved to the front. */
+/** POST /stickers/upload 和 POST /stickers/add：添加时为 201；已存在并移到最前时为 200，且 `duplicate` 为 true。 */
+export interface StickerAddResponse {
+  sticker: StickerItem;
+  duplicate: boolean;
+  total: number;
+  version: number;
+}
+
+/** Body of POST /stickers/front and POST /stickers/remove. The first id ends up first. */
+/** POST /stickers/front 和 POST /stickers/remove 的请求体。第一个 id 排在最前。 */
+export interface StickerIdsBody {
+  ids: string[];
+}
+
+export interface StickerFrontResponse {
+  moved: number;
+  version: number;
+}
+
+export interface StickerRemoveResponse {
+  removed: number;
+  total: number;
+  version: number;
+}
+
+/** Body of POST /stickers/block (system administrator only). */
+/** POST /stickers/block 的请求体（仅限系统管理员）。 */
+export interface StickerBlockBody {
+  id: string;
+}
+
+export interface StickerBlockResponse {
+  blocked: true;
 }
 
 /* Files */

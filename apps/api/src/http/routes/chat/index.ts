@@ -12,6 +12,7 @@ import {
   parseRoomId,
   planTranslation,
   roleTier,
+  stickerKeyForAlias,
   type ChannelSummary,
   type ChatOverviewResponse,
   type ChatPrefs,
@@ -520,16 +521,19 @@ chatRoutes.post('/rooms/:roomId/images', rateLimit(CHAT_IMAGE_UPLOADS_PER_ADDRES
 
 /**
  * Chat images and their thumbnails, with the room's media token. One R2 call per request, an ETag, 304 for a copy
- * the browser already holds, and a year of immutable caching, since every upload gets a new random key.
+ * the browser already holds, and a year of immutable caching, since every upload gets a new random key. A sticker
+ * message's alias (this room's prefix and <id>.<type>, never stored) serves the sticker's original, so builds that
+ * predate stickers show it as a photo.
  * 聊天图片及其缩略图，凭房间的媒体令牌访问。每个请求只调用一次 R2，带 ETag，浏览器已有副本时返回 304，并可不可变地缓存一年，
- * 因为每次上传都使用新的随机键。
+ * 因为每次上传都使用新的随机键。表情消息的别名（本房间的前缀加 <id>.<type>，从不实际存储）提供表情的原始文件，
+ * 早于表情功能的版本因此把它显示为图片。
  */
 chatRoutes.get('/media/*', async (c) => {
   const roomId = await readChatMediaToken(c.env.SESSION_SECRET, c.req.query('t') ?? '');
   if (!roomId) throw unauthorized('媒体链接已过期');
   const key = decodeKeyPath(c.req.path.replace(/^\/chat\/media\//, ''));
   if (!isRoomImageKey(roomId, key)) throw forbidden();
-  const response = await mediaObjectResponse(requireBucket(c.env), key, c.req.raw);
+  const response = await mediaObjectResponse(requireBucket(c.env), stickerKeyForAlias(roomId, key) ?? key, c.req.raw);
   if (!response) throw notFound();
   return response;
 });

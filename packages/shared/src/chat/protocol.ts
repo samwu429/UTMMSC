@@ -7,6 +7,8 @@
  * 首版之后新增的字段在线路上都是可选的，旧客户端会忽略它们，新客户端连旧服务端也能运行。
  */
 
+import { isStickerId, isStickerThumbToken, normalizeStickerRef, type StickerRef } from './stickers';
+
 export const MESSAGE_TEXT_MAX = 2000;
 export const HISTORY_PAGE_SIZE = 50;
 /** Largest page a history request may ask for. */
@@ -62,6 +64,11 @@ export interface QuotePreview {
   excerpt: string;
   hasImage: boolean;
   state: QuoteState;
+  /**
+   * The quoted message is a sticker. Its excerpt is then '[表情]' for old clients; new clients show their own label.
+   * 被引用的消息是表情。此时摘录为给旧客户端看的 '[表情]'；新客户端显示自己的标签。
+   */
+  hasSticker?: boolean;
 }
 
 export interface ChatMessage {
@@ -97,6 +104,13 @@ export interface ChatMessage {
   /** Room revision of the last change to this row; drives reconnect catch-up. */
   /** 此行最近一次变更时的房间版本号；用于重连补齐。 */
   rev?: number;
+  /**
+   * The sticker a user row shows, as the room read it when it was sent, with the sender's still. The room also sends
+   * an alias imageKey with its size so old clients show it as a photo; normalizing drops that alias.
+   * 用户消息显示的表情，即发送时房间读取到的描述，附带发送者的静态图。房间同时发送一个别名 imageKey 及其尺寸，让旧客户端把它当作图片显示；
+   * 规范化时会去掉这个别名。
+   */
+  sticker?: StickerRef | null;
 }
 
 /** A message with every optional field filled in with its default. */
@@ -120,6 +134,12 @@ export interface SendFrame {
   /** The image's thumbnail, uploaded like imageKey; only together with imageKey. */
   /** 图片的缩略图，与 imageKey 一样上传；只能与 imageKey 一起出现。 */
   thumbKey?: string;
+  /** A sticker id to send. The text is then empty, with no image fields and no mentions. */
+  /** 要发送的表情 id。此时正文为空，且没有图片字段和 @。 */
+  sticker?: string;
+  /** The sender's still for that sticker; only together with sticker. */
+  /** 发送者为该表情使用的静态图；只能与 sticker 一起出现。 */
+  stickerThumb?: string;
 }
 
 export interface HistoryFrame {
@@ -217,6 +237,9 @@ export interface ReadyFrame {
   /** True when the server accepts visibility frames. */
   /** 服务端接受 visibility 帧时为 true。 */
   visibility?: boolean;
+  /** True when the room takes sticker sends. */
+  /** 房间接受发送表情时为 true。 */
+  stickers?: boolean;
 }
 
 export interface MessageFrame {
@@ -373,6 +396,14 @@ function parseSend(raw: Record<string, unknown>): SendFrame | null {
   if (raw.thumbKey !== undefined && (typeof raw.thumbKey !== 'string' || raw.thumbKey.length === 0 || raw.thumbKey.length > IMAGE_KEY_MAX || raw.imageKey === undefined)) return null;
   if (raw.replyToId !== undefined && !isPositiveInt(raw.replyToId)) return null;
   if (raw.mentionAll !== undefined && typeof raw.mentionAll !== 'boolean') return null;
+  // A sticker stands alone: empty text, no image fields and no mentions. Its still only comes with it.
+  // 表情单独发送：正文为空，没有图片字段，也没有 @。它的静态图只能与它一起出现。
+  if (raw.stickerThumb !== undefined && (raw.sticker === undefined || !isStickerThumbToken(raw.stickerThumb))) return null;
+  if (raw.sticker !== undefined) {
+    if (!isStickerId(raw.sticker) || raw.text !== '') return null;
+    if (raw.imageKey !== undefined || raw.thumbKey !== undefined || raw.imageWidth !== undefined || raw.imageHeight !== undefined) return null;
+    if (raw.mentions !== undefined || raw.mentionAll !== undefined) return null;
+  }
 
   let mentions: string[] | undefined;
   if (raw.mentions !== undefined) {
@@ -401,6 +432,8 @@ function parseSend(raw: Record<string, unknown>): SendFrame | null {
     frame.imageWidth = raw.imageWidth as number;
     frame.imageHeight = raw.imageHeight as number;
   }
+  if (typeof raw.sticker === 'string') frame.sticker = raw.sticker;
+  if (typeof raw.stickerThumb === 'string') frame.stickerThumb = raw.stickerThumb;
   return frame;
 }
 
@@ -492,6 +525,7 @@ function normalizeQuote(value: unknown): QuotePreview | null {
     excerpt: live && typeof value.excerpt === 'string' ? value.excerpt.slice(0, QUOTE_EXCERPT_MAX) : '',
     hasImage: live && value.hasImage === true,
     state,
+    hasSticker: live && value.hasSticker === true,
   };
 }
 
@@ -502,11 +536,15 @@ function dimensionOrNull(value: unknown): number | null {
 /**
  * Fills every optional field with its default, so the rest of the client can rely on one shape
  * whether the server is old or new. Values of the wrong type fall back to the default.
+ * A valid sticker drops the alias image the room sends for old clients, with its size and thumbnail; an invalid one
+ * leaves the alias, so the row still shows as a photo. System rows never carry a sticker.
  * 为每个可选字段填入默认值，客户端其余部分无论服务端新旧都能依赖同一结构。类型不对的值退回默认值。
+ * 有效的表情会去掉房间为旧客户端发送的别名图片及其尺寸和缩略图；无效的表情则保留别名，这一行仍按图片显示。系统消息从不带表情。
  */
 export function normalizeChatMessage(message: ChatMessage): NormalizedChatMessage {
   const kind: MessageKind = message.kind === 'system' ? 'system' : 'user';
-  const imageKey = typeof message.imageKey === 'string' ? message.imageKey : null;
+  const sticker = kind === 'user' ? normalizeStickerRef(message.sticker) : null;
+  const imageKey = sticker === null && typeof message.imageKey === 'string' ? message.imageKey : null;
   return {
     id: message.id,
     roomId: message.roomId,
@@ -519,14 +557,15 @@ export function normalizeChatMessage(message: ChatMessage): NormalizedChatMessag
     kind,
     system: kind === 'system' ? normalizeSystemEvent(message.system) : null,
     replyTo: normalizeQuote(message.replyTo),
-    imageWidth: dimensionOrNull(message.imageWidth),
-    imageHeight: dimensionOrNull(message.imageHeight),
+    imageWidth: sticker === null ? dimensionOrNull(message.imageWidth) : null,
+    imageHeight: sticker === null ? dimensionOrNull(message.imageHeight) : null,
     // A thumbnail without its image would show a picture the row no longer has.
     // 没有原图的缩略图会显示一张这一行已不再拥有的图片。
     thumbKey: imageKey !== null && typeof message.thumbKey === 'string' && message.thumbKey.length > 0 ? message.thumbKey : null,
     clientId: typeof message.clientId === 'string' && message.clientId.length > 0 ? message.clientId : null,
     deletedBy: message.deletedBy === 'author' || message.deletedBy === 'moderator' ? message.deletedBy : null,
     rev: isNonNegativeInt(message.rev) ? message.rev : 0,
+    sticker,
   };
 }
 

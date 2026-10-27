@@ -6,9 +6,18 @@ import {
   MEDIA_CACHE_MAX_AGE_SECONDS,
   MEDIA_CACHE_MAX_ENTRIES,
   MEDIA_CACHE_NAME,
+  STICKER_FILE_CACHE_MAX_AGE_SECONDS,
+  STICKER_FILE_CACHE_MAX_ENTRIES,
+  STICKER_FILE_CACHE_NAME,
+  STICKER_THUMB_CACHE_MAX_AGE_SECONDS,
+  STICKER_THUMB_CACHE_MAX_ENTRIES,
+  STICKER_THUMB_CACHE_NAME,
   isMediaImageRequest,
   isPresetAvatarRequest,
+  isStickerFileRequest,
+  isStickerThumbRequest,
   mediaCacheKey,
+  skipLargeStickerResponses,
 } from './src/app/swRoutes';
 
 const BASE = '/UTMMSC/';
@@ -68,6 +77,29 @@ export default defineConfig({
         skipWaiting: false,
         clientsClaim: false,
         runtimeCaching: [
+          // Stickers come first, since the general media rule below matches their URLs too. Each has its own cache, so
+          // a chat full of photos never pushes the panel's stickers out, and the reverse.
+          // 表情规则放在最前，因为下面的通用媒体规则同样匹配它们的地址。表情各有自己的缓存，满是图片的聊天不会把面板里的表情挤出去，反之亦然。
+          {
+            urlPattern: isStickerThumbRequest,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: STICKER_THUMB_CACHE_NAME,
+              expiration: { maxEntries: STICKER_THUMB_CACHE_MAX_ENTRIES, maxAgeSeconds: STICKER_THUMB_CACHE_MAX_AGE_SECONDS, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [200] },
+              plugins: [{ cacheKeyWillBeUsed: mediaCacheKey }],
+            },
+          },
+          {
+            urlPattern: isStickerFileRequest,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: STICKER_FILE_CACHE_NAME,
+              expiration: { maxEntries: STICKER_FILE_CACHE_MAX_ENTRIES, maxAgeSeconds: STICKER_FILE_CACHE_MAX_AGE_SECONDS, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [200] },
+              plugins: [{ cacheKeyWillBeUsed: mediaCacheKey, cacheWillUpdate: skipLargeStickerResponses }],
+            },
+          },
           {
             // Member media never changes behind a key, so a cached copy is used without asking, across launches and
             // across the daily token change. Only full 200 responses are kept: not videos, not opaque replies.

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ROLE_GROUPS, encodeProgramSelection, enrollmentYearLabel, enrollmentYearMax, enrollmentYearMin, isHonoraryRole, isStaffRole, isValidPassword, programChoiceState, readStoredProgramCodes, shouldGraduate, showsEnrollment, type Role } from '@utmmsc/shared';
 import { errorMessage } from '../../../shared/api/errors';
 import { useLabels, useLocaleStore } from '../../../shared/i18n/locale';
@@ -284,6 +285,7 @@ export function AccountPanel({
   const member = useSessionStore((s) => s.member);
   const setMember = useSessionStore((s) => s.setMember);
   const clear = useSessionStore((s) => s.clear);
+  const navigate = useNavigate();
   const [screen, setScreen] = useState<Screen>(openRequest?.screen ?? 'list');
 
   useEffect(() => {
@@ -422,6 +424,9 @@ export function AccountPanel({
       <Group label={tr('通用', 'General')}>
         <Row label={tr('通知', 'Notifications')} value={deviceStatusText(pushCapability, pushDevice, pushServerReady, tr)} onClick={() => setScreen('notifications')} />
         <Row label={tr('语言', 'Language')} value={locale === 'en' ? 'English' : '中文'} onClick={() => setScreen('language')} />
+        {/* The manage screen of the chat panel's 我的表情, which says where it came from for its back button. */}
+        {/* 聊天面板中「我的表情」的管理界面；告诉它从哪里进入，以便返回按钮显示正确的位置。 */}
+        <Row label={tr('我的表情', 'My stickers')} onClick={() => navigate('/chat/stickers', { state: { from: 'settings' } })} />
         {offersAndroidApp ? <Row label={tr('下载安卓 App', 'Get the Android app')} href={ANDROID_APP_URL} /> : null}
         {installed ? null : <Row label={tr('添加到主屏幕', 'Add to Home Screen')} onClick={() => setScreen('install')} />}
       </Group>

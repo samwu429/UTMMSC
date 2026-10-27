@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { mediaCacheOutlived, watchSessionForMediaCache } from './mediaCache';
+import { clearMediaCache, mediaCacheOutlived, watchSessionForMediaCache } from './mediaCache';
+import { MEDIA_CACHE_NAME, STICKER_FILE_CACHE_NAME, STICKER_THUMB_CACHE_NAME } from './swRoutes';
 
 interface Session {
   token: string | null;
@@ -60,5 +61,25 @@ describe('watchSessionForMediaCache', () => {
     stop();
     store.setState(signedOut);
     expect(clear).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('clearMediaCache', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('deletes the media cache and both sticker caches', async () => {
+    const deleted: string[] = [];
+    vi.stubGlobal('caches', { delete: vi.fn(async (name: string) => deleted.push(name) > 0) });
+    await clearMediaCache();
+    expect(deleted.sort()).toEqual([MEDIA_CACHE_NAME, STICKER_FILE_CACHE_NAME, STICKER_THUMB_CACHE_NAME].sort());
+  });
+
+  it('copes with blocked storage and with no Cache Storage at all', async () => {
+    vi.stubGlobal('caches', { delete: vi.fn(async () => Promise.reject(new DOMException('blocked', 'SecurityError'))) });
+    await expect(clearMediaCache()).resolves.toBeUndefined();
+    vi.stubGlobal('caches', undefined);
+    await expect(clearMediaCache()).resolves.toBeUndefined();
   });
 });

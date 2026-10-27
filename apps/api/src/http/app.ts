@@ -13,6 +13,7 @@ import { memberRoutes } from './routes/members';
 import { miniappRoutes } from './routes/miniapps';
 import { momentRoutes } from './routes/moments';
 import { notificationRoutes } from './routes/notifications';
+import { stickerRoutes } from './routes/stickers';
 import { serveMemberMedia } from './routes/members/media';
 
 /** Composes all route groups under one Hono app with shared CORS and error handling. */
@@ -30,6 +31,7 @@ export function createApp() {
   app.get('/members/media/*', serveMemberMedia);
   app.route('/members', memberRoutes);
   app.route('/chat', chatRoutes);
+  app.route('/stickers', stickerRoutes);
   app.route('/channels', channelRoutes);
   app.route('/files', fileRoutes);
   app.route('/friends', friendRoutes);

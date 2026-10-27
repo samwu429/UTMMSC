@@ -9,7 +9,7 @@ import {
 } from '@utmmsc/shared';
 import { formatChatListTime } from '../../../shared/format/time';
 import type { Locale } from '../../../shared/i18n/locale';
-import { imageLabel, joinText, legacyDeletedText, moderatorDeletedText, recallText, type Translate } from '../format/systemText';
+import { imageLabel, joinText, legacyDeletedText, moderatorDeletedText, recallText, stickerLabel, type Translate } from '../format/systemText';
 import { draftFor, type ChatDraft } from '../state/drafts';
 
 /**
@@ -114,6 +114,10 @@ function messageBody(message: LastMessagePreview, meId: string | null, tr: Trans
   switch (message.kind) {
     case 'image':
       return imageLabel(tr);
+    // The text is the Chinese fallback '[表情]' for older builds; this one shows the label in the member's language.
+    // 其 text 是给旧版本看的中文后备 '[表情]'；本版本按成员的语言显示标签。
+    case 'sticker':
+      return stickerLabel(tr);
     case 'recalled':
       return recallText({ own: meId !== null && message.authorId === meId, name: message.authorName }, tr);
     case 'moderator_deleted':
@@ -141,7 +145,7 @@ function emptyBody(input: PreviewInput, tr: Translate): string {
 /** 频道消息前的发送者，例如「张三: 你好」。自己的消息不加。 */
 function senderPrefix(input: PreviewInput, message: LastMessagePreview): string {
   if (input.kind !== 'channel') return '';
-  if (message.kind !== 'text' && message.kind !== 'image') return '';
+  if (message.kind !== 'text' && message.kind !== 'image' && message.kind !== 'sticker') return '';
   if (input.meId !== null && message.authorId === input.meId) return '';
   const name = message.authorName.trim();
   return name ? `${name}: ` : '';

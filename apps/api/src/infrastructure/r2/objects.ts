@@ -24,28 +24,44 @@ export function isRoomImageKey(roomId: string, key: string): boolean {
 }
 
 /**
- * Cache-Control for media. Every upload gets a new random key and no key is ever written twice, so a copy the
- * browser holds can never go stale: it keeps it for a year without asking again. Private, because the URL
- * carries a media token.
- * 媒体文件的 Cache-Control。每次上传都使用新的随机键，同一个键从不重复写入，所以浏览器持有的副本不会过时：保留一年，期间不再询问。
- * 设为 private，因为网址里带有媒体令牌。
+ * Cache-Control for media. A key is never written with different bytes: uploads get a new random key, and a
+ * content-addressed key (a sticker) is only ever rewritten with the same bytes, checked by R2. So a copy the browser
+ * holds can never go stale: it keeps it for a year without asking again. Private, because the URL carries a media
+ * token.
+ * 媒体文件的 Cache-Control。同一个键从不写入不同的字节：上传使用新的随机键，按内容寻址的键（表情）只会以经 R2 校验的相同字节重新写入。
+ * 所以浏览器持有的副本不会过时：保留一年，期间不再询问。设为 private，因为网址里带有媒体令牌。
  */
 export const IMMUTABLE_MEDIA_CACHE = 'private, max-age=31536000, immutable';
+
+/**
+ * Sent with every media response, beside nosniff: a file opened directly can never run as a page on the API's
+ * origin, whatever its bytes hold. Image and video elements ignore it. There is deliberately no
+ * cross-origin-resource-policy: old builds load images from workers.dev on another origin.
+ * 与 nosniff 一起随每个媒体响应发送：直接打开的文件无论字节内容是什么，都不能作为页面在接口的源上运行。图片和视频元素会忽略它。
+ * 这里有意不设 cross-origin-resource-policy：旧版本从另一个源 workers.dev 加载图片。
+ */
+export const MEDIA_CONTENT_SECURITY_POLICY = "default-src 'none'; sandbox";
 
 export interface PutObjectOptions {
   /** Stored with the object, for clients that read the bucket directly; media routes set their own header. */
   /** 与对象一同保存，供直接读取存储桶的客户端使用；媒体接口自行设置响应头。 */
   cacheControl?: string;
+  /** SHA-256 of the body as hex; R2 refuses the put when the bytes do not hash to it. */
+  /** 请求体的 SHA-256（十六进制）；字节的哈希与之不符时，R2 拒绝写入。 */
+  sha256?: string;
 }
 
 export async function putObject(
   bucket: R2Bucket,
   key: string,
-  body: ReadableStream | ArrayBuffer,
+  body: ReadableStream | ArrayBuffer | ArrayBufferView,
   contentType: string,
   options: PutObjectOptions = {},
 ): Promise<void> {
-  await bucket.put(key, body, { httpMetadata: { contentType, ...(options.cacheControl ? { cacheControl: options.cacheControl } : {}) } });
+  await bucket.put(key, body, {
+    httpMetadata: { contentType, ...(options.cacheControl ? { cacheControl: options.cacheControl } : {}) },
+    ...(options.sha256 ? { sha256: options.sha256 } : {}),
+  });
 }
 
 export async function getObject(bucket: R2Bucket, key: string): Promise<R2ObjectBody | null> {
@@ -133,7 +149,7 @@ function hasBody(object: R2Object | R2ObjectBody): object is R2ObjectBody {
 }
 
 function unsatisfiable(size: number): Response {
-  return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}` } });
+  return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}`, 'content-security-policy': MEDIA_CONTENT_SECURITY_POLICY } });
 }
 
 /**
@@ -170,6 +186,7 @@ export async function mediaObjectResponse(
     'cache-control': options.cacheControl ?? IMMUTABLE_MEDIA_CACHE,
     etag: object.httpEtag,
     'x-content-type-options': 'nosniff',
+    'content-security-policy': MEDIA_CONTENT_SECURITY_POLICY,
   });
   if (!hasBody(object)) return new Response(null, { status: failedConditionStatus(request, object), headers });
 

@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeChatMessage, type ChatMessage, type NormalizedChatMessage } from '@utmmsc/shared';
+import { normalizeChatMessage, type ChatMessage, type NormalizedChatMessage, type StickerRef } from '@utmmsc/shared';
 import { buildTimeline, canModerateAuthor, messageActions, quoteFrom, spokenPreview, translatorFor, type MessageActionInput, type TimelineInput, type TimelineItem } from './timeline';
 import type { PendingMessage } from './types';
+
+const STICKER: StickerRef = {
+  id: 'stk_0123456789abcdefghijkl',
+  type: 'gif',
+  width: 240,
+  height: 240,
+  animated: true,
+  bytes: 182_044,
+  thumb: 'AbCdEfGhIjKlMnOpQrStUv',
+};
+
+/** A sticker row as the room sends it: empty text and the alias image for old clients, which normalizing drops. */
+/** 房间发送的表情消息：正文为空，并带有给旧客户端的别名图片，规范化时会去掉它。 */
+const STICKER_ROW: Partial<ChatMessage> = {
+  text: '',
+  imageKey: `chat/channel/ch_test/${STICKER.id}.gif`,
+  imageWidth: 240,
+  imageHeight: 240,
+  thumbKey: null,
+  sticker: STICKER,
+};
 
 /**
  * Times are built from local components so divider labels do not depend on the time zone.
@@ -222,6 +243,10 @@ describe('messageActions', () => {
     canPost: true,
     canModerate: false,
     nowMs: NOW,
+    hasSticker: false,
+    hasImage: false,
+    canAddSticker: true,
+    canBlockSticker: false,
   };
 
   it('lists the WeChat order for someone else’s text', () => {
@@ -245,7 +270,80 @@ describe('messageActions', () => {
 
   it('offers only copy on a pending row and nothing text-based on an image', () => {
     expect(messageActions({ ...base, pending: true, own: true })).toEqual(['copy']);
-    expect(messageActions({ ...base, text: '' })).toEqual(['quote', 'hide']);
+    expect(messageActions({ ...base, text: '', canAddSticker: false })).toEqual(['quote', 'hide']);
+  });
+
+  describe('stickers and photos', () => {
+    const sticker: MessageActionInput = { ...base, text: '', hasSticker: true };
+    const photo: MessageActionInput = { ...base, text: '', hasImage: true };
+
+    it('offers 添加到表情 first on someone else’s sticker or photo, with no copy or translate', () => {
+      expect(messageActions(sticker)).toEqual(['addSticker', 'quote', 'hide']);
+      expect(messageActions(photo)).toEqual(['addSticker', 'quote', 'hide']);
+    });
+
+    it('puts 添加到表情 right after copy on a photo with text', () => {
+      expect(messageActions({ ...photo, text: 'look' })).toEqual(['copy', 'addSticker', 'quote', 'hide', 'translate']);
+    });
+
+    it('never offers copy or translate for a sticker, whatever text it carries', () => {
+      expect(messageActions({ ...sticker, text: '[表情]' })).toEqual(['addSticker', 'quote', 'hide']);
+    });
+
+    it('lets the author recall their own within the window', () => {
+      expect(messageActions({ ...sticker, own: true })).toEqual(['addSticker', 'quote', 'recall', 'hide']);
+      expect(messageActions({ ...photo, own: true })).toEqual(['addSticker', 'quote', 'recall', 'hide']);
+      expect(messageActions({ ...sticker, own: true, nowMs: NOW + 3 * 60_000 })).toEqual(['addSticker', 'quote', 'hide']);
+    });
+
+    it('offers nothing on a pending sticker and nothing to add on a pending photo', () => {
+      expect(messageActions({ ...sticker, own: true, pending: true })).toEqual([]);
+      expect(messageActions({ ...photo, own: true, pending: true })).toEqual([]);
+    });
+
+    it('offers nothing to add or block on a redacted row', () => {
+      expect(messageActions({ ...sticker, redacted: true, canBlockSticker: true })).toEqual(['hide']);
+      expect(messageActions({ ...photo, redacted: true })).toEqual(['hide']);
+    });
+
+    it('keeps moderation for moderators within one row of five', () => {
+      const ids = messageActions({ ...sticker, canModerate: true });
+      expect(ids).toEqual(['addSticker', 'quote', 'hide', 'remove', 'mute']);
+      expect(ids.length).toBeLessThanOrEqual(5);
+      expect(messageActions({ ...photo, canModerate: true })).toEqual(['addSticker', 'quote', 'hide', 'remove', 'mute']);
+      expect(messageActions({ ...sticker, own: true, canModerate: true })).toEqual(['addSticker', 'quote', 'recall', 'hide', 'remove']);
+    });
+
+    it('adds 封禁表情 last for the system administrator, on stickers only', () => {
+      expect(messageActions({ ...sticker, canBlockSticker: true })).toEqual(['addSticker', 'quote', 'hide', 'blockSticker']);
+      expect(messageActions({ ...sticker, canBlockSticker: true, canModerate: true })).toEqual(['addSticker', 'quote', 'hide', 'remove', 'mute', 'blockSticker']);
+      expect(messageActions({ ...photo, canBlockSticker: true })).not.toContain('blockSticker');
+      expect(messageActions({ ...base, canBlockSticker: true })).not.toContain('blockSticker');
+    });
+
+    it('leaves out 添加到表情 where the server takes no stickers', () => {
+      expect(messageActions({ ...sticker, canAddSticker: false })).toEqual(['quote', 'hide']);
+      expect(messageActions({ ...photo, canAddSticker: false })).toEqual(['quote', 'hide']);
+      expect(messageActions({ ...sticker, canAddSticker: false, canBlockSticker: true })).toEqual(['quote', 'hide', 'blockSticker']);
+    });
+
+    it('never offers 添加到表情 on plain text', () => {
+      expect(messageActions(base)).not.toContain('addSticker');
+    });
+
+    it('stays within five items in the common cases', () => {
+      const cases: MessageActionInput[] = [
+        sticker,
+        photo,
+        { ...sticker, own: true },
+        { ...photo, own: true },
+        { ...sticker, canModerate: true },
+        { ...photo, canModerate: true },
+        { ...sticker, own: true, canModerate: true },
+        { ...photo, own: true, canModerate: true },
+      ];
+      for (const input of cases) expect(messageActions(input).length).toBeLessThanOrEqual(5);
+    });
   });
 });
 
@@ -281,5 +379,48 @@ describe('quote and preview helpers', () => {
     expect(spokenPreview(row(1, { text: 'secret', recalled: true }), tr)).toBe('');
     expect(spokenPreview(row(2, { text: '', imageKey: 'k' }), tr)).toBe('[图片]');
     expect(spokenPreview(row(3, { text: 'a\n b' }), tr)).toBe('a b');
+  });
+
+  it('quotes a sticker with the fallback excerpt and hasSticker, not as a photo', () => {
+    const message = row(5, STICKER_ROW);
+    expect(message.sticker).toEqual(STICKER);
+    expect(message.imageKey).toBeNull();
+    expect(quoteFrom(message)).toEqual({ id: 5, authorId: 'mem_a', authorName: 'Alice', excerpt: '[表情]', hasImage: false, state: 'ok', hasSticker: true });
+  });
+
+  it('marks other quotes as not stickers', () => {
+    expect(quoteFrom(row(6))).toMatchObject({ excerpt: 'message 6', hasSticker: false });
+    expect(quoteFrom(row(7, { text: '', imageKey: 'chat/channel/ch_test/a.png' }))).toMatchObject({ hasImage: true, hasSticker: false });
+  });
+
+  it('quotes a row whose sticker field is invalid as the photo its alias is', () => {
+    const message = row(8, { ...STICKER_ROW, sticker: { ...STICKER, id: 'not-a-sticker' } });
+    expect(quoteFrom(message)).toMatchObject({ excerpt: '', hasImage: true, hasSticker: false });
+  });
+
+  it('speaks a sticker as its label in both languages', () => {
+    expect(spokenPreview(row(9, STICKER_ROW), translatorFor('zh'))).toBe('[表情]');
+    expect(spokenPreview(row(9, STICKER_ROW), translatorFor('en'))).toBe('[Sticker]');
+  });
+
+  it('never speaks a recalled or deleted sticker', () => {
+    const tr = translatorFor('en');
+    expect(spokenPreview(row(10, { ...STICKER_ROW, recalled: true }), tr)).toBe('');
+    expect(spokenPreview(row(11, { ...STICKER_ROW, deleted: true, deletedBy: 'moderator' }), tr)).toBe('');
+  });
+});
+
+describe('buildTimeline stickers', () => {
+  it('keeps a sticker row a message and a pending sticker a pending item', () => {
+    const items = buildTimeline(input({ messages: [row(1, STICKER_ROW)], pending: [pending('s', { text: '', sticker: STICKER, createdAt: local(22, 10, 2) })] }));
+    expect(types(items)).toEqual(['divider', 'message', 'pending']);
+    expect(items[1]).toMatchObject({ type: 'message', message: { sticker: STICKER, text: '' } });
+    expect(items[2]).toMatchObject({ type: 'pending', key: 'c:s', pending: { sticker: STICKER } });
+  });
+
+  it('turns a recalled sticker into a tip with no sticker in it', () => {
+    const items = buildTimeline(input({ messages: [row(1, { ...STICKER_ROW, recalled: true, sticker: null, imageKey: null })] }));
+    expect(items[1]).toMatchObject({ type: 'recall', text: '“Alice” 撤回了一条消息' });
+    expect(JSON.stringify(items)).not.toContain(STICKER.id);
   });
 });

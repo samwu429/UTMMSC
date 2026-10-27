@@ -38,6 +38,9 @@ export const ForgotPage = page(() => import('../features/auth/pages/ForgotPage')
 export const RoomPage = page(loadRoom, (m) => m.RoomPage);
 export const ChatInfoPage = page(() => import('../features/chat/pages/ChatInfoPage'), (m) => m.ChatInfoPage);
 export const ChatSearchPage = page(() => import('../features/chat/pages/ChatSearchPage'), (m) => m.ChatSearchPage);
+/** 我的表情, the sticker manage screen, opened from the chat panel's gear and from 设置. */
+/** 「我的表情」表情管理界面，从聊天面板的齿轮和「设置」中打开。 */
+export const StickersPage = page(() => import('../features/chat/pages/StickersPage'), (m) => m.StickersPage);
 
 export const MomentsPage = page(loadMoments, (m) => m.MomentsPage);
 export const MomentDetailPage = page(() => import('../features/moments/pages/MomentDetailPage'), (m) => m.MomentDetailPage);

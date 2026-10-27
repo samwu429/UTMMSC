@@ -10,7 +10,8 @@
     "migrate:remote": "wrangler d1 migrations apply utmmsc --remote",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:budget": "vitest run --config vitest.budget.config.ts"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "2.0.0",

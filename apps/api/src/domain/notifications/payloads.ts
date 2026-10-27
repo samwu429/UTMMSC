@@ -11,6 +11,7 @@ export const PUSH_COPY = {
   hiddenMessage: '你收到一条新消息',
   mentionPrefix: '[有人@我] ',
   image: '[图片]',
+  sticker: '[表情]',
   eventPublished: '活动：',
   eventToday: '今天的活动：',
   eventTomorrow: '明天的活动：',
@@ -65,6 +66,9 @@ export interface MessagePushInput {
   authorName: string;
   text: string;
   hasImage: boolean;
+  /** The message is a sticker; its content then reads [表情]. */
+  /** 消息是表情；内容显示为 [表情]。 */
+  hasSticker?: boolean;
   /** Named in the message or covered by @所有人. */
   /** 消息中 @ 了此人，或使用了 @所有人。 */
   mentioned: boolean;
@@ -87,7 +91,7 @@ export interface MessagePushInput {
 export function messagePushPayload(input: MessagePushInput): PushPayload {
   const base = { tag: input.roomId, url: roomUrl(input.baseUrl, input.roomId), kind: 'message' as const, roomId: input.roomId };
   if (!input.preview) return { ...base, title: PUSH_COPY.appName, body: PUSH_COPY.hiddenMessage };
-  const content = previewOf(input.text, input.hasImage) || PUSH_COPY.image;
+  const content = input.hasSticker ? PUSH_COPY.sticker : previewOf(input.text, input.hasImage) || PUSH_COPY.image;
   const author = input.authorName.trim() || PUSH_COPY.appName;
   if (input.roomKind === 'direct') {
     return { ...base, title: capped(author, TITLE_MAX), body: capped(content, BODY_MAX) };

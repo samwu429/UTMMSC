@@ -13,7 +13,7 @@ describe('isAnchorKey', () => {
 
   it('accepts every key the timeline gives a message', () => {
     const base = { id: 7, roomId: 'channel:ch', text: '', imageKey: null, createdAt: '2026-01-01T00:00:00.000Z', deleted: false, recalled: false };
-    const message = { ...base, author: { id: 'me', displayName: 'Me' }, kind: 'user' as const, system: null, replyTo: null, imageWidth: null, imageHeight: null, thumbKey: null, deletedBy: null, rev: 0 };
+    const message = { ...base, author: { id: 'me', displayName: 'Me' }, kind: 'user' as const, system: null, replyTo: null, imageWidth: null, imageHeight: null, thumbKey: null, deletedBy: null, rev: 0, sticker: null };
     expect(isAnchorKey(messageKey({ ...message, clientId: 'c1' }, 'me'))).toBe(true);
     expect(isAnchorKey(messageKey({ ...message, clientId: null }, 'me'))).toBe(true);
   });

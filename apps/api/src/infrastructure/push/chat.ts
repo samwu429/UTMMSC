@@ -30,6 +30,9 @@ export interface ChatMessageNotice {
   /** 已存储的去空白消息文本；纯图片时可以为空。 */
   text: string;
   hasImage: boolean;
+  /** The message is a sticker; the push then reads [表情] in place of the content. */
+  /** 消息是表情；推送以 [表情] 代替内容。 */
+  hasSticker?: boolean;
   /** Member ids @-mentioned in the message, already sanitized by the room. */
   /** 消息中 @ 的成员 id，已由房间清理。 */
   mentions: readonly string[];
@@ -153,6 +156,7 @@ export async function notifyChatMessage(env: Env, notice: ChatMessageNotice): Pr
         authorName: notice.authorName,
         text: notice.text,
         hasImage: notice.hasImage,
+        hasSticker: notice.hasSticker === true,
         mentioned: mentioned.get(memberId) ?? false,
         preview: prefs.preview,
         baseUrl: env.APP_BASE_URL,

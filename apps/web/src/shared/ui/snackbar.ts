@@ -22,6 +22,13 @@ export interface SnackbarOptions {
   /** 一个操作，通常是「撤销」。选择后先关闭提示条再执行。 */
   action?: SnackbarAction;
   ms?: number;
+  /**
+   * Called once when the snackbar leaves the screen for any reason other than its action: its time ran out, another
+   * replaced it, dismissSnackbar, or the returned close function. Also called at once when it cannot be shown at all.
+   * 提示条因操作以外的任何原因离开屏幕时调用一次：时间到了、被另一条替换、dismissSnackbar 或返回的关闭函数。
+   * 根本无法显示时也会立即调用。
+   */
+  onClose?: () => void;
 }
 
 interface Shown {
@@ -37,6 +44,9 @@ let root: HTMLDivElement | null = null;
 let shown: Shown | null = null;
 let showTimer: ReturnType<typeof setTimeout> | null = null;
 let seq = 0;
+/** The latest snackbar asked for, on screen or waiting for its first show, with what to call when it closes. */
+/** 最近一次请求的提示条（已显示或正等待首次显示），以及它关闭时要调用的函数。 */
+let current: { id: number; onClose: (() => void) | undefined } | null = null;
 
 function ensureRoot(): { element: HTMLDivElement; created: boolean } {
   if (root && root.isConnected) return { element: root, created: false };
@@ -54,15 +64,22 @@ function ensureRoot(): { element: HTMLDivElement; created: boolean } {
   return { element, created: true };
 }
 
-function hide(id: number): void {
+function hide(id: number, byAction = false): void {
   if (showTimer && seq === id) {
     clearTimeout(showTimer);
     showTimer = null;
   }
-  if (!shown || shown.id !== id) return;
-  if (shown.timer) clearTimeout(shown.timer);
-  shown = null;
-  root?.replaceChildren();
+  if (shown && shown.id === id) {
+    if (shown.timer) clearTimeout(shown.timer);
+    shown = null;
+    root?.replaceChildren();
+  }
+  if (!current || current.id !== id) return;
+  const { onClose } = current;
+  current = null;
+  // Cleared first, so an onClose that opens another snackbar or closes this one again changes nothing here.
+  // 先清除记录，onClose 中再打开一条提示条或再次关闭这一条都不会影响这里。
+  if (!byAction) onClose?.();
 }
 
 function startTimer(entry: Shown): void {
@@ -91,7 +108,7 @@ function render(element: HTMLDivElement, id: number, text: string, action: Snack
     button.className = '-my-1 min-h-11 shrink-0 rounded-md px-2 text-[15px] font-medium text-gold active:bg-white/10';
     button.textContent = action.label;
     button.addEventListener('click', () => {
-      hide(id);
+      hide(id, true);
       action.onAction();
     });
     bar.appendChild(button);
@@ -118,13 +135,18 @@ function render(element: HTMLDivElement, id: number, text: string, action: Snack
  * 屏幕底部的提示，可带一个操作，即 Material 的 snackbar：用于别人会注意到且可以撤销的改动，例如修改身份。一次只显示一条，新的会替换屏幕上
  * 已有的一条。显示在安全区和吸底操作栏上方，位于礼貌播报区域中。返回关闭它的函数。单纯的反馈请用 `toast`。
  */
-export function snackbar({ text, action, ms = 5000 }: SnackbarOptions): () => void {
-  if (typeof document === 'undefined' || !text) return () => undefined;
+export function snackbar({ text, action, ms = 5000, onClose }: SnackbarOptions): () => void {
+  if (typeof document === 'undefined' || !text) {
+    onClose?.();
+    return () => undefined;
+  }
   const { element, created } = ensureRoot();
+  if (current) hide(current.id);
   if (shown) hide(shown.id);
   if (showTimer) clearTimeout(showTimer);
   showTimer = null;
   const id = ++seq;
+  current = { id, onClose };
   const show = () => {
     showTimer = null;
     render(element, id, text, action);
@@ -139,7 +161,8 @@ export function snackbar({ text, action, ms = 5000 }: SnackbarOptions): () => vo
 /** Closes the snackbar on screen, if any, for example when the screen it belongs to goes away. */
 /** 关闭屏幕上的提示条（如果有），例如它所属的界面关闭时。 */
 export function dismissSnackbar(): void {
-  if (shown) hide(shown.id);
+  if (current) hide(current.id);
+  else if (shown) hide(shown.id);
   else if (showTimer) {
     clearTimeout(showTimer);
     showTimer = null;

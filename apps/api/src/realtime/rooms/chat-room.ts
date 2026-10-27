@@ -6,14 +6,18 @@ import {
   IMAGE_DIMENSION_MAX,
   MESSAGE_TEXT_MAX,
   REQUEST_ID_MAX,
+  STICKER_MESSAGES,
+  STICKER_TEXT,
   SYSTEM_AUTHOR_ID,
   canModerateRoom,
   decideModeration,
   decideRecall,
   hasPermission,
+  isStickerAliasName,
   parseClientFrame,
   parseRoomId,
   redactChatMessage,
+  stickerAliasKey,
   type ChatAuthor,
   type ChatMessage,
   type ClientFrame,
@@ -28,6 +32,7 @@ import {
   type RoomMemberSummary,
   type SendFrame,
   type ServerFrame,
+  type StickerRef,
   type SystemMemberRef,
 } from '@utmmsc/shared';
 import type { Env } from '../../env';
@@ -36,6 +41,7 @@ import { OPEN_ACCESS, coerceRoomAccess } from '../../domain/messaging/visibility
 import { touchChannel } from '../../infrastructure/d1/channels';
 import { findAuthorCards, findMemberRole, type AuthorCard } from '../../infrastructure/d1/members';
 import { touchDirect } from '../../infrastructure/d1/direct';
+import { findStickerRef } from '../../infrastructure/d1/sticker-refs';
 import type { Retraction } from '../../domain/notifications/payloads';
 import { MESSAGE_PUSH_INTERVAL_MS, notifyChatMessage, notifyChatRetraction, type MessageRecipient } from '../../infrastructure/push/chat';
 import { isRoomImageKey } from '../../infrastructure/r2/objects';
@@ -45,6 +51,7 @@ import {
   decideFloor,
   joinEvent,
   joinFallbackText,
+  parseStickerJson,
   quoteForViewer,
   sanitizeMentions,
   slicePage,
@@ -55,6 +62,7 @@ import { AuthorCache } from './author-cache';
 import { recordPushedMessage, takePushedMembers } from './push-sent';
 import { claimPushSlots } from './push-throttle';
 import { currentRev, ensureRoomSchema, nextRev } from './room-schema';
+import { StickerLookup, type StickerDescription } from './sticker-lookup';
 
 /**
  * Identity attached to each socket; survives hibernation through serializeAttachment. The floor is
@@ -102,6 +110,9 @@ interface MessageRow extends Record<string, SqlStorageValue> {
   /** Schema 6: the image's 360 px preview, under the same room prefix. */
   /** 结构版本 6：图片的 360px 预览图，位于同一房间前缀下。 */
   thumb_key: string | null;
+  /** Schema 8: the sticker this row shows (StickerRef as JSON), as read from D1 when it was sent; null otherwise. */
+  /** 结构版本 8：这一行显示的表情（StickerRef 的 JSON），即发送时从 D1 读取的描述；其他行为 null。 */
+  sticker_json: string | null;
 }
 
 type QuoteRow = QuoteTarget & Record<string, SqlStorageValue>;
@@ -125,6 +136,12 @@ type ErrorExtras = Pick<ErrorFrame, 'clientId' | 'requestId' | 'messageId' | 'mu
 
 const SEND_WINDOW_MS = 10_000;
 const SEND_WINDOW_MAX = 12;
+/**
+ * Sends one member may have waiting in their queue at once. An honest client never gets near it: this many sends at
+ * once would go over the rate limit anyway.
+ * 一位成员的队列中同时等待的发送数上限。正常客户端不会接近这个数：同时有这么多发送，本来就会超过限流。
+ */
+export const SEND_QUEUE_MAX = SEND_WINDOW_MAX * 2;
 const HISTORY_WINDOW_MS = 10_000;
 const HISTORY_WINDOW_MAX = 20;
 /** Catch-up pages stay small so a reply with its changed rows stays well under the 1 MiB frame limit. */
@@ -166,11 +183,24 @@ export class ChatRoom extends DurableObject<Env> {
   /** Current author names and avatars for history pages, so most pages read nothing from D1. */
   /** 历史页使用的作者当前名字和头像，大多数页面因此无需读取 D1。 */
   private readonly authors: AuthorCache;
+  /** Sticker descriptions read from D1, so a sticker sent again is checked without a round trip. */
+  /** 从 D1 读取过的表情描述，再次发送同一表情时无需往返即可校验。 */
+  private readonly stickerLookup: StickerLookup;
+  /**
+   * The last send still running for each member, by member id. A send that has to wait for D1 holds the member's
+   * later sends behind it, so every member's messages are stored in the order they were sent.
+   * 每位成员仍在进行中的最后一次发送，按成员 id 记录。需要等待 D1 的发送会让该成员之后的发送排在它后面，因此每位成员的消息都按发送顺序保存。
+   */
+  private readonly sendQueues = new Map<string, Promise<void>>();
+  /** How many of each member's sends are in their queue and not finished, by member id; a member with none has no entry. */
+  /** 每位成员队列中尚未完成的发送数，按成员 id 记录；没有这样的发送的成员不占条目。 */
+  private readonly sendsWaiting = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.authors = new AuthorCache((ids) => findAuthorCards(this.env.DB, ids));
+    this.stickerLookup = new StickerLookup((id) => findStickerRef(this.env.DB, id, new Date().toISOString()));
     ensureRoomSchema(this.sql);
     // Heartbeats are answered by the runtime without waking the object, so idle rooms can hibernate.
     // 心跳由运行时直接应答，不唤醒对象，空闲房间才能真正休眠。
@@ -380,6 +410,7 @@ export class ChatRoom extends DurableObject<Env> {
       serverTime: new Date().toISOString(),
       rev: currentRev(this.sql),
       visibility: true,
+      stickers: true,
     };
     server.send(JSON.stringify(ready));
 
@@ -440,7 +471,7 @@ export class ChatRoom extends DurableObject<Env> {
         this.markRead(identity.memberId, Math.min(frame.messageId, this.latestId()));
         return;
       case 'send':
-        await this.handleSend(ws, identity, frame);
+        await this.queueSend(ws, identity, frame);
         return;
       case 'delete':
         await this.handleDelete(ws, identity, frame.messageId);
@@ -497,20 +528,74 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   /**
+   * Runs every send through its author's queue. This object takes other frames while it waits on D1, and the
+   * outbox sends its next item without waiting for an ack, so a sticker whose lookup misses the cache could otherwise
+   * be stored after a text sent right behind it. A send that needs no D1 read (text, an image, or a sticker already
+   * in the lookup cache) runs at once, exactly as before, when nothing of this member's is waiting; anything else is
+   * chained behind the member's last send. Other members' sends never wait for this queue, and a failing send never
+   * stops the ones behind it. The rate limit and every other check run only when a send reaches the head, so the queue
+   * itself is bounded: with SEND_QUEUE_MAX of a member's sends waiting, the next one is refused at once and not held,
+   * and a lookup stuck on a slow D1 cannot make the member's queue, and the frames it keeps, grow without end.
+   * 每次发送都经过其作者的队列。本对象等待 D1 时会处理其他帧，而发件箱发送下一项时不等确认，所以缓存未命中的表情有可能被保存在紧随其后发送的文字之后。
+   * 不需要读取 D1 的发送（文字、图片，或已在缓存中的表情）在该成员没有等待中的发送时立即执行，与以前完全相同；其他情况排在该成员上一次发送之后。
+   * 其他成员的发送从不等待这个队列，某次发送失败也不会挡住排在后面的发送。限流和其他检查都要等发送排到最前面才执行，所以队列本身有上限：
+   * 该成员已有 SEND_QUEUE_MAX 次发送在等待时，下一次会被立即拒绝且不被保留，卡在缓慢 D1 上的查询也就不会让该成员的队列及其保留的帧无限增长。
+   */
+  private queueSend(ws: WebSocket, identity: SocketIdentity, frame: SendFrame): Promise<void> {
+    const memberId = identity.memberId;
+    const tail = this.sendQueues.get(memberId);
+    const cached = frame.sticker !== undefined ? this.stickerLookup.peek(frame.sticker) : undefined;
+    if (!tail && (frame.sticker === undefined || cached)) return this.handleSend(ws, identity, frame, cached);
+
+    // The refusal names the clientId, so the client fails only this item and the member can send it again. A resend
+    // of a message already stored is answered from its row instead, as handleSend would, so a lost ack is never refused.
+    // 拒绝时带上 clientId，客户端只让这一项失败，成员之后可以再发一次。已保存消息的重发则像 handleSend 那样用已存的行回复，确认丢失后的重发不会被拒绝。
+    const waiting = this.sendsWaiting.get(memberId) ?? 0;
+    if (waiting >= SEND_QUEUE_MAX) {
+      const existing = identity.canPost ? this.findOwnRow(memberId, frame.clientId) : undefined;
+      if (existing) this.echoOwnRow(ws, identity, existing, frame.clientId);
+      else this.sendError(ws, 'rate_limited', '发送太快，请稍候', { clientId: frame.clientId });
+      return Promise.resolve();
+    }
+    this.sendsWaiting.set(memberId, waiting + 1);
+    // The place is given back however the send ends, a throw included, so a member is never left refused.
+    // 无论发送如何结束（包括抛出异常）都会归还名额，成员不会因此一直被拒绝。
+    const release = () => {
+      const left = (this.sendsWaiting.get(memberId) ?? 1) - 1;
+      if (left > 0) this.sendsWaiting.set(memberId, left);
+      else this.sendsWaiting.delete(memberId);
+    };
+    const step = () => this.handleSend(ws, identity, frame);
+    const run = (tail ? tail.then(step) : step())
+      .catch((err: unknown) => {
+        console.error('chat: a queued send failed', errorText(err));
+      })
+      .finally(release);
+    this.sendQueues.set(memberId, run);
+    void run.then(() => {
+      if (this.sendQueues.get(memberId) === run) this.sendQueues.delete(memberId);
+    });
+    return run;
+  }
+
+  /**
    * Checks run in a fixed order and every rejection names the clientId. A repeated clientId is
    * answered from the stored row before mute or rate limits, so a resend after a lost ack never
-   * costs quota or creates a second row.
+   * costs quota or creates a second row. A sticker is stored as D1 describes it, never as the client
+   * does; only the sender's still comes from the frame. `cached` is the description queueSend already
+   * found in memory.
    * 检查按固定顺序进行，每次拒绝都带上 clientId。重复的 clientId 会在禁言和限流之前直接用已存的行回复，因此确认丢失后的重发既不消耗额度也不会产生第二行。
+   * 表情按 D1 中的描述保存，从不采用客户端的说法；只有发送者的静态图取自帧。`cached` 是 queueSend 已在内存中找到的描述。
    */
-  private async handleSend(ws: WebSocket, identity: SocketIdentity, frame: SendFrame): Promise<void> {
+  private async handleSend(ws: WebSocket, identity: SocketIdentity, frame: SendFrame, cached?: StickerDescription): Promise<void> {
     const { clientId } = frame;
-    const imageKey = frame.imageKey ?? null;
+    const imageKey = frame.sticker === undefined ? (frame.imageKey ?? null) : null;
     if (!identity.canPost) {
       this.sendError(ws, 'forbidden', '此频道不允许你发言', { clientId });
       return;
     }
     const trimmed = frame.text.trim();
-    if (!trimmed && !imageKey) {
+    if (!trimmed && !imageKey && frame.sticker === undefined) {
       this.sendError(ws, 'invalid_frame', '消息不能为空', { clientId });
       return;
     }
@@ -550,6 +635,14 @@ export class ChatRoom extends DurableObject<Env> {
       this.sendError(ws, 'invalid_frame', '图片无效', { clientId });
       return;
     }
+    // Sticker aliases exist only in what the room sends old clients, and the media route serves a sticker for one.
+    // A photo naming one would show a sticker the room never checked, so no alias is ever stored as a key.
+    // 表情别名只出现在房间发给旧客户端的内容里，媒体接口会为它提供表情文件。以别名作为图片的消息会显示一个房间从未校验过的表情，
+    // 因此别名永远不会作为键被保存。
+    if ((imageKey && isStickerAliasName(imageKey)) || (thumbKey && isStickerAliasName(thumbKey))) {
+      this.sendError(ws, 'invalid_frame', '图片无效', { clientId });
+      return;
+    }
     // Upload keys are random, go back only to the uploader, and are never sent twice (a resend is answered above
     // from the stored row). So a key another message already names is someone else's photo: naming it would let
     // the sender delete it by withdrawing their own message, or put their picture in its row as the thumbnail.
@@ -558,6 +651,31 @@ export class ChatRoom extends DurableObject<Env> {
     if (imageKey && this.rowsNamingKeys([imageKey, thumbKey]).length > 0) {
       this.sendError(ws, 'invalid_frame', '图片无效', { clientId });
       return;
+    }
+
+    let sticker: StickerRef | null = null;
+    if (frame.sticker !== undefined) {
+      let found = cached ?? this.stickerLookup.peek(frame.sticker);
+      if (found === undefined) {
+        const loaded = await this.stickerLookup.load(frame.sticker);
+        // Other frames ran during the lookup, so a moderator may have muted the member meanwhile.
+        // 查询期间其他帧可以执行，管理员可能已在此期间禁言了该成员。
+        const mutedNow = this.mutedUntil(identity.memberId);
+        if (mutedNow) {
+          this.sendError(ws, 'muted', '你已被禁言', { clientId, mutedUntil: mutedNow });
+          return;
+        }
+        if (loaded === 'unavailable') {
+          this.sendError(ws, 'invalid_frame', STICKER_MESSAGES.unavailable, { clientId });
+          return;
+        }
+        found = loaded ?? undefined;
+      }
+      if (!found) {
+        this.sendError(ws, 'invalid_frame', STICKER_MESSAGES.notFound, { clientId });
+        return;
+      }
+      sticker = { ...found, thumb: frame.stickerThumb ?? null };
     }
 
     let replyToId: number | null = null;
@@ -582,13 +700,16 @@ export class ChatRoom extends DurableObject<Env> {
     const avatarKey = typeof identity.avatarKey === 'string' && identity.avatarKey.length > 0 && identity.avatarKey.length <= 300 ? identity.avatarKey : null;
     let inserted: MessageRow;
     try {
+      // A sticker row stores the fallback text '[表情]' and no image keys: builds and Workers that predate stickers
+      // show the text, and nothing a withdrawal deletes ever points at the shared sticker file.
+      // 表情行保存备用文字 '[表情]'，不保存图片键：早于表情功能的版本和 Worker 显示这段文字，撤回时要删除的内容也永远不会指向共用的表情文件。
       inserted = this.sql
         .exec<MessageRow>(
-          `INSERT INTO messages (author_id, author_name, text, image_key, thumb_key, created_at, avatar_key, kind, reply_to_id, mention_all, client_id, image_w, image_h, rev)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?) RETURNING *`,
+          `INSERT INTO messages (author_id, author_name, text, image_key, thumb_key, created_at, avatar_key, kind, reply_to_id, mention_all, client_id, image_w, image_h, sticker_json, rev)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
           identity.memberId,
           identity.displayName,
-          trimmed,
+          sticker ? STICKER_TEXT : trimmed,
           imageKey,
           thumbKey,
           createdAt,
@@ -596,8 +717,9 @@ export class ChatRoom extends DurableObject<Env> {
           replyToId,
           frame.mentionAll ? 1 : 0,
           clientId,
-          frame.imageWidth ?? null,
-          frame.imageHeight ?? null,
+          sticker ? null : (frame.imageWidth ?? null),
+          sticker ? null : (frame.imageHeight ?? null),
+          sticker ? JSON.stringify(sticker) : null,
           nextRev(this.sql),
         )
         .one();
@@ -641,8 +763,9 @@ export class ChatRoom extends DurableObject<Env> {
         roomId,
         authorId: identity.memberId,
         authorName: identity.displayName,
-        text: row.text,
+        text: row.sticker_json ? '' : row.text,
         hasImage: row.image_key !== null,
+        hasSticker: Boolean(row.sticker_json),
         mentions,
         mentionAll: row.mention_all === 1,
         connectedMemberIds: this.watchingMemberIds(),
@@ -738,7 +861,7 @@ export class ChatRoom extends DurableObject<Env> {
     }
     const rev = nextRev(this.sql);
     this.sql.exec(
-      "UPDATE messages SET recalled = 1, text = '', image_key = NULL, thumb_key = NULL, image_w = NULL, image_h = NULL, rev = ? WHERE id = ?",
+      "UPDATE messages SET recalled = 1, text = '', image_key = NULL, thumb_key = NULL, image_w = NULL, image_h = NULL, sticker_json = NULL, rev = ? WHERE id = ?",
       rev,
       messageId,
     );
@@ -785,7 +908,7 @@ export class ChatRoom extends DurableObject<Env> {
     const by = ownMessage ? 'author' : 'moderator';
     const rev = nextRev(this.sql);
     this.sql.exec(
-      "UPDATE messages SET deleted = 1, deleted_by = ?, text = '', image_key = NULL, thumb_key = NULL, image_w = NULL, image_h = NULL, rev = ? WHERE id = ?",
+      "UPDATE messages SET deleted = 1, deleted_by = ?, text = '', image_key = NULL, thumb_key = NULL, image_w = NULL, image_h = NULL, sticker_json = NULL, rev = ? WHERE id = ?",
       by,
       rev,
       messageId,
@@ -850,8 +973,11 @@ export class ChatRoom extends DurableObject<Env> {
    * 撤回或删除的图片及其缩略图要真正不可下载，而不只是从历史里隐藏。它在该行的键清空之后执行。在键互相核对之前发送的行可能共用同一个对象，
    * 而最早使用某个对象的行属于上传者（在那一行发出之前没有别人知道这个键）。因此只要更早的行或同一作者的其他行仍在使用，对象就会保留：
    * 借用者撤回不会删掉上传者的照片，上传者撤回时照片仍会被删除，借用者的消息里也随之失效。
+   * A sticker row names no object of its own: its file is shared, and only the sweep or a block deletes it.
+   * 表情行没有属于自己的对象：表情文件是共用的，只有清理任务或封禁才会删除它。
    */
-  private discardImage(row: Pick<MessageRow, 'id' | 'author_id' | 'image_key' | 'thumb_key'>): void {
+  private discardImage(row: Pick<MessageRow, 'id' | 'author_id' | 'image_key' | 'thumb_key' | 'sticker_json'>): void {
+    if (row.sticker_json) return;
     if (!this.env.FILES) return;
     const keys = [...new Set([row.image_key, row.thumb_key].filter((key): key is string => typeof key === 'string' && key.length > 0))];
     if (keys.length === 0) return;
@@ -1064,7 +1190,7 @@ export class ChatRoom extends DurableObject<Env> {
   /** 批量读取回复所引用的行，引用内容据其当前状态生成。 */
   private loadQuoteTargets(rows: MessageRow[]): Map<number, QuoteRow> {
     const ids = rows.map((r) => r.reply_to_id).filter((id): id is number => typeof id === 'number' && id > 0);
-    const targets = this.selectByIds<QuoteRow>('id, kind, author_id, author_name, text, image_key, deleted, recalled', ids);
+    const targets = this.selectByIds<QuoteRow>('id, kind, author_id, author_name, text, image_key, deleted, recalled, sticker_json', ids);
     return new Map(targets.map((t) => [t.id, { ...t }]));
   }
 
@@ -1087,26 +1213,34 @@ export class ChatRoom extends DurableObject<Env> {
           displayName: current?.displayName ?? row.author_name,
           avatarKey: current ? current.avatarKey : typeof row.avatar_key === 'string' ? row.avatar_key : null,
         };
+    const live = row.deleted === 0 && row.recalled === 0;
+    // A sticker shows only on a live user row, so a row withdrawn by a Worker that left sticker_json behind still
+    // reads as withdrawn. Old clients get the sticker as a photo: its alias under this room, with its own size. A
+    // malformed sticker_json leaves the stored text '[表情]' showing as text.
+    // 只有有效的用户行才显示表情，因此被留下了 sticker_json 的旧 Worker 撤回或删除的行仍显示为已撤回或已删除。
+    // 旧客户端把表情当作图片显示：本房间下的别名，加上表情自己的尺寸。sticker_json 格式不对时，这一行以文字显示保存的 '[表情]'。
+    const sticker = live && !system ? parseStickerJson(row.sticker_json) : null;
     return redactChatMessage({
       id: row.id,
       roomId: this.roomId ?? '',
       author,
-      text: row.text,
-      imageKey: row.image_key,
+      text: sticker ? '' : row.text,
+      imageKey: sticker ? (this.roomId ? stickerAliasKey(this.roomId, sticker) : null) : row.image_key,
       createdAt: row.created_at,
       deleted: row.deleted === 1,
       recalled: row.recalled === 1,
       kind: system ? 'system' : 'user',
       system: system ? parseSystemEvent(row.system_json) : null,
       replyTo: row.reply_to_id ? buildQuotePreview(row.reply_to_id, quotes.get(row.reply_to_id), viewer.floorId) : null,
-      imageWidth: row.image_w ?? null,
-      imageHeight: row.image_h ?? null,
-      // Only beside a live image: a withdrawn row has neither, and redaction does not know this field.
-      // 只与有效的图片一同出现：已撤回或删除的行两者都没有，而清理函数并不知道这个字段。
-      thumbKey: row.image_key !== null && row.deleted === 0 && row.recalled === 0 ? (row.thumb_key ?? null) : null,
+      imageWidth: sticker ? sticker.width : (row.image_w ?? null),
+      imageHeight: sticker ? sticker.height : (row.image_h ?? null),
+      // Only beside a live photo: a withdrawn row has neither, and a sticker's still travels inside the sticker.
+      // 只与有效的图片一同出现：已撤回或删除的行两者都没有，而表情的静态图放在表情的描述里。
+      thumbKey: !sticker && row.image_key !== null && live ? (row.thumb_key ?? null) : null,
       clientId: row.author_id === viewer.memberId ? (row.client_id ?? null) : null,
       deletedBy: row.deleted_by === 'author' || row.deleted_by === 'moderator' ? row.deleted_by : null,
       rev: row.rev ?? 0,
+      ...(sticker ? { sticker } : {}),
     });
   }
 
@@ -1208,6 +1342,7 @@ export class ChatRoom extends DurableObject<Env> {
       preview: conversationPreview({
         text: hidden ? '' : latest.text,
         hasImage: !hidden && latest.image_key !== null,
+        hasSticker: !hidden && Boolean(latest.sticker_json),
         deleted: latest.deleted === 1,
         recalled: latest.recalled === 1,
       }),

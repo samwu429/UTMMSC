@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   IMMUTABLE_MEDIA_CACHE,
+  MEDIA_CONTENT_SECURITY_POLICY,
   chatImageKey,
   isRoomImageKey,
   mediaObjectResponse,
@@ -200,6 +201,27 @@ describe('mediaObjectResponse', () => {
     await expect(mediaObjectResponse(failing, 'k', new Request('https://api.test/', { headers: { range: 'bytes=0-1' } }))).rejects.toThrow('R2 down');
   });
 
+  it('sends the sandbox policy and nosniff with every response it builds, and no cross-origin-resource-policy', async () => {
+    const cases: [Record<string, string>, number][] = [
+      [{}, 200],
+      [{ range: 'bytes=0-9' }, 206],
+      [{ 'if-none-match': `"${ETAG}"` }, 304],
+      [{ 'if-match': '"other"' }, 412],
+      [{ range: 'bytes=1000-' }, 416],
+    ];
+    for (const [headers, status] of cases) {
+      const { res } = await serve(headers);
+      expect(res?.status).toBe(status);
+      expect(res?.headers.get('content-security-policy')).toBe(MEDIA_CONTENT_SECURITY_POLICY);
+      expect(res?.headers.get('cross-origin-resource-policy')).toBeNull();
+      if (status !== 416) expect(res?.headers.get('x-content-type-options')).toBe('nosniff');
+    }
+    const { res } = await serve({ range: 'bytes=1000-' }, 'throws');
+    expect(res?.status).toBe(416);
+    expect(res?.headers.get('content-security-policy')).toBe(MEDIA_CONTENT_SECURITY_POLICY);
+    expect(MEDIA_CONTENT_SECURITY_POLICY).toBe("default-src 'none'; sandbox");
+  });
+
   it('takes another Cache-Control when asked', async () => {
     const { bucket } = fakeBucket();
     const res = await mediaObjectResponse(bucket, 'k', new Request('https://api.test/'), { cacheControl: 'private, max-age=60' });
@@ -225,5 +247,15 @@ describe('putObject', () => {
     await putObject(bucket, 'a', new ArrayBuffer(1), 'image/png');
     await putObject(bucket, 'b', new ArrayBuffer(1), 'image/webp', { cacheControl: IMMUTABLE_MEDIA_CACHE });
     expect(calls).toEqual(['put a {"contentType":"image/png"}', `put b {"contentType":"image/webp","cacheControl":"${IMMUTABLE_MEDIA_CACHE}"}`]);
+  });
+
+  it('hands R2 the SHA-256 to check, only when given', async () => {
+    const seen: (R2PutOptions | undefined)[] = [];
+    const bucket = { put: async (_key: string, _value: unknown, options?: R2PutOptions) => void seen.push(options) } as unknown as R2Bucket;
+    const sha256 = 'f'.repeat(64);
+    await putObject(bucket, 'sticker/a.gif', new Uint8Array(3), 'image/gif', { sha256 });
+    await putObject(bucket, 'b', new ArrayBuffer(1), 'image/png');
+    expect(seen[0]).toEqual({ httpMetadata: { contentType: 'image/gif' }, sha256 });
+    expect(seen[1]).toEqual({ httpMetadata: { contentType: 'image/png' } });
   });
 });

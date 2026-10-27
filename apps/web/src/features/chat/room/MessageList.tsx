@@ -1,12 +1,20 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type TouchEvent } from 'react';
+import type { StickerRef } from '@utmmsc/shared';
+import { errorMessage } from '../../../shared/api/errors';
 import { useLocaleStore, useTr } from '../../../shared/i18n/locale';
 import { useSessionStore } from '../../../shared/session/store';
+import { ActionSheet, type ActionSheetOption } from '../../../shared/ui/ActionSheet';
 import { toast } from '../../../shared/ui/toast';
 import { WxSpinner } from '../../../shared/ui/WxSpinner';
+import { stickerApi } from '../stickers/api';
+import { addStickerFromImage, addStickerFromMessage, stickerOutcomeText } from '../stickers/fromMessage';
+import { useStickerLibrary, type StickerAddOutcome } from '../stickers/store';
 import { ImageViewer, type ViewerImage } from './ImageViewer';
 import { JumpPills } from './JumpPills';
 import { LiveAnnouncer } from './LiveAnnouncer';
 import { MessageRow, type RowActions, type RowMe } from './MessageRow';
+import { stickerViewLive, type StickerView } from './stickerPreview';
+import { StickerViewer } from './StickerViewer';
 import { SystemTip, TimeDivider, UnreadMarker, useMinuteTick } from './SystemTip';
 import { buildTimeline, canModerateAuthor, translatorFor, UNREAD_MARKER_KEY, type TimelineItem } from './timeline';
 import type { MessageListHandle, MessageListProps } from './types';
@@ -45,6 +53,37 @@ function reducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
+/** 正在添加… stays up while a photo is fetched, prepared and uploaded; the outcome replaces it. */
+/** 图片下载、处理和上传期间一直显示「正在添加…」；结果出来后替换它。 */
+const ADDING_TOAST_MS = 8000;
+
+/**
+ * Adds to 我的表情 and toasts how it went. A photo says 正在添加… first, since it is fetched and uploaded; a sticker
+ * is one quick request.
+ * 添加到「我的表情」并提示结果。图片需要下载和上传，因此先提示「正在添加…」；表情只是一个很快的请求。
+ */
+async function addAndAnnounce(run: () => Promise<StickerAddOutcome>, slow: boolean): Promise<void> {
+  if (slow) toast(trNow('正在添加…', 'Adding…'), { ms: ADDING_TOAST_MS });
+  const outcome = await run();
+  toast(stickerOutcomeText(outcome, trNow));
+}
+
+async function blockNow(sticker: StickerRef): Promise<void> {
+  try {
+    await stickerApi.block(sticker.id);
+    toast(trNow('已封禁', 'Blocked'));
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+}
+
+/** The mute the server last reported is still running, by the server's clock. */
+/** 按服务器时钟计算，服务端最近告知的禁言仍在生效。 */
+function stillMuted(mutedUntil: string | null, clockSkewMs: number): boolean {
+  const until = mutedUntil ? Date.parse(mutedUntil) : Number.NaN;
+  return Number.isFinite(until) && until > Date.now() + clockSkewMs;
+}
+
 function distanceFromBottom(list: HTMLElement): number {
   return list.scrollHeight - list.scrollTop - list.clientHeight;
 }
@@ -78,6 +117,8 @@ interface EntryProps {
   capable: boolean;
   canPost: boolean | null;
   canModerate: boolean;
+  stickersEnabled: boolean;
+  canBlockStickers: boolean;
   actions: RowActions;
   onReEdit: (id: number) => void;
 }
@@ -121,9 +162,9 @@ const TimelineEntry = memo(function TimelineEntry({ item, onReEdit, ...row }: En
 /**
  * The scrolling message timeline. It opens at the bottom, follows new messages while within 80px of the
  * bottom, keeps the reading position when older pages are prepended or rows change size, pages older
- * history from a top sentinel, and shows WeChat's jump pills, tips and image viewer.
+ * history from a top sentinel, and shows WeChat's jump pills, tips, image viewer and sticker preview.
  * 可滚动的消息时间线。打开时位于底部；距底部 80px 以内时跟随新消息；向上插入更早的消息或行高变化时保持阅读位置；
- * 通过顶部哨兵加载更早的历史；并显示微信的跳转胶囊、提示和图片查看器。
+ * 通过顶部哨兵加载更早的历史；并显示微信的跳转胶囊、提示、图片查看器和表情预览。
  */
 export const MessageList = forwardRef<MessageListHandle, MessageListProps>(function MessageList(props, ref) {
   const { room, kind, meId, canModerate } = props;
@@ -134,6 +175,12 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   const tr = useMemo(() => translatorFor(locale), [locale]);
   const member = useSessionStore((s) => s.member);
   const now = useMinuteTick();
+  // Only a room whose server said it takes no stickers hides them; before its first answer they are offered.
+  // 只有服务端声明不接受表情的房间才隐藏表情功能；在它第一次答复之前照常提供。
+  const stickersEnabled = room.stickers !== false;
+  // The real role decides, as for the server's block route: an acting role does not count.
+  // 与服务端的封禁接口一样以真实身份为准：代理身份不算。
+  const canBlockStickers = member?.realRole === 'superadmin';
 
   const listRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -175,6 +222,8 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   const [below, setBelow] = useState(0);
   const [pills, setPills] = useState({ unread: false, mention: false });
   const [viewer, setViewer] = useState<{ id: number; rect: DOMRect | null } | null>(null);
+  const [stickerView, setStickerView] = useState<StickerView | null>(null);
+  const [blockTarget, setBlockTarget] = useState<StickerRef | null>(null);
   const [scrollRequest, setScrollRequest] = useState<ScrollRequest | null>(null);
   /** Jumps still paging towards their target. */
   /** 仍在向目标翻页的跳转数。 */
@@ -400,6 +449,9 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       discard: (clientId) => current().room.discard(clientId),
       jumpTo: (id) => void jumpTo(id),
       openImage: (id, rect) => setViewer({ id, rect }),
+      addSticker: (message) => void addAndAnnounce(() => addStickerFromMessage(message, current().room.mediaToken), !message.sticker),
+      openSticker: (id, sticker) => setStickerView({ id, sticker }),
+      blockSticker: (sticker) => setBlockTarget(sticker),
       clockSkewMs: () => current().room.clockSkewMs,
       listElement: () => listRef.current,
     };
@@ -555,6 +607,44 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     [messages],
   );
 
+  // 添加到表情 above 保存图片 in the photo viewer's long-press sheet.
+  // 图片查看器长按菜单中，「添加到表情」位于「保存图片」之上。
+  const photoOptions = useCallback(
+    (image: ViewerImage): ActionSheetOption[] => [
+      {
+        label: tr('添加到表情', 'Add to stickers'),
+        onSelect: () => void addAndAnnounce(() => addStickerFromImage(image.imageKey, propsRef.current.room.mediaToken), true),
+      },
+    ],
+    [tr],
+  );
+
+  const closeSticker = useCallback(() => setStickerView(null), []);
+  const closeBlock = useCallback(() => setBlockTarget(null), []);
+
+  // Closes at once when the sticker message on screen is recalled, removed or hidden, as the photo viewer does. It is
+  // not drawn for that render either, so 发送 and 添加到表情 cannot act on the withdrawn message.
+  // 当前预览的表情消息被撤回、删除或隐藏时立即关闭，与图片查看器一致。这一次渲染也不再显示预览，「发送」和「添加到表情」因此无法作用于已撤下的消息。
+  const stickerLive = stickerView !== null && stickerViewLive(messages, stickerView);
+  useEffect(() => {
+    if (stickerView && !stickerLive) setStickerView(null);
+  }, [stickerView, stickerLive]);
+
+  /** 发送 in the sticker preview: into this chat at once, then back to the bottom of the list. */
+  /** 表情预览中的「发送」：立即发到这个聊天，然后回到列表底部。 */
+  function sendViewedSticker(sticker: StickerRef) {
+    const clientId = propsRef.current.room.sendSticker?.(sticker) ?? '';
+    if (!clientId) {
+      toast(tr('表情暂时无法发送，请稍后再试', "Stickers can't be sent right now. Try again later."));
+      return;
+    }
+    useStickerLibrary.getState().pushRecent(sticker.id);
+    setStickerView(null);
+    scrollToBottom(true);
+  }
+
+  const canSendSticker = room.canPost !== false && !stillMuted(room.mutedUntil, room.clockSkewMs) && stickersEnabled && typeof room.sendSticker === 'function';
+
   const thumbRect = useCallback((id: number) => {
     const list = listRef.current;
     const thumb = list ? rowById(list, id)?.querySelector<HTMLElement>('[data-thumb]') : null;
@@ -678,6 +768,8 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
               capable={capable}
               canPost={canPost}
               canModerate={item.type === 'message' ? canModerateAuthor(canModerate, item.own, item.message.author.id, exempt) : canModerate}
+              stickersEnabled={stickersEnabled}
+              canBlockStickers={canBlockStickers}
               actions={actions}
               onReEdit={onReEdit}
             />
@@ -693,7 +785,27 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         onBelow={() => scrollToBottom(true, true)}
       />
       <LiveAnnouncer messages={messages} meId={meId} stuck={stuck} />
-      {viewer ? <ImageViewer images={images} startId={viewer.id} startRect={viewer.rect} mediaToken={mediaToken} thumbRect={thumbRect} onClose={closeViewer} /> : null}
+      {viewer ? (
+        <ImageViewer
+          images={images}
+          startId={viewer.id}
+          startRect={viewer.rect}
+          mediaToken={mediaToken}
+          thumbRect={thumbRect}
+          onClose={closeViewer}
+          extraOptions={stickersEnabled ? photoOptions : undefined}
+        />
+      ) : null}
+      {stickerView && stickerLive ? (
+        <StickerViewer sticker={stickerView.sticker} canSend={canSendSticker} onSend={() => sendViewedSticker(stickerView.sticker)} onClose={closeSticker} />
+      ) : null}
+      {blockTarget ? (
+        <ActionSheet
+          title={tr('封禁这个表情？所有聊天里都不再显示，也不能再添加或发送。', "Block this sticker? It disappears from every chat and can't be added or sent again.")}
+          options={[{ label: tr('封禁', 'Block'), danger: true, onSelect: () => void blockNow(blockTarget) }]}
+          onClose={closeBlock}
+        />
+      ) : null}
     </div>
   );
 });

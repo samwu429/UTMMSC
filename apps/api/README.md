@@ -24,6 +24,7 @@ src/
       home/             daily card
       admin/            applications, roles, status, events (with notice plans), announcements
       notifications/    VAPID key, push devices, notification switches, test push
+      stickers/         my stickers (我的表情): list, upload, add, front, remove, block
     rooms.ts            Typed helpers over the ChatRoom stub (revoke, summaries, read, clear, join notices)
   realtime/
     rooms/
@@ -102,6 +103,40 @@ node scripts/vapid-keys.mjs                  # prints the public key -> VAPID_PU
 npx wrangler secret put VAPID_PRIVATE_KEY < .vapid-private.json
 npx wrangler secret put FCM_SERVICE_ACCOUNT < service-account.json  # Firebase service-account JSON from a file, so its line breaks survive; optional, Android pushes are skipped without it
 ```
+
+## Stickers
+
+Custom stickers (我的表情) live in D1 (`sticker_objects`, `sticker_thumbs`, `member_stickers`, `sticker_counts`,
+`sticker_daily`, migration 0019) and R2 (`sticker/<id>.<type>` and each uploader's still `sticker/<id>-t-<thumb>`).
+自定义表情（我的表情）存放在 D1（`sticker_objects`、`sticker_thumbs`、`member_stickers`、`sticker_counts`、`sticker_daily`，迁移 0019）
+和 R2（`sticker/<id>.<type>` 以及每位上传者的静态缩略图 `sticker/<id>-t-<thumb>`）中。
+
+- The id is a keyed hash (`SESSION_SECRET`) of the file's SHA-256, which R2 verifies on every upload. The same bytes are stored once and shared by everyone who adds them.
+- id 是文件 SHA-256 的带密钥哈希（`SESSION_SECRET`），R2 在每次上传时校验这个 SHA-256。相同的字节只存一份，由所有添加它的人共用。
+- Every cap (999 per member, daily uploads, edits and full lists, stored bytes per member and for the club) is counted in D1 inside the same transaction as the write it guards.
+- 每个上限（每人 999 个、每日上传、整理和完整列表次数、每人和全会的存储字节数）都在 D1 中、与它所保护的写入在同一个事务里计数。
+- Recall, delete and removing from 我的表情 never delete a file. The hourly sweep (`17 * * * *`) deletes uploads that never finished after an hour, and files that were never sent and are in nobody's collection after a week.
+- 撤回、删除和从我的表情中移除都不会删除文件。每小时一次的清理任务（`17 * * * *`）删除一小时后仍未完成的上传，以及一周后仍从未发出、也不在任何人表情列表中的文件。
+
+### Blocking a sticker
+
+The system administrator blocks a sticker with 封禁表情 on its long-press menu. When the app is not at hand, the same
+request works with a superadmin session token (the bearer token the signed-in app sends):
+系统管理员在表情的长按菜单中点按「封禁表情」即可封禁。手边没有 App 时，用系统管理员的会话令牌（已登录的 App 发送的 Bearer 令牌）发送同样的请求：
+
+```bash
+curl -X POST -H "authorization: Bearer <a superadmin session token>" -H "content-type: application/json" \
+  -d '{"id":"stk_..."}' https://utmmsc.com/api/stickers/block
+```
+
+The id is the last path segment of the sticker's URL, without the `.gif` / `.png` / `.webp` / `.jpeg` ending (for
+`.../sticker%2Fstk_AbC...xyz.gif?t=...` it is `stk_AbC...xyz`). The block takes the sticker out of every collection,
+deletes its original and every still from R2, and keeps the row so the same bytes can never be uploaded or added
+again. Rooms stop accepting it within 10 minutes; messages that showed it read 这个表情已失效. A `503` means the R2
+delete failed after the block itself happened: send the same request again.
+id 是表情网址的最后一段，去掉 `.gif` / `.png` / `.webp` / `.jpeg` 结尾（例如 `.../sticker%2Fstk_AbC...xyz.gif?t=...` 的 id 是
+`stk_AbC...xyz`）。封禁会把表情从每个人的表情列表中移除，从 R2 删除原始文件和所有静态缩略图，并保留记录，相同的字节因此永远无法再次上传或添加。
+房间在 10 分钟内停止接受它；显示过它的消息会显示「这个表情已失效」。返回 `503` 表示封禁本身已经生效，但 R2 删除失败：再发送一次同样的请求即可。
 
 ## Updating a deployment
 

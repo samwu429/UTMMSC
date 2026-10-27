@@ -1,4 +1,4 @@
-import { IMAGE_DIMENSION_MAX, MENTIONS_MAX, type QuotePreview, type SendFrame, type ServerFrame } from '@utmmsc/shared';
+import { IMAGE_DIMENSION_MAX, MENTIONS_MAX, type QuotePreview, type SendFrame, type ServerFrame, type StickerRef } from '@utmmsc/shared';
 import { holdAppUpdate } from '../../../app/pwa';
 import type { PendingImage, PendingMessage } from '../room/types';
 
@@ -43,6 +43,12 @@ export interface OutboxLink {
    * 每次收到 ready 帧时、在发送队列就绪之前设置。支持新协议的服务端会按 clientId 去重并接受引用和提醒；旧服务端两者都不支持，因此不会自动向它重发。
    */
   setCapable(capable: boolean): void;
+  /**
+   * Set from every ready frame, before the outbox is ready: whether the room takes sticker sends. A sticker item goes
+   * only to a capable server that said so.
+   * 每次收到 ready 帧时、在发送队列就绪之前设置：房间是否接受发送表情。表情待发项只发给支持新协议且声明接受表情的服务端。
+   */
+  setStickers?(capable: boolean): void;
   /** A hidden page may be frozen and cannot receive echoes, so the ack clock stops while it is hidden. */
   /** 隐藏的页面可能被冻结，无法收到回显，因此页面隐藏期间确认计时暂停。 */
   setVisible(visible: boolean): void;
@@ -59,6 +65,9 @@ export interface OutboxOptions {
   /** Localized failure for an upload error. */
   /** 上传出错时的失败说明（已本地化）。 */
   uploadFailureText(error: unknown): string;
+  /** Localized failure for a sticker the server cannot take; by default the timeout text. */
+  /** 服务端无法接收表情时的失败说明（已本地化）；默认使用超时的说明。 */
+  stickerUnsupportedText?(): string;
   /** True for an upload error worth retrying on reconnect; by default a network failure (TypeError). */
   /** 值得在重连后重试的上传错误为 true；默认是网络失败（TypeError）。 */
   retryableUpload?(error: unknown): boolean;
@@ -80,6 +89,9 @@ export interface OutboxInput {
   mentions?: string[];
   mentionAll?: boolean;
   image?: { file: Blob | null; localUrl: string; width: number; height: number; imageKey?: string | null; thumbKey?: string | null } | null;
+  /** A sticker from the member's collection or a message; it stands alone, so text, image and mentions are ignored. */
+  /** 来自成员表情列表或某条消息的表情；它单独发送，因此忽略正文、图片和 @。 */
+  sticker?: StickerRef | null;
 }
 
 /** Time spent waiting for one echo, counting only stretches while the socket is ready and the page is visible. */
@@ -129,10 +141,18 @@ function isNetworkError(error: unknown): boolean {
 
 /**
  * Builds the send frame; a resend produces the same frame with the same clientId. An old server gets
- * no quote, mentions or thumbnail, which it cannot take.
+ * no quote, mentions or thumbnail, which it cannot take. A sticker frame carries only the sticker id, the
+ * sender's still and the quote, with empty text.
  * 生成发送帧；重发得到的帧与 clientId 都相同。旧服务端不支持引用、提醒和缩略图，发给它的帧不带这些内容。
+ * 表情帧只带表情 id、发送者的静态图和引用，正文为空。
  */
 export function buildSendFrame(item: PendingMessage, capable = true, thumbKey: string | null = null): SendFrame {
+  if (item.sticker) {
+    const frame: SendFrame = { type: 'send', clientId: item.clientId, text: '', sticker: item.sticker.id };
+    if (item.sticker.thumb) frame.stickerThumb = item.sticker.thumb;
+    if (capable && item.replyTo && item.replyTo.state === 'ok') frame.replyToId = item.replyTo.id;
+    return frame;
+  }
   const frame: SendFrame = { type: 'send', clientId: item.clientId, text: item.text };
   if (item.image?.imageKey) {
     frame.imageKey = item.image.imageKey;
@@ -193,6 +213,12 @@ export class Outbox {
   /** What the last ready frame said about the server; kept across a detach until the next one. */
   /** 最近一次 ready 帧所表明的服务端能力；解除绑定后保留到下一次 ready。 */
   private capable = true;
+  /**
+   * Whether the last ready frame said the room takes stickers; null before any said anything. Kept across a detach
+   * until the next one.
+   * 最近一次 ready 帧是否表明房间接受表情；在任何 ready 帧之前为 null。解除绑定后保留到下一次 ready。
+   */
+  private stickers: boolean | null = null;
   private visible = true;
   private lastSentAt = Number.NEGATIVE_INFINITY;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -240,6 +266,9 @@ export class Outbox {
       },
       setCapable: (capable) => {
         if (this.link === link) this.setCapable(capable);
+      },
+      setStickers: (capable) => {
+        if (this.link === link) this.stickers = capable;
       },
       setVisible: (visible) => {
         if (this.link === link) this.setVisible(visible);
@@ -348,22 +377,27 @@ export class Outbox {
 
   enqueue(input: OutboxInput): string {
     const clientId = this.options.makeClientId?.() ?? newClientId();
-    const image: PendingImage | null = input.image
-      ? { localUrl: input.image.localUrl, width: input.image.width, height: input.image.height, progress: input.image.imageKey ? 1 : 0, imageKey: input.image.imageKey ?? null }
+    // A sticker is never uploaded: it is queued and then sent like text, in its place among the member's messages.
+    // 表情从不上传：它像文字一样排队后发送，在成员的消息之间保持原来的顺序。
+    const sticker = input.sticker ?? null;
+    const picked = sticker ? null : (input.image ?? null);
+    const image: PendingImage | null = picked
+      ? { localUrl: picked.localUrl, width: picked.width, height: picked.height, progress: picked.imageKey ? 1 : 0, imageKey: picked.imageKey ?? null }
       : null;
     const view: PendingMessage = {
       clientId,
-      text: input.text,
+      text: sticker ? '' : input.text,
       replyTo: input.replyTo ?? null,
-      mentions: [...new Set(input.mentions ?? [])].slice(0, MENTIONS_MAX),
-      mentionAll: input.mentionAll === true,
+      mentions: sticker ? [] : [...new Set(input.mentions ?? [])].slice(0, MENTIONS_MAX),
+      mentionAll: !sticker && input.mentionAll === true,
       image,
+      sticker,
       status: 'queued',
       failure: null,
       createdAt: new Date().toISOString(),
     };
-    const thumbKey = input.image?.imageKey ? (input.image.thumbKey ?? null) : null;
-    this.items = [...this.items, { view, file: input.image?.file ?? null, thumbKey, clock: null, unanswered: null, retryUpload: false }];
+    const thumbKey = picked?.imageKey ? (picked.thumbKey ?? null) : null;
+    this.items = [...this.items, { view, file: picked?.file ?? null, thumbKey, clock: null, unanswered: null, retryUpload: false }];
     this.emit();
     this.pump();
     return clientId;
@@ -530,6 +564,14 @@ export class Outbox {
     if (!this.ready) return;
     const next = this.items.find((i) => this.sendable(i));
     if (!next) return;
+    // A server that never said it takes stickers would refuse the frame (an old one finds the message empty), so the
+    // item fails at once, in its place, without using a send slot.
+    // 从未声明接受表情的服务端会拒绝该帧（旧服务端认为消息为空），因此该项在原位置立即失败，不占用发送间隔。
+    if (next.view.sticker && !(this.capable && this.stickers === true)) {
+      this.replace(next.view.clientId, { status: 'failed', failure: this.options.stickerUnsupportedText?.() ?? this.options.timeoutText() });
+      this.pump();
+      return;
+    }
     const wait = this.lastSentAt + this.spacingMs - Date.now();
     if (wait > 0) {
       this.flushTimer ??= setTimeout(() => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NormalizedChatMessage, SendFrame } from '@utmmsc/shared';
+import type { NormalizedChatMessage, QuotePreview, SendFrame, StickerRef } from '@utmmsc/shared';
 import { createUpdateHolds, type UpdateHolds } from '../../../app/pwa';
 import { ACK_TIMEOUT_MS, FLUSH_SPACING_MS, Outbox, ackedClientIds, buildSendFrame, type OutboxTransport, type UploadedImage } from './outbox';
 
@@ -43,6 +43,7 @@ function harness(): Harness {
     timeoutText: () => 'Message not sent',
     uncertainText: () => 'May not have been sent',
     uploadFailureText: () => 'Upload failed',
+    stickerUnsupportedText: () => 'Stickers unavailable',
     revokeUrl: (url) => revoked.push(url),
     makeClientId: () => `c${++seq}`,
     holdUpdate: () => {
@@ -56,6 +57,13 @@ function harness(): Harness {
 function image(localUrl = 'blob:one') {
   return { file: new Blob(['x'], { type: 'image/png' }), localUrl, width: 640, height: 480 };
 }
+
+const STICKER: StickerRef = { id: 'stk_0123456789abcdefghijkl', type: 'gif', width: 240, height: 240, animated: true, bytes: 182_044, thumb: 'AbCdEfGhIjKlMnOpQrStUv' };
+const QUOTE: QuotePreview = { id: 4, authorId: 'm2', authorName: 'B', excerpt: 'x', hasImage: false, state: 'ok' };
+
+/** What a sent frame shows in order tests: the sticker id, or the text. */
+/** 顺序测试中一个已发送帧的代表：表情 id 或正文。 */
+const shown = (frame: SendFrame) => frame.sticker ?? frame.text;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -558,7 +566,148 @@ describe('app updates', () => {
   });
 });
 
+describe('stickers', () => {
+  it('never uploads a sticker and sends exactly its id, still and quote', () => {
+    const { outbox, sent, uploads, transport } = harness();
+    const id = outbox.enqueue({ text: 'ignored', sticker: STICKER, replyTo: QUOTE, mentions: ['m2'], mentionAll: true });
+    const link = outbox.attach(transport);
+    expect(outbox.list()[0]).toMatchObject({ status: 'queued', text: '', image: null, sticker: STICKER, mentions: [], mentionAll: false });
+    link.setStickers?.(true);
+    link.setReady(true);
+    expect(uploads).toHaveLength(0);
+    expect(sent).toEqual([{ type: 'send', clientId: id, text: '', sticker: STICKER.id, stickerThumb: STICKER.thumb, replyToId: 4 }]);
+    expect(outbox.list()[0]?.status).toBe('sending');
+  });
+
+  it('leaves out the still when the sticker has none, and a quote that is not live', () => {
+    const { outbox, sent, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setStickers?.(true);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', sticker: { ...STICKER, thumb: null }, replyTo: { ...QUOTE, state: 'recalled' } });
+    expect(sent).toEqual([{ type: 'send', clientId: id, text: '', sticker: STICKER.id }]);
+  });
+
+  it('is acked by its echo', () => {
+    const { outbox, transport, updates } = harness();
+    const link = outbox.attach(transport);
+    link.setStickers?.(true);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', sticker: STICKER });
+    expect(updates.holds.held).toBe(true);
+    expect(ackedClientIds({ type: 'message', message: { id: 9, clientId: id } as NormalizedChatMessage, clientId: id })).toEqual([id]);
+    expect(outbox.ack(id)).toBe(true);
+    expect(outbox.list()).toHaveLength(0);
+    expect(updates.holds.held).toBe(false);
+  });
+
+  it('resends a refused sticker under the same clientId with the same frame', () => {
+    const { outbox, sent, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setStickers?.(true);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', sticker: STICKER, replyTo: QUOTE });
+    outbox.fail(id, '表情暂不可用，请稍后再试');
+    expect(outbox.list()[0]).toMatchObject({ status: 'failed', failure: '表情暂不可用，请稍后再试' });
+    vi.advanceTimersByTime(FLUSH_SPACING_MS);
+    outbox.resend(id);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
+    expect(sent[1]?.clientId).toBe(id);
+  });
+
+  it('keeps a sticker queued between two texts in its place', () => {
+    const { outbox, sent, transport } = harness();
+    outbox.enqueue({ text: 'a' });
+    outbox.enqueue({ text: '', sticker: STICKER });
+    outbox.enqueue({ text: 'b' });
+    const link = outbox.attach(transport);
+    link.setCapable(true);
+    link.setStickers?.(true);
+    link.setReady(true);
+    vi.advanceTimersByTime(FLUSH_SPACING_MS * 2);
+    expect(sent.map(shown)).toEqual(['a', STICKER.id, 'b']);
+  });
+
+  it('fails a sticker on an old server, and on one that does not take stickers, with the unsupported text', () => {
+    for (const server of [{ capable: false, stickers: false }, { capable: true, stickers: false }, { capable: true, stickers: null }]) {
+      const { outbox, sent, transport, updates } = harness();
+      const a = outbox.enqueue({ text: 'a' });
+      const sticker = outbox.enqueue({ text: '', sticker: STICKER });
+      const b = outbox.enqueue({ text: 'b' });
+      const link = outbox.attach(transport);
+      link.setCapable(server.capable);
+      if (server.stickers !== null) link.setStickers?.(server.stickers);
+      link.setReady(true);
+      expect(outbox.list().find((p) => p.clientId === sticker)).toMatchObject({ status: 'failed', failure: 'Stickers unavailable' });
+      vi.advanceTimersByTime(FLUSH_SPACING_MS * 3);
+      expect(sent.map(shown)).toEqual(['a', 'b']);
+      outbox.ack(a);
+      outbox.ack(b);
+      expect(updates.holds.held).toBe(false);
+      outbox.resend(sticker);
+      expect(outbox.list()[0]).toMatchObject({ clientId: sticker, status: 'failed', failure: 'Stickers unavailable' });
+      expect(sent).toHaveLength(2);
+    }
+  });
+
+  it('fails a sticker sent once when the next server does not take stickers, instead of resending it there', () => {
+    const { outbox, sent, transport } = harness();
+    const link = outbox.attach(transport);
+    link.setStickers?.(true);
+    link.setReady(true);
+    const id = outbox.enqueue({ text: '', sticker: STICKER });
+    link.setReady(false);
+    expect(outbox.list()[0]?.status).toBe('queued');
+    link.setStickers?.(false);
+    link.setReady(true);
+    expect(outbox.list()[0]).toMatchObject({ clientId: id, status: 'failed', failure: 'Stickers unavailable' });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('falls back to the timeout text when no unsupported text is given', () => {
+    const sent: SendFrame[] = [];
+    const outbox = new Outbox({ timeoutText: () => 'Message not sent', uncertainText: () => '', uploadFailureText: () => '', holdUpdate: () => () => undefined });
+    const link = outbox.attach({ send: (frame) => sent.push(frame) > 0, upload: () => Promise.resolve('k') });
+    link.setReady(true);
+    outbox.enqueue({ text: '', sticker: STICKER });
+    expect(outbox.list()[0]).toMatchObject({ status: 'failed', failure: 'Message not sent' });
+    expect(sent).toHaveLength(0);
+  });
+
+  it('ignores a stale link telling it about stickers', () => {
+    const { outbox, sent, transport } = harness();
+    const stale = outbox.attach(transport);
+    const link = outbox.attach(transport);
+    stale.setStickers?.(true);
+    link.setReady(true);
+    outbox.enqueue({ text: '', sticker: STICKER });
+    expect(outbox.list()[0]?.status).toBe('failed');
+    link.setStickers?.(true);
+    outbox.resend(outbox.list()[0]?.clientId ?? '');
+    expect(sent.map(shown)).toEqual([STICKER.id]);
+  });
+});
+
 describe('frames', () => {
+  it('builds a sticker frame with no image fields or mentions, and no quote for an old server', () => {
+    const item = {
+      clientId: 'c1',
+      text: 'stray',
+      replyTo: QUOTE,
+      mentions: ['m2'],
+      mentionAll: true,
+      image: { localUrl: '', width: 10, height: 20, progress: 1, imageKey: 'k' },
+      sticker: STICKER,
+      status: 'queued' as const,
+      failure: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    expect(buildSendFrame(item, true, 't')).toEqual({ type: 'send', clientId: 'c1', text: '', sticker: STICKER.id, stickerThumb: STICKER.thumb, replyToId: 4 });
+    expect(buildSendFrame(item, false)).toEqual({ type: 'send', clientId: 'c1', text: '', sticker: STICKER.id, stickerThumb: STICKER.thumb });
+    expect(buildSendFrame({ ...item, sticker: null, image: null, mentions: [], mentionAll: false })).toEqual({ type: 'send', clientId: 'c1', text: 'stray', replyToId: 4 });
+  });
+
   it('leaves out the quote and mentions for an old server', () => {
     const item = {
       clientId: 'c1',

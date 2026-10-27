@@ -9,6 +9,8 @@ export * from './chat/moderation';
 export * from './chat/translate';
 export * from './chat/rooms';
 export * from './chat/channel-icons';
+export * from './chat/stickers';
+export * from './chat/sticker-sniff';
 export * from './files/categories';
 export * from './miniapps/catalog';
 export * from './programs/catalog';

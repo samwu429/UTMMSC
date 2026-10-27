@@ -301,6 +301,35 @@ describe.skipIf(!sqlite)('chat routes on SQLite', () => {
       expect(files.calls).toEqual([`get ${key}`, `get ${key}`]);
     });
 
+    it('serves a sticker message’s alias from the sticker’s original, for this room’s token only', async () => {
+      const sticker = 'stk_0123456789abcdefghijkl';
+      files.objects.set(`sticker/${sticker}.gif`, { bytes: new Uint8Array(777), type: 'image/gif' });
+      files.objects.set('chat/channel/ch_all/img_one.jpg', { bytes: new Uint8Array(12), type: 'image/jpeg' });
+      const token = await issueChatMediaToken(SECRET, 'channel:ch_all');
+      const path = (key: string, t = token) => `/chat/media/${encodeURIComponent(key)}?t=${encodeURIComponent(t)}`;
+      files.calls.length = 0;
+      const res = await call(null, 'GET', path(`chat/channel/ch_all/${sticker}.gif`));
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/gif');
+      expect(res.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+      expect(res.headers.get('cross-origin-resource-policy')).toBeNull();
+      expect((await res.arrayBuffer()).byteLength).toBe(777);
+      expect(files.calls).toEqual([`get sticker/${sticker}.gif`]);
+      // Another room's alias, extra segments and '..' never reach the sticker.
+      // 其他房间的别名、多出的路径段和 '..' 都无法访问到表情。
+      expect((await call(null, 'GET', path(`chat/channel/ch_team/${sticker}.gif`))).status).toBe(403);
+      expect((await call(null, 'GET', path(`chat/channel/ch_team/${sticker}.gif`, await issueChatMediaToken(SECRET, 'channel:ch_team')))).status).toBe(200);
+      expect((await call(null, 'GET', path(`chat/channel/ch_all/x/${sticker}.gif`))).status).toBe(404);
+      expect((await call(null, 'GET', path(`chat/channel/ch_all/../ch_all/${sticker}.gif`))).status).toBe(403);
+      expect((await call(null, 'GET', path(`chat/channel/ch_all/${sticker}-t-AbCdEfGhIjKlMnOpQrStUv`))).status).toBe(404);
+      expect(files.calls.filter((entry) => entry.startsWith('get sticker/'))).toHaveLength(2);
+      // Real chat images are served as before.
+      // 真正的聊天图片照常提供。
+      const image = await call(null, 'GET', path('chat/channel/ch_all/img_one.jpg'));
+      expect(image.status).toBe(200);
+      expect((await image.arrayBuffer()).byteLength).toBe(12);
+    });
+
     it('accepts the hour-long tokens of older servers, and refuses another room, an expired token and a missing file', async () => {
       const key = 'chat/channel/ch_all/img_one.jpg';
       files.objects.set(key, { bytes: new Uint8Array(10), type: 'image/jpeg' });

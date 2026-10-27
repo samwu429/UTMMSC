@@ -7,6 +7,7 @@ import {
   decideFloor,
   joinEvent,
   joinFallbackText,
+  parseStickerJson,
   quoteForViewer,
   sanitizeMentions,
   slicePage,
@@ -91,6 +92,57 @@ describe('buildQuotePreview', () => {
     expect(buildQuotePreview(10, { ...target, kind: 'system' }, 0)).toEqual(hidden);
     expect(buildQuotePreview(10, target, 11)).toEqual(hidden);
     expect(buildQuotePreview(10, target, 10).state).toBe('ok');
+  });
+});
+
+const STICKER = { id: 'stk_0123456789abcdefghijkl', type: 'gif', width: 240, height: 240, animated: true, bytes: 182044, thumb: 'AbCdEfGhIjKlMnOpQrStUv' } as const;
+
+describe('sticker quotes', () => {
+  const sticker: QuoteTarget = { ...target, text: '[表情]', sticker_json: JSON.stringify(STICKER) };
+
+  it('quotes a live sticker as [表情] with hasSticker, never as an image', () => {
+    expect(buildQuotePreview(10, sticker, 0)).toEqual({
+      id: 10,
+      authorId: 'mem_a',
+      authorName: 'A',
+      excerpt: '[表情]',
+      hasImage: false,
+      hasSticker: true,
+      state: 'ok',
+    });
+  });
+
+  it('drops the sticker flag once the sticker is withdrawn, and reveals nothing below the floor', () => {
+    for (const quote of [buildQuotePreview(10, { ...sticker, recalled: 1 }, 0), buildQuotePreview(10, { ...sticker, deleted: 1 }, 0)]) {
+      expect(quote.excerpt).toBe('');
+      expect(quote.hasSticker).toBeUndefined();
+    }
+    expect(buildQuotePreview(10, { ...sticker, recalled: 1 }, 0).state).toBe('recalled');
+    expect(buildQuotePreview(10, sticker, 11)).toMatchObject({ state: 'unavailable', excerpt: '' });
+    expect(buildQuotePreview(10, sticker, 11).hasSticker).toBeUndefined();
+  });
+
+  it('leaves the flag off ordinary quotes', () => {
+    expect(buildQuotePreview(10, { ...target, sticker_json: null }, 0).hasSticker).toBeUndefined();
+  });
+});
+
+describe('parseStickerJson', () => {
+  it('reads a stored sticker', () => {
+    expect(parseStickerJson(JSON.stringify(STICKER))).toEqual(STICKER);
+    expect(parseStickerJson(JSON.stringify({ ...STICKER, thumb: null }))).toEqual({ ...STICKER, thumb: null });
+  });
+
+  it('gives null for nothing, broken JSON and a wrong description, and drops a bad still only', () => {
+    expect(parseStickerJson(null)).toBeNull();
+    expect(parseStickerJson(undefined)).toBeNull();
+    expect(parseStickerJson('')).toBeNull();
+    expect(parseStickerJson('{')).toBeNull();
+    expect(parseStickerJson('"stk_0123456789abcdefghijkl"')).toBeNull();
+    expect(parseStickerJson(JSON.stringify({ ...STICKER, id: 'img_1' }))).toBeNull();
+    expect(parseStickerJson(JSON.stringify({ ...STICKER, type: 'svg' }))).toBeNull();
+    expect(parseStickerJson(JSON.stringify({ ...STICKER, width: 0 }))).toBeNull();
+    expect(parseStickerJson(JSON.stringify({ ...STICKER, thumb: '../x' }))).toEqual({ ...STICKER, thumb: null });
   });
 });
 

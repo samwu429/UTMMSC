@@ -102,3 +102,63 @@ export function EveryoneIcon({ className = 'h-6 w-6' }: { className?: string }) 
     </svg>
   );
 }
+
+/** The 我的表情 tab of the expression panel. */
+/** 表情面板中「我的表情」标签的图标。 */
+export function HeartIcon({ className = 'h-6 w-6' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...LINE} aria-hidden>
+      <path d="M12 19.5s-7.25-4.4-7.25-9.6A3.9 3.9 0 0 1 8.7 6c1.45 0 2.6.75 3.3 1.9.7-1.15 1.85-1.9 3.3-1.9a3.9 3.9 0 0 1 3.95 3.9c0 5.2-7.25 9.6-7.25 9.6Z" />
+    </svg>
+  );
+}
+
+/** 整理表情, at the right end of the panel's tab bar. */
+/** 「整理表情」，位于面板标签栏的右端。 */
+export function GearIcon({ className = 'h-6 w-6' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...LINE} aria-hidden>
+      <path d="M10.78 5.11 10.9 3.07h2.2l.12 2.04 2.8 1.16 1.52-1.36 1.55 1.55-1.36 1.52 1.16 2.8 2.04.12v2.2l-2.04.12-1.16 2.8 1.36 1.52-1.55 1.55-1.52-1.36-2.8 1.16-.12 2.04h-2.2l-.12-2.04-2.8-1.16-1.52 1.36-1.55-1.55 1.36-1.52-1.16-2.8-2.04-.12v-2.2l2.04-.12 1.16-2.8-1.36-1.52 1.55-1.55 1.52 1.36 2.8-1.16Z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </svg>
+  );
+}
+
+/** The plus of the 添加表情 tile. */
+/** 「添加表情」格子中的加号。 */
+export function PlusIcon({ className = 'h-7 w-7' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 28 28" className={className} {...LINE} aria-hidden>
+      <path d="M14 6.5v15M6.5 14h15" />
+    </svg>
+  );
+}
+
+/** The selection mark of a sticker on the manage screen: a filled check when chosen, an empty ring otherwise. */
+/** 管理界面中表情的选择标记：选中时为实心对勾，否则为空心圆圈。 */
+export function CheckCircleIcon({ checked, className = 'h-[22px] w-[22px]' }: { checked: boolean; className?: string }) {
+  if (!checked) {
+    return (
+      <svg viewBox="0 0 22 22" className={className} aria-hidden>
+        <circle cx="11" cy="11" r="9.75" fill="rgba(0,0,0,0.12)" stroke="#FFFFFF" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 22 22" className={className} aria-hidden>
+      <circle cx="11" cy="11" r="10.5" fill="#3C165F" stroke="#FFFFFF" strokeWidth="1" />
+      <path d="m6.5 11.25 3 3 6-6.25" fill="none" stroke="#FFFFFF" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The small play mark on an animated sticker shown as its still, in grids and in chats. */
+/** 以静态图显示的动态表情上的小播放标记，表情格子和聊天中通用。 */
+export function StickerPlayIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} aria-hidden>
+      <circle cx="10" cy="10" r="9" fill="rgba(0,0,0,0.45)" stroke="#FFFFFF" strokeWidth="1" />
+      <path d="M8 6.25v7.5L14 10 8 6.25Z" fill="#FFFFFF" />
+    </svg>
+  );
+}

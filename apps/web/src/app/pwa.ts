@@ -124,8 +124,8 @@ export function createUpdateHolds(timers: Pick<typeof globalThis, 'setTimeout' |
   };
 }
 
-/** The page's own holds, taken by the chat outbox, the moments store and the email code field. */
-/** 本页面自己的占用，由聊天发送队列、好友动态 store 和邮箱验证码输入框获取。 */
+/** The page's own holds, taken by the chat outbox, the sticker store, the moments store and the email code field. */
+/** 本页面自己的占用，由聊天发送队列、表情 store、好友动态 store 和邮箱验证码输入框获取。 */
 export const appUpdateHolds = createUpdateHolds();
 
 /** Holds back the reload into a new build until the returned function is called. */

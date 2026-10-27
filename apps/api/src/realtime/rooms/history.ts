@@ -1,10 +1,13 @@
 import {
   MENTIONS_MAX,
   QUOTE_EXCERPT_MAX,
+  STICKER_TEXT,
   SYSTEM_AUTHOR_ID,
+  normalizeStickerRef,
   type FloorReason,
   type HistoryDirection,
   type QuotePreview,
+  type StickerRef,
   type SystemEvent,
   type SystemMemberRef,
 } from '@utmmsc/shared';
@@ -77,6 +80,23 @@ export interface QuoteTarget {
   image_key: string | null;
   deleted: number;
   recalled: number;
+  /** Schema 8: set when the quoted row is a sticker. */
+  /** 结构版本 8：被引用的行是表情时有值。 */
+  sticker_json?: string | null;
+}
+
+/**
+ * The sticker a stored row shows, or null when its JSON is missing or malformed. The row then shows its stored text
+ * (the fallback '[表情]') instead of failing the page.
+ * 已存的行所显示的表情；JSON 缺失或格式不对时为 null。此时这一行显示保存的文字（备用的 '[表情]'），而不是让整页失败。
+ */
+export function parseStickerJson(json: string | null | undefined): StickerRef | null {
+  if (!json) return null;
+  try {
+    return normalizeStickerRef(JSON.parse(json));
+  } catch {
+    return null;
+  }
 }
 
 function excerptOf(text: string): string {
@@ -91,7 +111,9 @@ function unavailableQuote(id: number): QuotePreview {
 /**
  * Builds the quote shown with a reply at read time, so a later recall or delete is reflected at once.
  * A missing target, a system row, or a row below the viewer's floor reveals nothing, not even the author.
+ * A live sticker carries '[表情]' as its excerpt for old clients and hasSticker for new ones.
  * 在读取时生成回复所附的引用，因此之后的撤回或删除会立即体现。被引用行不存在、是系统行或在观看者下限以下时，不透露任何内容，包括作者。
+ * 有效的表情以 '[表情]' 作为摘录供旧客户端显示，并带上 hasSticker 供新客户端使用。
  */
 export function buildQuotePreview(replyToId: number, target: QuoteTarget | null | undefined, viewerFloorId: number): QuotePreview {
   if (!target || target.kind === 'system' || target.author_id === SYSTEM_AUTHOR_ID || target.id < viewerFloorId) {
@@ -100,6 +122,7 @@ export function buildQuotePreview(replyToId: number, target: QuoteTarget | null 
   const base = { id: target.id, authorId: target.author_id, authorName: target.author_name };
   if (target.recalled === 1) return { ...base, excerpt: '', hasImage: false, state: 'recalled' };
   if (target.deleted === 1) return { ...base, excerpt: '', hasImage: false, state: 'deleted' };
+  if (target.sticker_json) return { ...base, excerpt: STICKER_TEXT, hasImage: false, hasSticker: true, state: 'ok' };
   return { ...base, excerpt: excerptOf(target.text), hasImage: target.image_key !== null, state: 'ok' };
 }
 

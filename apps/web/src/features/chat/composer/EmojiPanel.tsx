@@ -24,7 +24,15 @@ function EmojiGrid({ items, onInsert }: { items: readonly string[]; onInsert: (e
 }
 
 interface Props {
-  height: number;
+  /** Pixels, or any CSS height such as '100%' inside the expression panel. */
+  /** 像素值，或任意 CSS 高度，例如在表情面板中使用 '100%'。 */
+  height: number | string;
+  /**
+   * Space kept under the content and the floating keys. The safe area by default; the expression panel passes 0px
+   * because its tab bar sits below and keeps the safe area itself.
+   * 内容和悬浮按键下方保留的空间。默认为安全区；表情面板传入 0px，因为其下方的标签栏自己保留安全区。
+   */
+  insetBottom?: string;
   canSend: boolean;
   onInsert: (emoji: string) => void;
   onBackspace: () => void;
@@ -37,7 +45,7 @@ interface Props {
  * 与键盘等高的 Unicode 表情面板，带最近使用一行以及悬浮的删除键和发送键，与微信一致。
  * 最近使用一行只在面板打开时读取一次，点选时不会在手指下重新排序。
  */
-export function EmojiPanel({ height, canSend, onInsert, onBackspace, onSend }: Props) {
+export function EmojiPanel({ height, insetBottom = 'var(--safe-bottom)', canSend, onInsert, onBackspace, onSend }: Props) {
   const tr = useTr();
   const [recent] = useState(() => useDraftsStore.getState().recentEmoji.slice(0, PER_ROW));
   return (
@@ -45,7 +53,7 @@ export function EmojiPanel({ height, canSend, onInsert, onBackspace, onSend }: P
       role="group"
       aria-label={tr('表情', 'Emoji')}
       className="relative box-border shrink-0 border-t-[0.5px] border-wx-line bg-wx-bar"
-      style={{ height, paddingBottom: 'var(--safe-bottom)' }}
+      style={{ height, paddingBottom: insetBottom }}
     >
       <div className="h-full touch-pan-y overflow-y-auto overscroll-contain px-3 pb-16 pt-3">
         {recent.length ? (
@@ -59,7 +67,7 @@ export function EmojiPanel({ height, canSend, onInsert, onBackspace, onSend }: P
       </div>
       <div
         className="pointer-events-none absolute right-0 flex items-center gap-2 bg-gradient-to-l from-wx-bar from-60% to-transparent py-2 pl-8 pr-3"
-        style={{ bottom: 'var(--safe-bottom)' }}
+        style={{ bottom: insetBottom }}
       >
         <button
           type="button"

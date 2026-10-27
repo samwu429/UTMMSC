@@ -1,4 +1,4 @@
-import type { FloorReason, NormalizedChatMessage, QuotePreview, RoomMeta } from '@utmmsc/shared';
+import type { FloorReason, NormalizedChatMessage, QuotePreview, RoomMeta, StickerRef } from '@utmmsc/shared';
 
 /**
  * Contract between the room socket hook and the room screen, timeline and composer.
@@ -26,6 +26,9 @@ export interface PendingMessage {
   mentions: string[];
   mentionAll: boolean;
   image: PendingImage | null;
+  /** The sticker being sent; never uploaded. Absent or null for text and photos. */
+  /** 正在发送的表情；从不上传。文字和图片消息没有此字段或为 null。 */
+  sticker?: StickerRef | null;
   status: 'queued' | 'uploading' | 'sending' | 'failed';
   /** Already localized. */
   /** 已按当前语言翻译。 */
@@ -97,6 +100,18 @@ export interface RoomController {
   /** 返回已排队消息的 clientId。 */
   sendText(input: { text: string; replyTo?: QuotePreview | null; mentions?: string[]; mentionAll?: boolean }): string;
   sendImage(file: File, size: { width: number; height: number }): string;
+  /**
+   * Whether this room takes sticker sends: null until this visit's first ready frame, then whether it said so.
+   * Absent where the room hook does not support stickers yet.
+   * 本房间是否接受发送表情：本次进入后的第一个 ready 帧到达之前为 null，之后取其声明。房间 Hook 尚不支持表情时没有此字段。
+   */
+  stickers?: boolean | null;
+  /**
+   * Queues a sticker, with the quote it replies to. Returns its clientId, or '' when the room is known not to take
+   * stickers. Absent where the room hook does not support stickers yet.
+   * 将表情加入发送队列，可附带所回复的引用。返回其 clientId；已知房间不接受表情时返回 ''。房间 Hook 尚不支持表情时没有此方法。
+   */
+  sendSticker?(sticker: StickerRef, input?: { replyTo?: QuotePreview | null }): string;
   resend(clientId: string): void;
   discard(clientId: string): void;
   markRead(id: number): void;
@@ -136,7 +151,7 @@ export interface MessageListHandle {
 export interface ComposerProps {
   roomId: string;
   kind: 'channel' | 'direct';
-  room: Pick<RoomController, 'sendText' | 'sendImage' | 'status' | 'capable' | 'quoteTarget'>;
+  room: Pick<RoomController, 'sendText' | 'sendImage' | 'status' | 'capable' | 'quoteTarget' | 'sendSticker' | 'stickers'>;
   disabledNotice: string | null;
   canMentionAll: boolean;
   onSent(): void;

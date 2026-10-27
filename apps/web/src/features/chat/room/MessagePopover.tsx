@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
 import { useTr } from '../../../shared/i18n/locale';
 import { AnchoredLayer, type AnchorRect } from '../../../shared/ui/AnchoredLayer';
-import { CopyIcon, DeleteIcon, MuteIcon, QuoteIcon, RecallIcon, RemoveForAllIcon, TranslateIcon } from './messageIcons';
+import { AddStickerIcon, BlockStickerIcon, CopyIcon, DeleteIcon, MuteIcon, QuoteIcon, RecallIcon, RemoveForAllIcon, TranslateIcon } from './messageIcons';
 import type { MessageActionId } from './timeline';
 
 const PER_ROW = 5;
@@ -41,12 +41,14 @@ export async function copyText(text: string): Promise<boolean> {
 
 const ICONS: Record<MessageActionId, ComponentType> = {
   copy: CopyIcon,
+  addSticker: AddStickerIcon,
   quote: QuoteIcon,
   recall: RecallIcon,
   hide: DeleteIcon,
   translate: TranslateIcon,
   remove: RemoveForAllIcon,
   mute: MuteIcon,
+  blockSticker: BlockStickerIcon,
 };
 
 interface Props {
@@ -74,16 +76,19 @@ export function MessagePopover({ anchor, actions, onAction, onClose, scrollConta
 
   const labels: Record<MessageActionId, string> = {
     copy: tr('复制', 'Copy'),
+    addSticker: tr('添加到表情', 'Add to stickers'),
     quote: tr('引用', 'Quote'),
     recall: tr('撤回', 'Recall'),
     hide: tr('删除', 'Delete'),
     translate: tr('翻译', 'Translate'),
     remove: tr('删除（管理员）', 'Remove for all'),
     mute: tr('禁言', 'Mute'),
+    blockSticker: tr('封禁表情', 'Block sticker'),
   };
-  // The one long label is drawn on two lines, so its cell stays close to the others in width.
-  // 唯一较长的文字分两行显示，使其格子的宽度与其他格子相近。
+  // The long labels are drawn on two lines, so their cells stay close to the others in width.
+  // 较长的文字分两行显示，使其格子的宽度与其他格子相近。
   const lines: Partial<Record<MessageActionId, [string, string]>> = {
+    addSticker: [tr('添加', 'Add to'), tr('到表情', 'stickers')],
     remove: [tr('删除', 'Remove'), tr('（管理员）', 'for all')],
   };
 

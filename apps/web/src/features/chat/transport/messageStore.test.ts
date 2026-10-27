@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage, QuotePreview } from '@utmmsc/shared';
+import type { ChatMessage, QuotePreview, StickerRef } from '@utmmsc/shared';
 import {
   applyAuthor,
   applyChanged,
@@ -45,10 +45,18 @@ function legacyRow(id: number): ChatMessage {
 
 const ids = (state: { messages: { id: number }[] }) => state.messages.map((m) => m.id);
 
+const STICKER: StickerRef = { id: 'stk_0123456789abcdefghijkl', type: 'gif', width: 240, height: 240, animated: true, bytes: 182_044, thumb: 'AbCdEfGhIjKlMnOpQrStUv' };
+
+/** A sticker row as the room sends it, with the alias image old clients show. */
+/** 房间发送的表情消息，带有旧客户端显示的别名图片。 */
+function stickerRow(id: number, extra: Partial<ChatMessage> = {}): ChatMessage {
+  return row(id, { text: '', imageKey: `chat/channel/ch_test/${STICKER.id}.gif`, imageWidth: 240, imageHeight: 240, thumbKey: null, sticker: STICKER, ...extra });
+}
+
 describe('normalization', () => {
   it('fills defaults on rows from an old server', () => {
     const state = applyMessage(createMessageStore(), legacyRow(1));
-    expect(state.messages[0]).toMatchObject({ kind: 'user', system: null, replyTo: null, imageWidth: null, imageHeight: null, clientId: null, deletedBy: null, rev: 0 });
+    expect(state.messages[0]).toMatchObject({ kind: 'user', system: null, replyTo: null, imageWidth: null, imageHeight: null, thumbKey: null, sticker: null, clientId: null, deletedBy: null, rev: 0 });
   });
 });
 
@@ -127,7 +135,7 @@ describe('redaction', () => {
     let state = mergePage(createMessageStore(), { messages: [row(1), row(2, { replyTo: quoteOf(1) }), row(3, { replyTo: quoteOf(2) })], hasMore: false }, 'latest');
     state = applyRecalled(state, 1);
     expect(state.messages[0]?.text).toBe('');
-    expect(state.messages[1]?.replyTo).toEqual({ ...quoteOf(1), excerpt: '', state: 'recalled' });
+    expect(state.messages[1]?.replyTo).toEqual({ ...quoteOf(1), excerpt: '', state: 'recalled', hasSticker: false });
     state = applyDeleted(state, 2, 'moderator');
     expect(state.messages[1]?.deletedBy).toBe('moderator');
     expect(state.messages[1]?.replyTo).toBeNull();
@@ -262,6 +270,72 @@ describe('gaps', () => {
     state = mergeStale(state, [row(2), row(6, { text: 'edited name', author: { id: 'mem_a', displayName: 'Alicia' } }), row(12)]);
     expect(ids(state)).toEqual([5, 6, 7]);
     expect(state.messages[1]?.author.displayName).toBe('Alicia');
+  });
+});
+
+describe('stickers', () => {
+  it('keeps the sticker and drops the alias image', () => {
+    const state = applyMessage(createMessageStore(), stickerRow(5));
+    expect(state.messages[0]).toMatchObject({ text: '', imageKey: null, imageWidth: null, imageHeight: null, thumbKey: null, sticker: STICKER });
+  });
+
+  it('draws a sticker row again when its still or its sticker changes, and only then', () => {
+    const first = applyMessage(createMessageStore(), stickerRow(5));
+    expect(applyMessage(first, stickerRow(5))).toBe(first);
+
+    const restill = applyMessage(first, stickerRow(5, { sticker: { ...STICKER, thumb: 'ZyXwVuTsRqPoNmLkJiHgFe' } }));
+    expect(restill.messages[0]).not.toBe(first.messages[0]);
+    expect(restill.messages[0]?.sticker?.thumb).toBe('ZyXwVuTsRqPoNmLkJiHgFe');
+
+    const stillless = applyMessage(restill, stickerRow(5, { sticker: { ...STICKER, thumb: null } }));
+    expect(stillless.messages[0]?.sticker?.thumb).toBeNull();
+
+    const other = applyMessage(first, stickerRow(5, { sticker: { ...STICKER, id: 'stk_ZZZZZZZZZZZZZZZZZZZZZZ' } }));
+    expect(other.messages[0]?.sticker?.id).toBe('stk_ZZZZZZZZZZZZZZZZZZZZZZ');
+
+    // A row whose sticker turned out invalid shows its alias as a photo instead.
+    // 表情无效的消息改为把别名当作图片显示。
+    const broken = applyMessage(first, stickerRow(5, { sticker: { ...STICKER, id: 'bad' } }));
+    expect(broken.messages[0]).toMatchObject({ sticker: null, imageKey: `chat/channel/ch_test/${STICKER.id}.gif` });
+  });
+
+  it('draws a photo row again when its thumbnail arrives', () => {
+    const first = applyMessage(createMessageStore(), row(3, { text: '', imageKey: 'chat/channel/ch_test/img_a.png', imageWidth: 10, imageHeight: 10 }));
+    const thumbed = applyMessage(first, row(3, { text: '', imageKey: 'chat/channel/ch_test/img_a.png', imageWidth: 10, imageHeight: 10, thumbKey: 'chat/channel/ch_test/img_a_t.webp' }));
+    expect(thumbed.messages[0]).not.toBe(first.messages[0]);
+    expect(thumbed.messages[0]?.thumbKey).toBe('chat/channel/ch_test/img_a_t.webp');
+  });
+
+  it('clears the sticker on a live recall, and a late echo cannot bring it back', () => {
+    let state = applyMessage(createMessageStore(), stickerRow(5));
+    const before = state.messages[0];
+    state = applyRecalled(state, 5);
+    expect(state.messages[0]).not.toBe(before);
+    expect(state.messages[0]).toMatchObject({ recalled: true, text: '', sticker: null, imageKey: null });
+    state = applyMessage(state, stickerRow(5));
+    expect(state.messages[0]?.sticker).toBeNull();
+  });
+
+  it('clears the sticker of a row recalled while offline, even one that still carries it', () => {
+    let state = mergePage(createMessageStore(), { messages: [stickerRow(5), row(6)], hasMore: false }, 'latest');
+    state = applyChanged(state, [stickerRow(5, { recalled: true, rev: 9 })], []);
+    expect(state.messages[0]).toMatchObject({ recalled: true, sticker: null, imageKey: null, imageWidth: null });
+    state = applyDeleted(mergePage(createMessageStore(), { messages: [stickerRow(7)], hasMore: false }, 'latest'), 7, 'moderator');
+    expect(state.messages[0]).toMatchObject({ deleted: true, sticker: null });
+  });
+
+  it('draws a reply again when its quote gains or loses the sticker flag, and a recall clears the flag', () => {
+    const quote = quoteOf(5, { excerpt: '[表情]', hasSticker: true });
+    let state = mergePage(createMessageStore(), { messages: [stickerRow(5), row(6, { replyTo: quote })], hasMore: false }, 'latest');
+    expect(state.messages[1]?.replyTo?.hasSticker).toBe(true);
+    expect(applyMessage(state, row(6, { replyTo: quote }))).toBe(state);
+
+    const flat = applyMessage(state, row(6, { replyTo: { ...quote, hasSticker: false } }));
+    expect(flat.messages[1]).not.toBe(state.messages[1]);
+    expect(flat.messages[1]?.replyTo?.hasSticker).toBe(false);
+
+    state = applyRecalled(state, 5);
+    expect(state.messages[1]?.replyTo).toMatchObject({ state: 'recalled', excerpt: '', hasSticker: false });
   });
 });
 

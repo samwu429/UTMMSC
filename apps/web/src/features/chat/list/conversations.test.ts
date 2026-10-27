@@ -197,6 +197,24 @@ describe('buildConversations: sender prefix and bodies', () => {
     expect(rowOf(rows, 'direct:d').preview.text).toBe('hi');
   });
 
+  it('labels stickers, with the sender in channels, in the member language', () => {
+    const sticker = (extra: Partial<LastMessagePreview> = {}) => message({ kind: 'sticker', text: '[表情]', ...extra });
+    const data = overview(
+      [channel('other', { lastMessage: sticker() }), channel('own', { lastMessage: sticker({ authorId: ME, authorName: 'Me' }) })],
+      [direct('d', { lastMessage: sticker({ authorId: 'mem_d', authorName: 'Peer d' }) })],
+    );
+    const rows = build(data);
+    expect(rowOf(rows, 'channel:other').preview.text).toBe('张三: [表情]');
+    expect(rowOf(rows, 'channel:own').preview.text).toBe('[表情]');
+    expect(rowOf(rows, 'direct:d').preview.text).toBe('[表情]');
+    const english = build(data, {}, en);
+    expect(rowOf(english, 'channel:other').preview.text).toBe('张三: [Sticker]');
+    expect(rowOf(english, 'direct:d').preview.text).toBe('[Sticker]');
+    // An old server's DM preview carries the stored fallback text.
+    // 旧服务端的私聊预览带有已保存的后备文字。
+    expect(rowOf(build(overview([], [direct('old', { lastMessage: undefined, lastPreview: '[表情]' })])), 'direct:old').preview.text).toBe('[表情]');
+  });
+
   it('words recalls for the viewer and never shows the original text', () => {
     const data = overview([
       channel('mine', { lastMessage: message({ kind: 'recalled', authorId: ME, authorName: 'Me', text: '' }) }),

@@ -24,7 +24,9 @@ export const corsMiddleware: MiddlewareHandler<AppEnv> = (c, next) =>
       if (allowed.includes(origin) || LOCAL_ORIGINS.includes(origin)) return origin;
       return null;
     },
-    allowHeaders: ['authorization', 'content-type', 'x-file-name'],
+    // x-sticker carries a sticker upload's hashes and the still's length (POST /stickers/upload).
+    // x-sticker 携带表情上传的哈希和静态缩略图的长度（POST /stickers/upload）。
+    allowHeaders: ['authorization', 'content-type', 'x-file-name', 'x-sticker'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     maxAge: PREFLIGHT_MAX_AGE_SECONDS,
   })(c, next);

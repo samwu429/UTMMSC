@@ -36,9 +36,10 @@
 
   // Every five minutes: event notices that are due (planned to the minute, so up to five minutes late) and the
   // housekeeping that goes with them. Every minute: timetable class and assignment reminders, in their own invocation.
+  // Every hour at minute 17: the sticker sweep (abandoned uploads, and files nobody sent or keeps), in its own invocation.
   // 每五分钟一次：发送到期的活动通知（计划精确到分钟，因此最多晚五分钟发出）以及相关的整理工作。每分钟一次：课表的上课提醒和作业提醒，
-  // 在单独的一次调用中运行。
-  "triggers": { "crons": ["*/5 * * * *", "* * * * *"] },
+  // 在单独的一次调用中运行。每小时第 17 分钟：表情清理（放弃的上传，以及没有人发送也没有人收藏的文件），在单独的一次调用中运行。
+  "triggers": { "crons": ["*/5 * * * *", "* * * * *", "17 * * * *"] },
 
   "d1_databases": [
     {

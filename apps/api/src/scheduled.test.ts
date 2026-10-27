@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from './env';
 import { runMomentsMaintenance } from './infrastructure/d1/moment-maintenance';
+import { runStickerMaintenance } from './infrastructure/d1/sticker-maintenance';
 import { runScheduledNotifications } from './infrastructure/push/event-notices';
 import { runTimetableReminders } from './infrastructure/push/timetable-reminders';
-import { EVENTS_CRON, TIMETABLE_CRON, runScheduledJob, scheduledJobs } from './scheduled';
+import { EVENTS_CRON, STICKERS_CRON, TIMETABLE_CRON, runScheduledJob, scheduledJobs } from './scheduled';
 import worker from './index';
 
 // The jobs themselves are tested in their own files; here only which trigger runs which job.
@@ -11,6 +12,7 @@ import worker from './index';
 vi.mock('./infrastructure/push/timetable-reminders', () => ({ runTimetableReminders: vi.fn(async () => undefined) }));
 vi.mock('./infrastructure/push/event-notices', () => ({ runScheduledNotifications: vi.fn(async () => undefined) }));
 vi.mock('./infrastructure/d1/moment-maintenance', () => ({ runMomentsMaintenance: vi.fn(async () => undefined) }));
+vi.mock('./infrastructure/d1/sticker-maintenance', () => ({ runStickerMaintenance: vi.fn(async () => undefined) }));
 // The Worker entry also exports the Durable Objects and builds the HTTP app; neither loads outside workerd.
 // Worker 入口还导出 Durable Object 并创建 HTTP 应用；两者都无法在 workerd 之外加载。
 vi.mock('./realtime/rooms/chat-room', () => ({ ChatRoom: class {} }));
@@ -18,9 +20,11 @@ vi.mock('./infrastructure/push/relay', () => ({ PushRelay: class {} }));
 vi.mock('./http/app', () => ({ createApp: () => ({ fetch: vi.fn() }) }));
 
 /**
- * The cron dispatch: the minute trigger runs only the timetable job, in an invocation of its own; every other
- * trigger runs the five-minute jobs exactly as before the timetable existed.
- * 定时任务的分派：每分钟的触发器只运行课表工作，并在单独的一次调用中运行；其他任何触发器都与课表出现之前完全一样，运行五分钟一次的工作。
+ * The cron dispatch: the minute trigger runs only the timetable job and the hourly trigger only the sticker sweep,
+ * each in an invocation of its own; every other trigger runs the five-minute jobs exactly as before the timetable
+ * existed.
+ * 定时任务的分派：每分钟的触发器只运行课表工作，每小时的触发器只运行表情清理，各自在单独的一次调用中运行；其他任何触发器都与课表出现之前完全一样，
+ * 运行五分钟一次的工作。
  */
 
 const env = { APP_BASE_URL: 'https://utmmsc.com/UTMMSC/' } as unknown as Env;
@@ -60,16 +64,23 @@ describe('scheduledJobs', () => {
     expect(scheduledJobs(' *  * * *\t* ')).toEqual(['timetable']);
   });
 
+  it('runs only the sticker sweep on the hourly trigger', () => {
+    expect(STICKERS_CRON).toBe('17 * * * *');
+    expect(scheduledJobs('17 * * * *')).toEqual(['stickers']);
+    expect(scheduledJobs(' 17 *  * * * ')).toEqual(['stickers']);
+  });
+
   it('runs the five-minute jobs on every other trigger, including a manual run without a cron', () => {
     expect(scheduledJobs(EVENTS_CRON)).toEqual(['events', 'moments']);
     expect(scheduledJobs('')).toEqual(['events', 'moments']);
     expect(scheduledJobs('0 * * * *')).toEqual(['events', 'moments']);
+    expect(scheduledJobs('7 * * * *')).toEqual(['events', 'moments']);
   });
 
   it('matches the triggers in wrangler.jsonc', () => {
     const crons = configuredCrons();
     if (!crons) return;
-    expect([...crons].sort()).toEqual([EVENTS_CRON, TIMETABLE_CRON].sort());
+    expect([...crons].sort()).toEqual([EVENTS_CRON, TIMETABLE_CRON, STICKERS_CRON].sort());
   });
 });
 
@@ -84,6 +95,9 @@ describe('runScheduledJob', () => {
     expect(runScheduledNotifications).toHaveBeenCalledWith(env, now);
     await runScheduledJob('moments', env, now);
     expect(runMomentsMaintenance).toHaveBeenCalledWith(env, now);
+    expect(runStickerMaintenance).not.toHaveBeenCalled();
+    await runScheduledJob('stickers', env, now);
+    expect(runStickerMaintenance).toHaveBeenCalledWith(env, now);
     expect(runTimetableReminders).toHaveBeenCalledTimes(1);
   });
 });
@@ -108,6 +122,18 @@ describe('the Worker scheduled handler', () => {
     expect(waitUntil).toHaveBeenCalledTimes(2);
     expect(runScheduledNotifications).toHaveBeenCalledWith(env, new Date(scheduledTime));
     expect(runMomentsMaintenance).toHaveBeenCalledWith(env, new Date(scheduledTime));
+    expect(runTimetableReminders).not.toHaveBeenCalled();
+    expect(runStickerMaintenance).not.toHaveBeenCalled();
+  });
+
+  it('runs the sticker sweep alone for the hourly trigger', async () => {
+    const { ctx, pending, waitUntil } = context();
+    await worker.scheduled(controller(STICKERS_CRON, scheduledTime), env, ctx);
+    await Promise.all(pending);
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    expect(runStickerMaintenance).toHaveBeenCalledWith(env, new Date(scheduledTime));
+    expect(runScheduledNotifications).not.toHaveBeenCalled();
+    expect(runMomentsMaintenance).not.toHaveBeenCalled();
     expect(runTimetableReminders).not.toHaveBeenCalled();
   });
 });

@@ -115,9 +115,22 @@ function ingest(tombstones: ReadonlyMap<number, Tombstone>, raw: ChatMessage): N
 function sameQuote(a: QuotePreview | null, b: QuotePreview | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.id === b.id && a.state === b.state && a.excerpt === b.excerpt && a.hasImage === b.hasImage && a.authorName === b.authorName && a.authorId === b.authorId;
+  return (
+    a.id === b.id &&
+    a.state === b.state &&
+    a.excerpt === b.excerpt &&
+    a.hasImage === b.hasImage &&
+    (a.hasSticker === true) === (b.hasSticker === true) &&
+    a.authorName === b.authorName &&
+    a.authorId === b.authorId
+  );
 }
 
+/**
+ * Whether a row would render the same. A sticker is compared by its id and its still: the rest of its description
+ * comes from the stored file and cannot change under the same id.
+ * 一行是否会渲染得完全相同。表情按 id 和静态图比较：其余描述来自已存储的文件，同一 id 下不会改变。
+ */
 function sameRow(a: NormalizedChatMessage, b: NormalizedChatMessage): boolean {
   return (
     a.id === b.id &&
@@ -132,6 +145,9 @@ function sameRow(a: NormalizedChatMessage, b: NormalizedChatMessage): boolean {
     a.clientId === b.clientId &&
     a.imageWidth === b.imageWidth &&
     a.imageHeight === b.imageHeight &&
+    a.thumbKey === b.thumbKey &&
+    a.sticker?.id === b.sticker?.id &&
+    a.sticker?.thumb === b.sticker?.thumb &&
     a.author.id === b.author.id &&
     a.author.displayName === b.author.displayName &&
     (a.author.avatarKey ?? null) === (b.author.avatarKey ?? null) &&

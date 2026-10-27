@@ -30,6 +30,7 @@ import {
   RegisterPage,
   RoomPage,
   SettingsPage,
+  StickersPage,
   TimetablePage,
   preloadLikelyPages,
 } from './pages';
@@ -111,6 +112,7 @@ function AppRoutes() {
             <Route path="/chat/room/:roomId" element={<RoomPage />} />
             <Route path="/chat/room/:roomId/info" element={<ChatInfoPage />} />
             <Route path="/chat/search" element={<ChatSearchPage />} />
+            <Route path="/chat/stickers" element={<StickersPage />} />
             {/* 好友动态 scrolls the document and has no tab bar, so its pages sit outside the shell. */}
             {/* 好友动态由文档滚动，也没有标签栏，因此这些页面位于外壳之外。 */}
             <Route path="/discover/feed" element={<MomentsPage />} />

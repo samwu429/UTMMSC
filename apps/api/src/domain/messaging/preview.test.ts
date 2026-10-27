@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { conversationPreview, lastMessagePreview, parseSystemEvent, type PreviewRow } from './preview';
+import { conversationPreview, lastMessagePreview, parseSystemEvent, previewOf, type PreviewRow } from './preview';
+
+const STICKER_JSON = JSON.stringify({ id: 'stk_0123456789abcdefghijkl', type: 'gif', width: 240, height: 240, animated: true, bytes: 182044, thumb: null });
+
+describe('previewOf', () => {
+  it('labels a sticker [表情] whatever its stored text', () => {
+    expect(previewOf('[表情]', false, true)).toBe('[表情]');
+    expect(previewOf('', false, true)).toBe('[表情]');
+    expect(previewOf('', true)).toBe('[图片]');
+    expect(previewOf('hi', false)).toBe('hi');
+  });
+});
 
 describe('conversationPreview', () => {
+  it('gives a DM list [表情] for a sticker, and the recall line once it is withdrawn', () => {
+    expect(conversationPreview({ text: '', hasImage: false, hasSticker: true, deleted: false, recalled: false })).toBe('[表情]');
+    expect(conversationPreview({ text: '', hasImage: false, hasSticker: false, deleted: false, recalled: true })).toBe('撤回了一条消息');
+  });
+
   it('does not keep the original text of a withdrawn message', () => {
     const preview = conversationPreview({ text: 'secret phrase', hasImage: true, deleted: false, recalled: true });
     expect(preview).toBe('撤回了一条消息');
@@ -48,6 +64,27 @@ describe('lastMessagePreview', () => {
     const legacy = lastMessagePreview({ ...row, deleted: 1, deleted_by: null });
     expect(legacy).toMatchObject({ kind: 'deleted', text: '' });
     for (const preview of [recalled, moderated, legacy]) expect(JSON.stringify(preview)).not.toContain('secret');
+  });
+
+  it('gives a sticker its own kind with [表情] as the text', () => {
+    expect(lastMessagePreview({ ...row, text: '[表情]', sticker_json: STICKER_JSON })).toEqual({
+      id: 7,
+      kind: 'sticker',
+      authorId: 'mem_a',
+      authorName: 'A',
+      text: '[表情]',
+      at: row.created_at,
+      system: null,
+    });
+  });
+
+  it('reads a withdrawn sticker as withdrawn, also when an old Worker left its sticker_json behind', () => {
+    expect(lastMessagePreview({ ...row, text: '', recalled: 1, sticker_json: STICKER_JSON })).toMatchObject({ kind: 'recalled', text: '' });
+    expect(lastMessagePreview({ ...row, text: '', deleted: 1, deleted_by: 'moderator', sticker_json: STICKER_JSON })).toMatchObject({
+      kind: 'moderator_deleted',
+      text: '',
+    });
+    expect(lastMessagePreview({ ...row, text: '', deleted: 1, deleted_by: 'author', sticker_json: null })).toMatchObject({ kind: 'deleted' });
   });
 
   it('parses system rows', () => {

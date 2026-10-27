@@ -1,7 +1,7 @@
 import type { PointerEvent } from 'react';
 import type { QuotePreview } from '@utmmsc/shared';
 import { useTr } from '../../../shared/i18n/locale';
-import { imageLabel } from '../format/systemText';
+import { imageLabel, stickerLabel } from '../format/systemText';
 import { CloseCircleIcon, ImageTileIcon } from './composerIcons';
 
 function keepFocus(event: PointerEvent) {
@@ -15,7 +15,9 @@ function keepFocus(event: PointerEvent) {
 export function QuoteStrip({ quote, onCancel }: { quote: QuotePreview; onCancel: () => void }) {
   const tr = useTr();
   const name = quote.authorName.trim() || tr('成员', 'Member');
-  const body = quote.excerpt.replace(/\s+/g, ' ').trim() || (quote.hasImage ? imageLabel(tr) : '');
+  // A sticker's excerpt is the fallback for old clients; this build shows its own label.
+  // 表情的摘录是给旧客户端的后备文字；本版本显示自己的标签。
+  const body = quote.hasSticker ? stickerLabel(tr) : quote.excerpt.replace(/\s+/g, ' ').trim() || (quote.hasImage ? imageLabel(tr) : '');
   const line = tr(`${name}：${body}`, `${name}: ${body}`);
   return (
     <div className="flex items-center gap-1 pl-2.5 pt-2">

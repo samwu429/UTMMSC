@@ -34,6 +34,26 @@ describe('corsMiddleware', () => {
     }
   });
 
+  it('lets the local dev server send a sticker upload with its x-sticker header', async () => {
+    const res = await app.request(
+      '/ping',
+      {
+        method: 'OPTIONS',
+        headers: {
+          origin: 'http://localhost:5173',
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'authorization,content-type,x-sticker',
+        },
+      },
+      env,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    const allowed = (res.headers.get('access-control-allow-headers') ?? '').split(',').map((header) => header.trim());
+    expect(allowed).toEqual(expect.arrayContaining(['authorization', 'content-type', 'x-sticker']));
+    expect(res.headers.get('access-control-allow-methods')).toContain('POST');
+  });
+
   it('allows no other origin', async () => {
     const res = await preflight('https://evil.example');
     expect(res.headers.get('access-control-allow-origin')).toBeNull();

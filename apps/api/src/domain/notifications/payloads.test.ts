@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { STICKER_TEXT } from '@utmmsc/shared';
 import {
+  PUSH_COPY,
   eventPushPayload,
   messagePushPayload,
   momentCommentPushPayload,
@@ -46,6 +48,20 @@ describe('messagePushPayload', () => {
   it('labels image-only messages', () => {
     expect(messagePushPayload({ ...channelInput, text: '', hasImage: true }).body).toBe('张三: [图片]');
     expect(messagePushPayload({ ...channelInput, text: '看这个', hasImage: true }).body).toBe('张三: [图片] 看这个');
+  });
+
+  it('says [表情] for a sticker in a channel and in a DM, with the mention prefix', () => {
+    const sticker = { ...channelInput, text: '', hasSticker: true };
+    expect(PUSH_COPY.sticker).toBe(STICKER_TEXT);
+    expect(messagePushPayload(sticker).body).toBe('张三: [表情]');
+    expect(messagePushPayload({ ...sticker, mentioned: true }).body).toBe('[有人@我] 张三: [表情]');
+    const direct = messagePushPayload({ ...sticker, roomId: 'direct:dm_1', roomKind: 'direct', roomTitle: '' });
+    expect(direct.title).toBe('张三');
+    expect(direct.body).toBe('[表情]');
+    // Whatever text a sticker row carries, the push never shows it.
+    // 无论表情消息带着什么文字，推送都不显示它。
+    expect(messagePushPayload({ ...sticker, text: '[表情]' }).body).toBe('张三: [表情]');
+    expect(messagePushPayload({ ...sticker, preview: false }).body).toBe('你收到一条新消息');
   });
 
   it('uses the sender as the title of a direct message', () => {

@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import type { QuotePreview } from '@utmmsc/shared';
+import type { NormalizedChatMessage, QuotePreview, StickerRef } from '@utmmsc/shared';
 import { formatDividerTime } from '../../../shared/format/time';
 import { useTr } from '../../../shared/i18n/locale';
 import { ActionSheet } from '../../../shared/ui/ActionSheet';
@@ -13,8 +13,13 @@ import { LinkifiedText } from './LinkifiedText';
 import { copyText, MessagePopover } from './MessagePopover';
 import { QuoteBlock } from './QuoteBlock';
 import { SendStatus } from './SendStatus';
+import { StickerMessage } from './StickerMessage';
 import { messageActions, quoteFrom, type BubbleItem, type MessageActionId, type MessageActionInput } from './timeline';
 import { TranslationCard } from './TranslationCard';
+
+/** A pending sticker is the newest in the chat, so it takes a place among those playing first. */
+/** 待发的表情是聊天中最新的，因此优先占用播放名额。 */
+const PENDING_STICKER_RANK = Number.MAX_SAFE_INTEGER;
 
 export interface RowMe {
   id: string;
@@ -36,6 +41,15 @@ export interface RowActions {
   discard(clientId: string): void;
   jumpTo(id: number): void;
   openImage(id: number, rect: DOMRect): void;
+  /** 添加到表情 from a sticker or photo row. */
+  /** 从表情或图片消息「添加到表情」。 */
+  addSticker(message: NormalizedChatMessage): void;
+  /** The tap preview of a sticker message; it closes when that message is recalled, removed or hidden. */
+  /** 表情消息的点按预览；该消息被撤回、删除或隐藏时预览关闭。 */
+  openSticker(messageId: number, sticker: StickerRef): void;
+  /** 封禁表情, for the system administrator; asks first. */
+  /** 系统管理员的「封禁表情」；会先确认。 */
+  blockSticker(sticker: StickerRef): void;
   clockSkewMs(): number;
   listElement(): HTMLElement | null;
   /** Keeps the list from following new messages while a menu points at a row; returns the release. */
@@ -51,6 +65,12 @@ interface Props {
   capable: boolean;
   canPost: boolean | null;
   canModerate: boolean;
+  /** The room's server takes stickers, so stickers and photos offer 添加到表情. */
+  /** 房间所在的服务端支持表情，因此表情和图片提供「添加到表情」。 */
+  stickersEnabled: boolean;
+  /** The viewer is the system administrator, so sticker rows offer 封禁表情. */
+  /** 观看者是系统管理员，因此表情消息提供「封禁表情」。 */
+  canBlockStickers: boolean;
   actions: RowActions;
 }
 
@@ -74,11 +94,13 @@ function pointRect(x: number, y: number): AnchorRect {
  * One message, WeChat style: a 40px square avatar on the sender's side, the sender's name above other
  * people's bubbles in channels, and a bubble with a tail. A single tap does nothing; a long press,
  * right-click or the hidden 消息操作 button opens the dark menu. Your own pending messages show their
- * send state to the left of the bubble.
+ * send state to the left of the bubble. A sticker takes the bubble's place with no bubble at all, and a
+ * tap opens its preview.
  * 一条微信样式的消息：发送者一侧是 40px 方形头像，频道中别人的气泡上方显示名字，气泡带尾巴。单击无反应；
- * 长按、右键或隐藏的「消息操作」按钮打开深色菜单。自己的待发消息在气泡左侧显示发送状态。
+ * 长按、右键或隐藏的「消息操作」按钮打开深色菜单。自己的待发消息在气泡左侧显示发送状态。表情占据气泡的位置，
+ * 完全没有气泡，点按打开它的预览。
  */
-export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken, capable, canPost, canModerate, actions }: Props) {
+export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken, capable, canPost, canModerate, stickersEnabled, canBlockStickers, actions }: Props) {
   const tr = useTr();
   const ask = useConfirm();
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -96,11 +118,14 @@ export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken,
   const createdAt = message ? message.createdAt : (pending?.createdAt ?? '');
   const quote = message ? message.replyTo : (pending?.replyTo ?? null);
   const failed = pending?.status === 'failed';
+  const sticker = message?.sticker ?? pending?.sticker ?? null;
 
+  // A sticker row never shows a photo or a text bubble.
+  // 表情消息从不显示图片或文字气泡。
   let image: { imageKey: string | null; width: number | null; height: number | null; pending: PendingImageView | null } | null = null;
-  if (message?.imageKey) {
+  if (!sticker && message?.imageKey) {
     image = { imageKey: message.imageKey, width: message.imageWidth, height: message.imageHeight, pending: null };
-  } else if (pending?.image) {
+  } else if (!sticker && pending?.image) {
     const uploading = pending.image.imageKey === null && pending.status !== 'failed';
     image = {
       imageKey: pending.image.imageKey,
@@ -111,7 +136,22 @@ export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken,
   }
 
   function actionInput(nowMs: number): MessageActionInput {
-    return { own, kind: message?.kind ?? 'user', text, redacted: false, pending: pending !== null, createdAt, capable, canPost, canModerate, nowMs };
+    return {
+      own,
+      kind: message?.kind ?? 'user',
+      text,
+      redacted: false,
+      pending: pending !== null,
+      createdAt,
+      capable,
+      canPost,
+      canModerate,
+      nowMs,
+      hasSticker: sticker !== null,
+      hasImage: image !== null,
+      canAddSticker: stickersEnabled,
+      canBlockSticker: canBlockStickers,
+    };
   }
 
   // Taken at the message's own time, so the widest set (including 撤回) decides whether a menu exists at all.
@@ -191,6 +231,12 @@ export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken,
       case 'mute':
         actions.mute(author.id);
         return;
+      case 'addSticker':
+        if (message) actions.addSticker(message);
+        return;
+      case 'blockSticker':
+        if (message?.sticker) actions.blockSticker(message.sticker);
+        return;
     }
   }
 
@@ -219,6 +265,16 @@ export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken,
               <SendStatus status={pending.status} onResend={() => actions.resend(pending.clientId)} />
             </div>
           ) : null}
+          {sticker ? (
+            <StickerMessage
+              sticker={sticker}
+              playKey={message ? String(message.id) : `c:${pending?.clientId ?? ''}`}
+              rank={message ? message.id : PENDING_STICKER_RANK}
+              pressed={pressed}
+              handlers={press.handlers}
+              onOpen={message ? () => actions.openSticker(message.id, sticker) : undefined}
+            />
+          ) : null}
           {image ? (
             <ImageMessage
               imageKey={image.imageKey}
@@ -231,7 +287,7 @@ export const MessageRow = memo(function MessageRow({ item, kind, me, mediaToken,
               onOpen={message ? (rect) => actions.openImage(message.id, rect) : undefined}
             />
           ) : null}
-          {text ? (
+          {text && !sticker ? (
             <div
               className={`wx-bubble ${own ? 'wx-bubble-mine' : 'wx-bubble-other'} ${pressed ? 'is-pressed' : ''} max-w-full select-none whitespace-pre-wrap break-words [overflow-wrap:anywhere]`}
               style={{ WebkitTouchCallout: 'none', touchAction: 'manipulation' }}

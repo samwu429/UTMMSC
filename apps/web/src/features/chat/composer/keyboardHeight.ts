@@ -8,7 +8,13 @@ const STORAGE_KEY = 'utmmsc.chat.keyboardHeight';
 /** A smaller gap between the layout and visual viewports is browser chrome, not a keyboard. */
 /** 布局视口与可视视口之间的差距小于此值时，是浏览器界面而不是键盘。 */
 export const KEYBOARD_MIN_PX = 120;
-export const DEFAULT_KEYBOARD_PX = 260;
+/**
+ * The panel height before any keyboard was measured: no taller than most phone keyboards, and tall enough for two
+ * full rows of 我的表情 on 320 to 430 px phones above the 34 px home-indicator safe area, which the panel's tab bar keeps.
+ * 尚未测得键盘高度时的面板高度：不高于多数手机键盘，并且在 320 到 430px 宽的手机上，扣除面板标签栏保留的 34px 主屏幕指示条安全区后，
+ * 仍能完整显示两行「我的表情」。
+ */
+export const DEFAULT_KEYBOARD_PX = 280;
 /** No keyboard covers more than this share of the window. */
 /** 键盘不会占据窗口超过这个比例。 */
 const KEYBOARD_MAX_SHARE = 0.75;

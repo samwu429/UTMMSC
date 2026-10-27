@@ -28,6 +28,28 @@ export interface LongPressHandlers {
   onClickCapture: (event: MouseEvent<HTMLElement>) => void;
 }
 
+/** How long a press is held before it counts as a long press. */
+/** 按住多久才算长按。 */
+export const LONG_PRESS_DELAY_MS = 450;
+/** Moving further than this before the delay ends cancels the long press, so the finger can scroll. */
+/** 在延时结束前移动超过这个距离会取消长按，手指因此可以滚动。 */
+export const LONG_PRESS_TOLERANCE_PX = 10;
+
+/**
+ * The short vibration that confirms a long press, where the device allows it. Vibration is optional feedback:
+ * browsers refuse it, and Chrome logs an error, before the first tap on the page.
+ * 确认长按的短促震动（设备允许时）。震动只是附加反馈：在页面上第一次点按之前，浏览器会拒绝震动，Chrome 还会记录一条错误。
+ */
+export function vibrateForLongPress(): void {
+  try {
+    if (typeof navigator === 'undefined') return;
+    if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(10);
+  } catch {
+    // Some browsers throw instead of returning false.
+    // 部分浏览器会直接抛错，而不是返回 false。
+  }
+}
+
 /** Pressed colour appears only after this, so a flick that starts on a row does not flash it. */
 /** 按下颜色在此之后才出现，从某一行开始的快速滑动不会让它闪一下。 */
 const PRESSED_FEEDBACK_MS = 100;
@@ -154,14 +176,7 @@ export function useLongPress(options: LongPressOptions): { handlers: LongPressHa
 
     function open(info: LongPressInfo) {
       lastOpenAt.current = Date.now();
-      // Vibration is optional feedback. Browsers refuse it, and Chrome logs an error, before the first tap on the page.
-      // 震动只是附加反馈。在页面上第一次点按之前，浏览器会拒绝震动，Chrome 还会记录一条错误。
-      try {
-        if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(10);
-      } catch {
-        // Some browsers throw instead of returning false.
-        // 部分浏览器会直接抛错，而不是返回 false。
-      }
+      vibrateForLongPress();
       optionsRef.current.onLongPress(info);
     }
 
@@ -214,11 +229,11 @@ export function useLongPress(options: LongPressOptions): { handlers: LongPressHa
           state.long = true;
           setPressed(true);
           open({ rect: element.getBoundingClientRect(), clientX: state.x, clientY: state.y, source: 'pointer', held: true });
-        }, optionsRef.current.delayMs ?? 450);
+        }, optionsRef.current.delayMs ?? LONG_PRESS_DELAY_MS);
       },
       onPointerMove(event) {
         if (!state.active || event.pointerId !== state.pointerId || state.timer === null) return;
-        const tolerance = optionsRef.current.moveTolerancePx ?? 10;
+        const tolerance = optionsRef.current.moveTolerancePx ?? LONG_PRESS_TOLERANCE_PX;
         const dx = event.clientX - state.x;
         const dy = event.clientY - state.y;
         if (dx * dx + dy * dy > tolerance * tolerance) endPress();

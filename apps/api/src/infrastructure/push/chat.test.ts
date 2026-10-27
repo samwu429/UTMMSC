@@ -88,6 +88,12 @@ describe.skipIf(!sqlite)('chat pushes with channel icons', () => {
     expect(payloadOf('mem_cy')).toBeNull();
   });
 
+  it('forwards a sticker, so the push reads [表情]', async () => {
+    await notifyChatMessage(env, { ...message(), text: '', hasSticker: true });
+    expect(payloadOf('mem_bob')?.body).toBe('Ann: [表情]');
+    expect(payloadOf('mem_cy')?.body).toBe('你收到一条新消息');
+  });
+
   it('never fails the fan-out over the icon', async () => {
     expect(await channelPushIcon({ ...env, SESSION_SECRET: undefined } as unknown as Env, UPLOAD)).toBeUndefined();
     expect(await channelPushIcon(env, null)).toBeUndefined();

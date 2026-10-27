@@ -2,6 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import {
   HISTORY_PAGE_MAX,
   HISTORY_PAGE_SIZE,
+  normalizeStickerRef,
   parseServerFrame,
   type ClientFrame,
   type ErrorFrame,
@@ -11,6 +12,7 @@ import {
   type ReadyFrame,
   type RoomTicketResponse,
   type ServerFrame,
+  type StickerRef,
 } from '@utmmsc/shared';
 import { ApiClientError, errorMessage, localizedMessage } from '../../../shared/api/errors';
 import { useLocaleStore } from '../../../shared/i18n/locale';
@@ -111,6 +113,7 @@ function outboxFor(roomId: string): Outbox {
       timeoutText: () => trNow('消息发送失败', 'Message not sent'),
       uncertainText: () => trNow('可能未发送', 'May not have been sent'),
       uploadFailureText: errorMessage,
+      stickerUnsupportedText: () => trNow('表情暂时无法发送，请稍后再试', "Stickers can't be sent right now. Try again later."),
     });
     outboxes.set(roomId, box);
   }
@@ -143,6 +146,7 @@ type RoomMethods = Pick<
   | 'trimOldest'
   | 'sendText'
   | 'sendImage'
+  | 'sendSticker'
   | 'resend'
   | 'discard'
   | 'markRead'
@@ -179,6 +183,7 @@ const INITIAL_DATA: SessionData = {
   mediaToken: null,
   clockSkewMs: 0,
   notice: null,
+  stickers: null,
 };
 
 /**
@@ -300,6 +305,7 @@ class RoomSession {
         const height = Math.round(size.height);
         return outboxFor(this.roomId).enqueue({ text: '', image: { file, localUrl: URL.createObjectURL(file), width, height } });
       },
+      sendSticker: (sticker, input) => this.sendSticker(sticker, input),
       resend: (clientId) => outboxFor(this.roomId).resend(clientId),
       discard: (clientId) => outboxFor(this.roomId).discard(clientId),
       markRead: (id) => this.reads.mark(id),
@@ -751,10 +757,14 @@ class RoomSession {
     lastServerCapable = capable;
     this.serverKnown = true;
     this.outboxLink?.setCapable(capable);
+    // Only a room that says so takes stickers; an old server never does.
+    // 只有声明接受表情的房间才接受表情；旧服务端从不接受。
+    const stickers = frame.stickers === true;
+    this.outboxLink?.setStickers?.(stickers);
     // The server's own record decides what still needs telling, so a read lost with the old socket goes again.
     // 以服务端自己的记录为准决定还需要告诉它什么，随旧连接丢失的已读因此会再发一次。
     this.reads.reset(frame.lastReadId);
-    const patch: Partial<SessionData> = { capable, lastReadId: frame.lastReadId };
+    const patch: Partial<SessionData> = { capable, stickers, lastReadId: frame.lastReadId };
     if (!this.entrySeen) {
       this.entrySeen = true;
       patch.entry = {
@@ -1113,6 +1123,22 @@ class RoomSession {
       mentions: legacy ? [] : (input.mentions ?? []),
       mentionAll: !legacy && input.mentionAll === true,
     });
+  }
+
+  /**
+   * Queues a sticker, with the same quote rules as text. A room known not to take stickers gets nothing and ''
+   * comes back; before this visit's first ready the sticker waits in the outbox, which fails it if the server turns
+   * out not to take stickers. A malformed description is never queued, since the server would refuse the frame.
+   * 将表情加入发送队列，引用规则与文字相同。已知房间不接受表情时不发送并返回 ''；本次进入的第一个 ready 帧到达之前，
+   * 表情在发送队列中等待，若服务端不接受表情，发送队列会让它失败。格式不对的描述从不入队，因为服务端会拒绝该帧。
+   */
+  private sendSticker(sticker: StickerRef, input: { replyTo?: QuotePreview | null } = {}): string {
+    if (this.data.stickers === false) return '';
+    const ref = normalizeStickerRef(sticker);
+    if (!ref) return '';
+    const target = input.replyTo ? quoteTargetState(this.store, input.replyTo.id) : null;
+    const quotable = target === 'ok' || target === 'hidden' || target === 'unknown';
+    return outboxFor(this.roomId).enqueue({ text: '', sticker: ref, replyTo: quotable ? (input.replyTo ?? null) : null });
   }
 
   private hide(id: number): void {

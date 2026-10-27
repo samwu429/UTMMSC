@@ -16,10 +16,45 @@ export const MEDIA_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 /** 没有放进预缓存的预设头像文件（256 像素动图），第一次使用后保留下来。 */
 export const AVATAR_CACHE_NAME = 'utmmsc-avatars-v1';
 
+/** Sticker stills (a few KB each, shown by every grid tile). Cleared on sign-out with the media cache. */
+/** 表情的静态图（每张几 KB，每个表情格子都会显示）。退出登录时与媒体缓存一起清空。 */
+export const STICKER_THUMB_CACHE_NAME = 'utmmsc-sticker-thumbs-v1';
+export const STICKER_THUMB_CACHE_MAX_ENTRIES = 600;
+export const STICKER_THUMB_CACHE_MAX_AGE_SECONDS = 60 * 24 * 60 * 60;
+
+/** Sticker files. Ones over 2 MiB are left to the browser's HTTP cache (skipLargeStickerResponses). */
+/** 表情文件。超过 2 MiB 的交给浏览器的 HTTP 缓存（见 skipLargeStickerResponses）。 */
+export const STICKER_FILE_CACHE_NAME = 'utmmsc-stickers-v1';
+export const STICKER_FILE_CACHE_MAX_ENTRIES = 150;
+export const STICKER_FILE_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
 interface RouteInput {
   url: URL;
   request: Request;
 }
+
+/**
+ * A sticker still from members media: sticker/<id>-t-<thumb>, with the slash encoded (as mediaUrl writes it) or not.
+ * 来自成员媒体的表情静态图：sticker/<id>-t-<thumb>，斜杠可以是编码后的形式（mediaUrl 的写法），也可以不编码。
+ */
+export const isStickerThumbRequest = ({ url, request }: RouteInput): boolean =>
+  request.destination === 'image' && /\/members\/media\/sticker(?:%2F|\/)stk_[A-Za-z0-9_-]{22}-t-[A-Za-z0-9_-]{22}$/i.test(url.pathname);
+
+/** A sticker file from members media: sticker/<id>.<type>. */
+/** 来自成员媒体的表情文件：sticker/<id>.<type>。 */
+export const isStickerFileRequest = ({ url, request }: RouteInput): boolean =>
+  request.destination === 'image' && /\/members\/media\/sticker(?:%2F|\/)stk_[A-Za-z0-9_-]{22}\.(?:gif|png|webp|jpeg)$/i.test(url.pathname);
+
+/**
+ * A cacheWillUpdate plugin for sticker files: responses over 2 MiB are not stored (they stay in the browser's HTTP
+ * cache only), so a few large animations cannot push everything else out. A response without a length is kept.
+ * 表情文件的 cacheWillUpdate 插件：超过 2 MiB 的响应不存入（只留在浏览器的 HTTP 缓存中），少数几个较大的动图因此不会把其他内容挤出去。
+ * 没有长度的响应照常保存。
+ */
+export const skipLargeStickerResponses = async ({ response }: { response: Response }): Promise<Response | null> => {
+  const length = Number(response.headers.get('content-length'));
+  return Number.isFinite(length) && length > 2 * 1024 * 1024 ? null : response;
+};
 
 /**
  * Images from the API's media routes, on utmmsc.com/api or on the Worker's own address. Videos are left out: they
